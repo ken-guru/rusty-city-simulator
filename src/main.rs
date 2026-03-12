@@ -7,6 +7,8 @@ mod ai;
 mod movement;
 mod time;
 mod ui;
+mod aging;
+mod hovered;
 
 use entities::*;
 use world::*;
@@ -14,6 +16,8 @@ use ai::NeedsDecayPlugin;
 use movement::MovementPlugin;
 use time::GameTimePlugin;
 use ui::UIPlugin;
+use aging::AgingPlugin;
+use hovered::HoveredEntity;
 
 #[derive(Resource)]
 struct GameState {
@@ -38,6 +42,7 @@ fn main() {
         .add_plugins(NeedsDecayPlugin)
         .add_plugins(MovementPlugin)
         .add_plugins(GameTimePlugin)
+        .add_plugins(AgingPlugin)
         .add_plugins(UIPlugin)
         .insert_resource(GameState::default())
         .insert_resource(HoveredEntity::default())
@@ -51,13 +56,10 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    // Create camera
     commands.spawn(Camera2d::default());
 
-    // Generate initial world
     let world = CityWorld::new();
 
-    // Spawn background
     commands.spawn(Mesh2d(meshes.add(Rectangle::new(2000.0, 2000.0))));
 
     // Spawn buildings
@@ -140,9 +142,6 @@ fn camera_controls(
         game_state.paused = !game_state.paused;
     }
 }
-
-#[derive(Resource, Default)]
-pub struct HoveredEntity(pub Option<Entity>);
 
 fn update_hovered_entity(
     mut hovered: ResMut<HoveredEntity>,

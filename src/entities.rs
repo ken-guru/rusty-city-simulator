@@ -31,10 +31,12 @@ pub struct Citizen {
     pub energy: f32,
     pub social: f32,
     pub hygiene: f32,
+    pub reproduction_urge: f32, // desire to reproduce
 
     // State
     pub current_activity: ActivityType,
     pub target_position: Option<Vec2>,
+    pub partner_id: Option<String>, // current romantic partner
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -61,8 +63,24 @@ impl Citizen {
             energy: 0.7,
             social: 0.5,
             hygiene: 0.8,
+            reproduction_urge: 0.0,
             current_activity: ActivityType::Idle,
             target_position: None,
+            partner_id: None,
+        }
+    }
+
+    pub fn can_reproduce(&self) -> bool {
+        self.age >= 18.0 && self.age <= 60.0 && self.reproduction_urge > 0.7
+    }
+
+    pub fn get_age_group(&self) -> &'static str {
+        match self.age {
+            a if a <= 2.0 => "infant",
+            a if a <= 12.0 => "child",
+            a if a <= 18.0 => "teen",
+            a if a <= 60.0 => "adult",
+            _ => "elder",
         }
     }
 }
