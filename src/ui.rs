@@ -1,6 +1,7 @@
 use crate::entities::*;
 use crate::hovered::HoveredEntity;
-use crate::save::SaveRequestEvent;
+use crate::roads::RoadNetwork;
+use crate::save::{save_game, SaveRequestEvent};
 use crate::time::GameTime;
 use crate::world::CityWorld;
 use bevy::prelude::*;
@@ -36,11 +37,20 @@ enum QuitDialogAction {
 #[derive(Resource, Default)]
 struct QuitDialogVisible(bool);
 
+/// Pending quit: set to trigger a clean exit at end of frame.
+/// `save_first` = true means save synchronously before exiting.
+#[derive(Resource, Default)]
+struct PendingQuit {
+    active: bool,
+    save_first: bool,
+}
+
 pub struct UIPlugin;
 
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<QuitDialogVisible>()
+            .init_resource::<PendingQuit>()
             .add_systems(Startup, setup_ui)
             .add_systems(
                 Update,
@@ -50,8 +60,12 @@ impl Plugin for UIPlugin {
                     toolbar_interaction,
                     quit_dialog_interaction,
                     sync_quit_dialog_visibility,
+                    sync_toolbar_button_states,
                 ),
-            );
+            )
+            // Run the actual exit at the very end of the frame so any
+            // pending events (e.g. save) have already been dispatched.
+            .add_systems(Last, handle_pending_quit);
     }
 }
 
@@ -291,25 +305,74 @@ fn quit_dialog_interaction(
         (&Interaction, &QuitDialogAction),
         (Changed<Interaction>, With<Button>),
     >,
-    mut save_events: EventWriter<SaveRequestEvent>,
-    mut app_exit: EventWriter<AppExit>,
+    mut pending_quit: ResMut<PendingQuit>,
     mut quit_visible: ResMut<QuitDialogVisible>,
 ) {
     for (interaction, action) in &mut interaction_query {
         if *interaction == Interaction::Pressed {
             match action {
                 QuitDialogAction::SaveAndQuit => {
-                    save_events.send(SaveRequestEvent);
-                    app_exit.send(AppExit::Success);
+                    pending_quit.active = true;
+                    pending_quit.save_first = true;
                 }
                 QuitDialogAction::QuitNoSave => {
-                    app_exit.send(AppExit::Success);
+                    pending_quit.active = true;
+                    pending_quit.save_first = false;
                 }
                 QuitDialogAction::Cancel => {
                     quit_visible.0 = false;
                 }
             }
         }
+    }
+}
+
+/// Performs the actual quit at the end of the frame.
+/// Saves synchronously (if requested) then calls process::exit — this is
+/// reliable on macOS where Bevy's AppExit event can deadlock the Metal renderer.
+fn handle_pending_quit(
+    pending: Res<PendingQuit>,
+    world: Res<CityWorld>,
+    game_time: Res<GameTime>,
+    road_network: Res<RoadNetwork>,
+) {
+    if !pending.active {
+        return;
+    }
+    if pending.save_first {
+        if let Err(e) = save_game(&world, &game_time, &road_network) {
+            eprintln!("Failed to save before quit: {e}");
+        }
+    }
+    std::process::exit(0);
+}
+
+/// Highlight the active speed / pause button each frame.
+fn sync_toolbar_button_states(
+    game_time: Res<GameTime>,
+    mut button_query: Query<(&ToolbarAction, &mut BackgroundColor, &Interaction), With<Button>>,
+) {
+    const DEFAULT: Color = Color::srgba(0.18, 0.22, 0.28, 0.9);
+    const ACTIVE:  Color = Color::srgba(0.15, 0.55, 0.25, 0.95);
+    const HOVERED: Color = Color::srgba(0.25, 0.32, 0.42, 0.95);
+
+    for (action, mut bg, interaction) in &mut button_query {
+        let is_active = match action {
+            ToolbarAction::TogglePause => game_time.time_scale == 0.0,
+            ToolbarAction::SetSpeed(s) => {
+                game_time.time_scale != 0.0
+                    && (game_time.time_scale - s).abs() < 0.001
+            }
+            _ => false,
+        };
+
+        *bg = if is_active {
+            BackgroundColor(ACTIVE)
+        } else if *interaction == Interaction::Hovered {
+            BackgroundColor(HOVERED)
+        } else {
+            BackgroundColor(DEFAULT)
+        };
     }
 }
 
