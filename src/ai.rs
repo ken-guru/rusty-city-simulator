@@ -1,4 +1,5 @@
 use crate::entities::*;
+use crate::roads::RoadNetwork;
 use crate::time::GameTime;
 use crate::world::CityWorld;
 use bevy::prelude::*;
@@ -38,6 +39,7 @@ fn decay_needs(
 fn run_citizen_ai(
     mut citizens: Query<&mut Citizen>,
     world: Res<CityWorld>,
+    road_network: Res<RoadNetwork>,
     time: Res<Time>,
     game_time: Res<GameTime>,
 ) {
@@ -45,8 +47,8 @@ fn run_citizen_ai(
     let delta = time.delta_secs() * game_time.time_scale;
 
     for mut citizen in citizens.iter_mut() {
-        // Only re-decide when idle (no movement target and not mid-activity)
-        if citizen.target_position.is_some() {
+        // Only re-decide when idle (no movement target or pending waypoints)
+        if citizen.target_position.is_some() || !citizen.waypoints.is_empty() {
             continue;
         }
 
@@ -68,14 +70,41 @@ fn run_citizen_ai(
         };
 
         if let Some(pos) = target_building {
-            // Aim for a random offset inside the building so they don't all stack
             let offset = Vec2::new(rng.gen_range(-20.0..20.0), rng.gen_range(-20.0..20.0));
-            citizen.target_position = Some(pos + offset);
+            let destination = pos + offset;
+
+            // Citizens in critical need take a shortcut to satisfy that need fast.
+            let in_a_hurry = citizen.hunger > 0.85 || (1.0 - citizen.energy) > 0.90;
+
+            if in_a_hurry {
+                citizen.target_position = Some(destination);
+                citizen.on_shortcut = true;
+                citizen.shortcut_from = Some(citizen.position);
+                citizen.waypoints.clear();
+            } else if let Some(mut waypoints) =
+                road_network.find_road_path(citizen.position, destination)
+            {
+                // Route via road network. Stored reversed so `pop()` yields the first node.
+                waypoints.reverse();
+                citizen.waypoints = waypoints;
+                citizen.on_shortcut = false;
+                citizen.shortcut_from = None;
+                citizen.target_position = None;
+            } else {
+                // No road route — go direct and record as a shortcut.
+                citizen.target_position = Some(destination);
+                citizen.on_shortcut = true;
+                citizen.shortcut_from = Some(citizen.position);
+                citizen.waypoints.clear();
+            }
         } else {
             // Wander randomly when no building found
             let wander = Vec2::new(rng.gen_range(-200.0..200.0), rng.gen_range(-200.0..200.0));
             citizen.target_position = Some(wander);
             citizen.current_activity = ActivityType::Walking;
+            citizen.on_shortcut = false;
+            citizen.shortcut_from = None;
+            citizen.waypoints.clear();
         }
     }
 }

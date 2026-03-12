@@ -1,4 +1,5 @@
 use crate::entities::*;
+use crate::roads::RoadNetwork;
 use crate::time::GameTime;
 use bevy::prelude::*;
 
@@ -12,18 +13,28 @@ impl Plugin for MovementPlugin {
 
 const MOVEMENT_SPEED: f32 = 60.0;
 
-/// Moves citizen.position toward target_position each frame, respecting time_scale.
+/// Moves citizens along their waypoint queue toward their target, respecting time_scale.
 pub fn simple_movement(
     mut citizens: Query<&mut Citizen>,
     time: Res<Time>,
     game_time: Res<GameTime>,
+    mut road_network: ResMut<RoadNetwork>,
 ) {
     if game_time.time_scale == 0.0 {
         return; // paused
     }
     let delta = time.delta_secs() * game_time.time_scale;
+    let now = game_time.current_day();
 
     for mut citizen in citizens.iter_mut() {
+        // Advance to next waypoint when idle.
+        if citizen.target_position.is_none() {
+            if let Some(next_wp) = citizen.waypoints.pop() {
+                citizen.last_road_node = Some(citizen.position);
+                citizen.target_position = Some(next_wp);
+            }
+        }
+
         if let Some(target) = citizen.target_position {
             let diff = target - citizen.position;
             let distance = diff.length();
@@ -32,8 +43,22 @@ pub fn simple_movement(
             if distance > move_distance {
                 citizen.position += diff.normalize() * move_distance;
             } else {
+                // Arrived at target.
                 citizen.position = target;
                 citizen.target_position = None;
+
+                if citizen.on_shortcut && citizen.waypoints.is_empty() {
+                    // Shortcut journey completed — record the desire path.
+                    if let Some(from) = citizen.shortcut_from.take() {
+                        road_network.record_shortcut(from, citizen.position, now);
+                    }
+                    citizen.on_shortcut = false;
+                } else if !citizen.on_shortcut {
+                    // Road segment completed — record usage.
+                    if let Some(from) = citizen.last_road_node.take() {
+                        road_network.record_road_use(from, citizen.position, now);
+                    }
+                }
             }
         }
     }

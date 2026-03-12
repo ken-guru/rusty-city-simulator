@@ -1,4 +1,5 @@
 use crate::entities::*;
+use crate::roads::RoadNetwork;
 use crate::world::CityWorld;
 use bevy::prelude::*;
 
@@ -45,13 +46,22 @@ fn check_housing_pressure(
         building_events.send(NewBuildingEvent { building: new_home });
     }
 
-    // Build a new office if we have > 8 adults and only 2 offices
     let adult_count = world.citizens.iter().filter(|c| c.age >= 18.0 && c.age <= 65.0).count();
     let office_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Office).count();
+    let shop_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Shop).count();
+
+    // New office when adults : office ratio exceeds 6 : 1
     if adult_count > office_count * 6 {
         let new_office = place_new_building(&world, BuildingType::Office);
         world.buildings.push(new_office.clone());
         building_events.send(NewBuildingEvent { building: new_office });
+    }
+
+    // New shop when adults : shop ratio exceeds 8 : 1
+    if adult_count > shop_count * 8 {
+        let new_shop = place_new_building(&world, BuildingType::Shop);
+        world.buildings.push(new_shop.clone());
+        building_events.send(NewBuildingEvent { building: new_shop });
     }
 }
 
@@ -93,6 +103,8 @@ fn spawn_building(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut building_events: EventReader<NewBuildingEvent>,
+    mut road_network: ResMut<RoadNetwork>,
+    game_time: Res<crate::time::GameTime>,
 ) {
     for event in building_events.read() {
         let b = &event.building;
@@ -109,6 +121,9 @@ fn spawn_building(
             Transform::from_xyz(b.position.x, b.position.y, 0.0),
             b.clone(),
         ));
+
+        // Connect the new building to the existing road network.
+        road_network.connect_new_building(b.position, game_time.current_day());
 
         info!("New building constructed: {:?} at ({:.0},{:.0})", b.building_type, b.position.x, b.position.y);
     }

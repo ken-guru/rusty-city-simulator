@@ -37,6 +37,16 @@ pub struct Citizen {
     pub current_activity: ActivityType,
     pub target_position: Option<Vec2>,
     pub partner_id: Option<String>, // current romantic partner
+
+    // Road navigation
+    #[serde(default)]
+    pub waypoints: Vec<Vec2>, // remaining road waypoints (stored reversed; pop from end)
+    #[serde(default)]
+    pub on_shortcut: bool, // taking a direct off-road shortcut
+    #[serde(default)]
+    pub shortcut_from: Option<Vec2>, // where the shortcut started
+    #[serde(default)]
+    pub last_road_node: Option<Vec2>, // last road node reached (for recording usage)
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -67,6 +77,10 @@ impl Citizen {
             current_activity: ActivityType::Idle,
             target_position: None,
             partner_id: None,
+            waypoints: Vec::new(),
+            on_shortcut: false,
+            shortcut_from: None,
+            last_road_node: None,
         }
     }
 

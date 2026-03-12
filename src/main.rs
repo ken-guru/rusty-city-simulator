@@ -8,6 +8,7 @@ mod hovered;
 mod housing;
 mod movement;
 mod reproduction;
+mod roads;
 mod save;
 mod time;
 mod ui;
@@ -20,6 +21,7 @@ use hovered::HoveredEntity;
 use housing::HousingPlugin;
 use movement::MovementPlugin;
 use reproduction::ReproductionPlugin;
+use roads::RoadsPlugin;
 use save::SaveLoadPlugin;
 use time::GameTimePlugin;
 use ui::UIPlugin;
@@ -50,6 +52,7 @@ fn main() {
         .add_plugins(AgingPlugin)
         .add_plugins(ReproductionPlugin)
         .add_plugins(HousingPlugin)
+        .add_plugins(RoadsPlugin)
         .add_plugins(UIPlugin)
         .add_plugins(SaveLoadPlugin)
         .insert_resource(GameState::default())
@@ -122,7 +125,7 @@ fn camera_controls(
 
     // Keyboard pan: arrow keys only (WASD conflicts with other bindings).
     if key_input.pressed(KeyCode::ArrowUp)    || key_input.pressed(KeyCode::KeyW) { pan.y += pan_speed; }
-    if key_input.pressed(KeyCode::ArrowDown)  { pan.y -= pan_speed; }
+    if key_input.pressed(KeyCode::ArrowDown)  || key_input.pressed(KeyCode::KeyS) { pan.y -= pan_speed; }
     if key_input.pressed(KeyCode::ArrowLeft)  || key_input.pressed(KeyCode::KeyA) { pan.x -= pan_speed; }
     if key_input.pressed(KeyCode::ArrowRight) || key_input.pressed(KeyCode::KeyD) { pan.x += pan_speed; }
     camera.translation += pan;
