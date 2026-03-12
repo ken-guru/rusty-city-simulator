@@ -5,6 +5,9 @@ use crate::world::CityWorld;
 use crate::time::GameTime;
 use crate::roads::RoadNetwork;
 
+#[derive(Event, Default)]
+pub struct SaveRequestEvent;
+
 #[derive(Serialize, Deserialize)]
 pub struct GameSave {
     pub world: CityWorld,
@@ -46,19 +49,22 @@ pub struct SaveLoadPlugin;
 
 impl Plugin for SaveLoadPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, handle_save_load);
+        app.add_event::<SaveRequestEvent>()
+            .add_systems(Update, handle_save_load);
     }
 }
 
 fn handle_save_load(
     input: Res<ButtonInput<KeyCode>>,
+    mut save_events: EventReader<SaveRequestEvent>,
     world: Res<crate::world::CityWorld>,
     game_time: Res<GameTime>,
     road_network: Res<RoadNetwork>,
 ) {
-    // Ctrl+S to save (avoids conflict with WASD camera pan)
-    let ctrl = input.pressed(KeyCode::ControlLeft) || input.pressed(KeyCode::ControlRight);
-    if ctrl && input.just_pressed(KeyCode::KeyS) {
+    // F5 to save (avoids all keyboard shortcut conflicts)
+    let triggered_by_key = input.just_pressed(KeyCode::F5);
+    let triggered_by_ui  = save_events.read().next().is_some();
+    if triggered_by_key || triggered_by_ui {
         if let Err(e) = save_game(&world, &game_time, &road_network) {
             eprintln!("Failed to save game: {}", e);
         }

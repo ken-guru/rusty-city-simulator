@@ -1,7 +1,8 @@
 use crate::entities::*;
-use crate::grid::{cardinal_neighbors, cell_to_world, world_to_cell, CELL_SIZE};
+use crate::grid::{cell_to_world, world_to_cell, CELL_SIZE};
 use crate::roads::RoadNetwork;
-use crate::world::{building_stats, CityWorld};
+use crate::sprites::SpriteAssets;
+use crate::world::{building_stats, CityWorld, ParkMarker};
 use bevy::prelude::*;
 
 #[derive(Event)]
@@ -80,29 +81,51 @@ fn place_new_building(world: &CityWorld, kind: BuildingType) -> Option<(Building
     use rand::Rng;
     let mut rng = rand::thread_rng();
 
-    // Collect all empty cells adjacent to at least one occupied cell.
-    let mut candidates: Vec<(i32, i32)> = Vec::new();
+    // ~15% of the time, try to place 2 cells away (leaving an empty crossroads cell).
+    const SKIP_CHANCE: f64 = 0.15;
+    let try_skip = rng.gen_bool(SKIP_CHANCE);
+
+    // A cell is "blocked" if it is occupied, a crossroads, or a park.
+    let is_blocked = |cell: &(i32, i32)| {
+        world.occupied_cells.contains(cell)
+            || world.crossroad_cells.contains(cell)
+            || world.park_cells.contains(cell)
+    };
+
+    // Collect cells immediately adjacent to the existing city.
+    let mut near: Vec<(i32, i32)> = Vec::new();
+    // Collect cells 2 steps away with an empty intermediate cell.
+    let mut far: Vec<(i32, i32)> = Vec::new();
+
     for &(col, row) in &world.occupied_cells {
-        for (nc, nr) in cardinal_neighbors(col, row) {
-            if !world.occupied_cells.contains(&(nc, nr))
-                && !candidates.contains(&(nc, nr))
-            {
-                candidates.push((nc, nr));
+        for (dc, dr) in [(0i32, 1i32), (0, -1), (1, 0), (-1, 0)] {
+            let adj = (col + dc, row + dr);
+            let skip = (col + 2 * dc, row + 2 * dr);
+
+            if !is_blocked(&adj) && !near.contains(&adj) {
+                near.push(adj);
+            }
+            // Far candidate: intermediate AND target must both be free.
+            if !is_blocked(&adj) && !is_blocked(&skip) && !far.contains(&skip) {
+                far.push(skip);
             }
         }
     }
 
-    let (col, row) = if candidates.is_empty() {
-        // Fallback: pick a grid cell at a random distance from the origin.
+    // Pick from "far" candidates if requested and available; fallback to "near".
+    let (col, row) = if try_skip && !far.is_empty() {
+        far[rng.gen_range(0..far.len())]
+    } else if !near.is_empty() {
+        near[rng.gen_range(0..near.len())]
+    } else {
+        // Fallback: random radial cell.
         let angle = rng.gen_range(0.0_f32..std::f32::consts::TAU);
         let dist  = rng.gen_range(3..7) as f32 * CELL_SIZE;
         world_to_cell(Vec2::new(angle.cos() * dist, angle.sin() * dist))
-    } else {
-        candidates[rng.gen_range(0..candidates.len())]
     };
 
     // Double-check the cell is still free (race safety).
-    if world.occupied_cells.contains(&(col, row)) {
+    if is_blocked(&(col, row)) {
         return None;
     }
 
@@ -113,31 +136,58 @@ fn place_new_building(world: &CityWorld, kind: BuildingType) -> Option<(Building
 
 fn spawn_building(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut building_events: EventReader<NewBuildingEvent>,
     mut road_network: ResMut<RoadNetwork>,
-    world: Res<CityWorld>,
+    mut world: ResMut<CityWorld>,
+    sprite_assets: Res<SpriteAssets>,
     game_time: Res<crate::time::GameTime>,
 ) {
     for event in building_events.read() {
         let b = &event.building;
-        let color = match b.building_type {
-            BuildingType::Home   => Color::srgb(0.8, 0.4, 0.2),
-            BuildingType::Office => Color::srgb(0.2, 0.4, 0.8),
-            BuildingType::Shop   => Color::srgb(0.8, 0.8, 0.2),
-            BuildingType::Public => Color::srgb(0.4, 0.8, 0.4),
+        let v = SpriteAssets::variant_for(b.position, 3);
+        let image = match b.building_type {
+            BuildingType::Home             => sprite_assets.homes[v].clone(),
+            BuildingType::Office           => sprite_assets.offices[v].clone(),
+            BuildingType::Shop
+            | BuildingType::Public         => sprite_assets.shops[v].clone(),
         };
 
         commands.spawn((
-            Mesh2d(meshes.add(Rectangle::new(b.size.x, b.size.y))),
-            MeshMaterial2d(materials.add(color)),
+            Sprite {
+                image,
+                custom_size: Some(b.size),
+                ..default()
+            },
             Transform::from_xyz(b.position.x, b.position.y, 0.0),
             b.clone(),
         ));
 
-        // Connect to all grid-adjacent existing buildings.
-        road_network.connect_new_building(b.position, game_time.current_day(), &world.buildings);
+        // Connect to all grid-adjacent existing buildings (and record any new crossroads).
+        // Clone buildings to avoid holding an immutable borrow while mutably borrowing crossroad_cells.
+        let buildings_snapshot = world.buildings.clone();
+        road_network.connect_new_building(
+            b.position,
+            game_time.current_day(),
+            &buildings_snapshot,
+            &mut world.crossroad_cells,
+        );
+
+        // Detect any cells that became fully enclosed and should become parks.
+        let cell = world_to_cell(b.position);
+        let new_parks = world.detect_new_parks(&[cell]);
+        for park_cell in new_parks {
+            let park_pos = cell_to_world(park_cell.0, park_cell.1);
+            commands.spawn((
+                Sprite {
+                    image: sprite_assets.park.clone(),
+                    custom_size: Some(Vec2::splat(CELL_SIZE * 0.8)),
+                    ..default()
+                },
+                Transform::from_xyz(park_pos.x, park_pos.y, -0.25),
+                ParkMarker { cell: park_cell },
+            ));
+            info!("Park created at grid {:?}", park_cell);
+        }
 
         info!(
             "New {:?} at grid {:?}, world ({:.0},{:.0})",

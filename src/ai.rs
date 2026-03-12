@@ -1,7 +1,8 @@
 use crate::entities::*;
+use crate::grid::CELL_SIZE;
 use crate::roads::RoadNetwork;
 use crate::time::GameTime;
-use crate::world::CityWorld;
+use crate::world::{park_positions, CityWorld};
 use bevy::prelude::*;
 use rand::Rng;
 
@@ -61,30 +62,41 @@ fn run_citizen_ai(
         citizen.current_activity = activity;
 
         // Find a target building for the chosen activity
-        let target_building = match activity {
+        let target_pos: Option<Vec2> = match activity {
             ActivityType::Eating => find_building(&world, BuildingType::Shop, &citizen.position),
             ActivityType::Sleeping => find_home(&world, &citizen.home_building_id),
             ActivityType::Working => find_building(&world, BuildingType::Office, &citizen.position),
             ActivityType::Socializing => find_any_building(&world, &citizen.position),
+            ActivityType::VisitingPark => nearest_park(&world, &citizen.position),
             ActivityType::Walking | ActivityType::Idle => None,
         };
 
-        if let Some(pos) = target_building {
-            let offset = Vec2::new(rng.gen_range(-20.0..20.0), rng.gen_range(-20.0..20.0));
+        if let Some(pos) = target_pos {
+            let offset = match activity {
+                ActivityType::VisitingPark => Vec2::ZERO, // go exactly to park center
+                _ => Vec2::new(rng.gen_range(-20.0..20.0), rng.gen_range(-20.0..20.0)),
+            };
             let destination = pos + offset;
+
+            // For parks: route to nearest road node adjacent to the park first.
+            let road_dest = if matches!(activity, ActivityType::VisitingPark) {
+                road_network.nearest_node_to(pos, CELL_SIZE * 2.0).unwrap_or(destination)
+            } else {
+                destination
+            };
 
             // Always try the road network first. A shortcut (and potential desire path)
             // is only justified when no road connection exists between the two points —
             // this prevents diagonal desire paths across already-connected city blocks.
             if let Some(mut waypoints) =
-                road_network.find_road_path(citizen.position, destination)
+                road_network.find_road_path(citizen.position, road_dest)
             {
                 // Route via road network. Stored reversed so `pop()` yields the first node.
                 waypoints.reverse();
                 citizen.waypoints = waypoints;
                 citizen.on_shortcut = false;
                 citizen.shortcut_from = None;
-                citizen.target_position = None;
+                citizen.target_position = Some(destination); // walk to park from last node
             } else {
                 // No road route — go direct and record as a potential desire path.
                 citizen.target_position = Some(destination);
@@ -110,12 +122,15 @@ fn pick_activity(citizen: &Citizen) -> ActivityType {
     let energy_urgency   = 1.0 - citizen.energy;                                    // 1.0 = exhausted
     let social_urgency   = citizen.social;                                           // 1.0 = lonely
     let work_urgency     = if citizen.age >= 18.0 && citizen.age <= 65.0 { 0.4 } else { 0.0 };
+    // Visit park when both tired and lonely — restorative + social
+    let park_urgency     = ((1.0 - citizen.energy) + citizen.social) * 0.35;
 
-    let scores: [(ActivityType, f32); 4] = [
+    let scores: [(ActivityType, f32); 5] = [
         (ActivityType::Eating,      hunger_urgency),
         (ActivityType::Sleeping,    energy_urgency),
         (ActivityType::Socializing, social_urgency),
         (ActivityType::Working,     work_urgency),
+        (ActivityType::VisitingPark, park_urgency),
     ];
 
     scores
@@ -145,6 +160,12 @@ fn find_any_building(world: &CityWorld, from: &Vec2) -> Option<Vec2> {
         .iter()
         .min_by_key(|b| ((b.position - *from).length() * 100.0) as i32)
         .map(|b| b.position)
+}
+
+fn nearest_park(world: &CityWorld, from: &Vec2) -> Option<Vec2> {
+    park_positions(world)
+        .into_iter()
+        .min_by_key(|p| ((*p - *from).length() * 100.0) as i32)
 }
 
 /// When a citizen arrives at a building, satisfy the relevant need.
@@ -185,6 +206,16 @@ fn satisfy_needs_at_destination(
             }
             ActivityType::Socializing => {
                 citizen.social = (citizen.social - satisfy_rate * 2.0).max(0.0);
+            }
+            ActivityType::VisitingPark => {
+                // Restore energy and reduce loneliness; leave after a short stay.
+                citizen.energy = (citizen.energy + satisfy_rate * 1.5).min(1.0);
+                citizen.social = (citizen.social - satisfy_rate * 1.5).max(0.0);
+                citizen.park_timer += delta;
+                if citizen.park_timer > 10.0 {
+                    citizen.park_timer = 0.0;
+                    citizen.current_activity = ActivityType::Idle;
+                }
             }
             _ => {}
         }

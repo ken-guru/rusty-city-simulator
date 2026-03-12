@@ -42,11 +42,14 @@ pub struct Citizen {
     #[serde(default)]
     pub waypoints: Vec<Vec2>, // remaining road waypoints (stored reversed; pop from end)
     #[serde(default)]
-    pub on_shortcut: bool, // taking a direct off-road shortcut
+    pub on_shortcut: bool,
     #[serde(default)]
-    pub shortcut_from: Option<Vec2>, // where the shortcut started
+    pub shortcut_from: Option<Vec2>,
     #[serde(default)]
-    pub last_road_node: Option<Vec2>, // last road node reached (for recording usage)
+    pub last_road_node: Option<Vec2>,
+    /// Time remaining (in game-seconds) to stay at a park.
+    #[serde(default)]
+    pub park_timer: f32,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -57,6 +60,7 @@ pub enum ActivityType {
     Sleeping,
     Working,
     Socializing,
+    VisitingPark,
 }
 
 impl Citizen {
@@ -81,6 +85,7 @@ impl Citizen {
             on_shortcut: false,
             shortcut_from: None,
             last_road_node: None,
+            park_timer: 0.0,
         }
     }
 

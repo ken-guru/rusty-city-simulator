@@ -11,6 +11,7 @@ mod movement;
 mod reproduction;
 mod roads;
 mod save;
+mod sprites;
 mod time;
 mod ui;
 mod world;
@@ -24,6 +25,7 @@ use movement::MovementPlugin;
 use reproduction::ReproductionPlugin;
 use roads::RoadsPlugin;
 use save::SaveLoadPlugin;
+use sprites::{SpriteAssets, SpritesPlugin};
 use time::GameTimePlugin;
 use ui::UIPlugin;
 use world::*;
@@ -58,12 +60,13 @@ fn main() {
         .add_plugins(ReproductionPlugin)
         .add_plugins(HousingPlugin)
         .add_plugins(RoadsPlugin)
+        .add_plugins(SpritesPlugin)
         .add_plugins(UIPlugin)
         .add_plugins(SaveLoadPlugin)
         .insert_resource(city_world)
         .insert_resource(GameState::default())
         .insert_resource(HoveredEntity::default())
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (sprites::setup_sprites, setup).chain())
         .add_systems(Update, (camera_controls, auto_zoom_camera, update_hovered_entity))
         .run();
 }
@@ -73,6 +76,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     world: Res<CityWorld>,
+    sprite_assets: Res<SpriteAssets>,
 ) {
     commands.spawn(Camera2d::default());
 
@@ -83,19 +87,31 @@ fn setup(
         Transform::from_xyz(0.0, 0.0, -1.0),
     ));
 
-    // Spawn buildings
+    // Spawn buildings using pixel-art sprites.
     for building in &world.buildings {
-        let color = match building.building_type {
-            BuildingType::Home   => Color::srgb(0.8, 0.4, 0.2),
-            BuildingType::Office => Color::srgb(0.2, 0.4, 0.8),
-            BuildingType::Shop   => Color::srgb(0.8, 0.8, 0.2),
-            BuildingType::Public => Color::srgb(0.4, 0.8, 0.4),
-        };
+        let image = building_sprite(&sprite_assets, building.building_type, building.position);
         commands.spawn((
-            Mesh2d(meshes.add(Rectangle::new(building.size.x, building.size.y))),
-            MeshMaterial2d(materials.add(color)),
+            Sprite {
+                image,
+                custom_size: Some(building.size),
+                ..default()
+            },
             Transform::from_xyz(building.position.x, building.position.y, 0.0),
             building.clone(),
+        ));
+    }
+
+    // Spawn any parks that were in a loaded save file.
+    for &(col, row) in &world.park_cells {
+        let park_pos = grid::cell_to_world(col, row);
+        commands.spawn((
+            Sprite {
+                image: sprite_assets.park.clone(),
+                custom_size: Some(Vec2::splat(grid::CELL_SIZE * 0.8)),
+                ..default()
+            },
+            Transform::from_xyz(park_pos.x, park_pos.y, -0.25),
+            world::ParkMarker { cell: (col, row) },
         ));
     }
 
@@ -114,6 +130,24 @@ fn setup(
     }
 }
 
+/// Pick a sprite handle for a building, choosing a variant from the position hash.
+fn building_sprite(assets: &SpriteAssets, kind: BuildingType, pos: Vec2) -> Handle<Image> {
+    match kind {
+        BuildingType::Home => {
+            let v = SpriteAssets::variant_for(pos, assets.homes.len());
+            assets.homes[v].clone()
+        }
+        BuildingType::Office => {
+            let v = SpriteAssets::variant_for(pos, assets.offices.len());
+            assets.offices[v].clone()
+        }
+        BuildingType::Shop | BuildingType::Public => {
+            let v = SpriteAssets::variant_for(pos, assets.shops.len());
+            assets.shops[v].clone()
+        }
+    }
+}
+
 fn camera_controls(
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
     key_input: Res<ButtonInput<KeyCode>>,
@@ -126,7 +160,7 @@ fn camera_controls(
     let pan_speed = 8.0 / game_state.camera_zoom;
     let mut pan = Vec3::ZERO;
 
-    // Keyboard pan: arrow keys only (WASD conflicts with other bindings).
+    // Keyboard pan: WASD + arrow keys.
     if key_input.pressed(KeyCode::ArrowUp)    || key_input.pressed(KeyCode::KeyW) { pan.y += pan_speed; }
     if key_input.pressed(KeyCode::ArrowDown)  || key_input.pressed(KeyCode::KeyS) { pan.y -= pan_speed; }
     if key_input.pressed(KeyCode::ArrowLeft)  || key_input.pressed(KeyCode::KeyA) { pan.x -= pan_speed; }
@@ -205,27 +239,45 @@ fn auto_zoom_camera(
         return;
     }
 
-    // Compute the axis-aligned bounding box of all building centres.
-    let min_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MAX, f32::min);
-    let max_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MIN, f32::max);
-    let min_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MAX, f32::min);
-    let max_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MIN, f32::max);
-
-    // Add half a cell (building size) plus a generous margin on each side.
-    let margin = 160.0;
-    let city_w = (max_x - min_x) + margin * 2.0;
-    let city_h = (max_y - min_y) + margin * 2.0;
-
     let (vw, vh) = windows
         .get_single()
         .map(|w| (w.width(), w.height()))
         .unwrap_or((1280.0, 720.0));
 
+    // World-space half-extents of what the camera currently shows.
+    let scale = 1.0 / game_state.camera_zoom;
+    let half_w = vw * scale * 0.5;
+    let half_h = vh * scale * 0.5;
+    let cam_pos = camera_query.single().translation.xy();
+
+    // How close to the viewport edge (in world px) before we zoom out.
+    const EDGE_MARGIN: f32 = 140.0;
+
+    let near_edge = world.buildings.iter().any(|b| {
+        let rel = b.position - cam_pos;
+        rel.x < -(half_w - EDGE_MARGIN)
+            || rel.x > (half_w - EDGE_MARGIN)
+            || rel.y < -(half_h - EDGE_MARGIN)
+            || rel.y > (half_h - EDGE_MARGIN)
+    });
+
+    if !near_edge {
+        return;
+    }
+
+    // Compute the minimum zoom that fits all buildings with a margin.
+    let min_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MAX, f32::min);
+    let max_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MIN, f32::max);
+    let min_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MAX, f32::min);
+    let max_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MIN, f32::max);
+    let margin = 180.0;
+    let city_w = (max_x - min_x) + margin * 2.0;
+    let city_h = (max_y - min_y) + margin * 2.0;
     let target_zoom = (vw / city_w).min(vh / city_h).clamp(0.25, 1.5);
 
     // Only drift outward (smaller zoom value) — never force a zoom-in.
     if target_zoom < game_state.camera_zoom {
-        let speed = 0.05; // ~5 % per second
+        let speed = 0.05;
         game_state.camera_zoom +=
             (target_zoom - game_state.camera_zoom) * speed * time.delta_secs();
         let mut camera = camera_query.single_mut();

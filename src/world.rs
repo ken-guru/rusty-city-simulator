@@ -5,14 +5,27 @@ use crate::entities::*;
 use crate::grid::cell_to_world;
 use rand::Rng;
 
+/// ECS component that marks a park entity (not a building).
+#[derive(Component, Clone)]
+pub struct ParkMarker {
+    pub cell: (i32, i32),
+}
+
 #[derive(Resource, Clone, Serialize, Deserialize)]
 pub struct CityWorld {
     pub citizens: Vec<Citizen>,
     pub buildings: Vec<Building>,
-    pub simulation_time: f32, // in game days
+    pub simulation_time: f32,
     /// Grid cells that currently have a building on them.
     #[serde(default)]
     pub occupied_cells: HashSet<(i32, i32)>,
+    /// Grid cells occupied only by a road crossroads (no building).
+    /// Buildings may not be placed here.
+    #[serde(default)]
+    pub crossroad_cells: HashSet<(i32, i32)>,
+    /// Grid cells that are parks (empty but fully surrounded).
+    #[serde(default)]
+    pub park_cells: HashSet<(i32, i32)>,
 }
 
 impl CityWorld {
@@ -82,8 +95,63 @@ impl CityWorld {
             buildings,
             simulation_time: 0.0,
             occupied_cells,
+            crossroad_cells: HashSet::new(),
+            park_cells: HashSet::new(),
         }
     }
+}
+
+impl CityWorld {
+    /// Check whether `cell` is "taken" (building, crossroads, or park) for
+    /// the purpose of park detection.
+    fn cell_taken(&self, col: i32, row: i32) -> bool {
+        let c = (col, row);
+        self.occupied_cells.contains(&c)
+            || self.crossroad_cells.contains(&c)
+            || self.park_cells.contains(&c)
+    }
+
+    /// Scan the 8 neighbours of every newly-occupied cell and promote any
+    /// empty cell that is now fully enclosed to a park.
+    /// Returns the set of newly-created park cells (so the caller can spawn entities).
+    pub fn detect_new_parks(&mut self, changed_cells: &[(i32, i32)]) -> Vec<(i32, i32)> {
+        let mut new_parks = Vec::new();
+        // Collect candidate cells: all neighbours of every changed cell.
+        let mut candidates: Vec<(i32, i32)> = Vec::new();
+        for &(col, row) in changed_cells {
+            for dc in -1i32..=1 {
+                for dr in -1i32..=1 {
+                    if dc == 0 && dr == 0 { continue; }
+                    let c = (col + dc, row + dr);
+                    if !candidates.contains(&c) { candidates.push(c); }
+                }
+            }
+        }
+        for cell @ (col, row) in candidates {
+            if self.cell_taken(col, row) { continue; }
+            // All 8 neighbours must be taken for this to become a park.
+            let enclosed = (-1i32..=1).all(|dc| {
+                (-1i32..=1).all(|dr| {
+                    (dc == 0 && dr == 0) || self.cell_taken(col + dc, row + dr)
+                })
+            });
+            if enclosed {
+                self.park_cells.insert(cell);
+                new_parks.push(cell);
+            }
+        }
+        new_parks
+    }
+
+    /// World-space position of the centre of a park cell.
+    pub fn park_position(cell: (i32, i32)) -> Vec2 {
+        cell_to_world(cell.0, cell.1)
+    }
+}
+
+/// Returns the world-space positions of all parks.
+pub fn park_positions(world: &CityWorld) -> Vec<Vec2> {
+    world.park_cells.iter().map(|&(c, r)| cell_to_world(c, r)).collect()
 }
 
 /// Returns (size, capacity_residents, capacity_workers) for a building type.

@@ -18,18 +18,20 @@ pub fn world_to_cell(pos: Vec2) -> (i32, i32) {
     )
 }
 
-/// The four cardinal neighbours of a grid cell.
-#[inline]
-pub fn cardinal_neighbors(col: i32, row: i32) -> [(i32, i32); 4] {
-    [(col + 1, row), (col - 1, row), (col, row + 1), (col, row - 1)]
-}
-
 /// Returns true when two world positions are exactly one cell apart on a cardinal axis.
 pub fn are_grid_adjacent(a: Vec2, b: Vec2) -> bool {
     let d = (b - a).abs();
-    // Horizontal neighbour: same row, one column apart
     let horiz = d.x > CELL_SIZE * 0.9 && d.x < CELL_SIZE * 1.1 && d.y < CELL_SIZE * 0.1;
-    // Vertical neighbour: same column, one row apart
     let vert  = d.y > CELL_SIZE * 0.9 && d.y < CELL_SIZE * 1.1 && d.x < CELL_SIZE * 0.1;
+    horiz || vert
+}
+
+/// Returns true when two world positions are exactly two cells apart on a cardinal axis
+/// (i.e. there is one empty cell between them).
+pub fn are_two_cells_apart(a: Vec2, b: Vec2) -> bool {
+    let d = (b - a).abs();
+    let two = CELL_SIZE * 2.0;
+    let horiz = (d.x - two).abs() < CELL_SIZE * 0.1 && d.y < CELL_SIZE * 0.1;
+    let vert  = (d.y - two).abs() < CELL_SIZE * 0.1 && d.x < CELL_SIZE * 0.1;
     horiz || vert
 }
