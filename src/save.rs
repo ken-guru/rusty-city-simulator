@@ -31,6 +31,7 @@ pub fn save_game(world: &CityWorld, game_time: &GameTime) -> Result<(), Box<dyn 
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn load_game() -> Result<GameSave, Box<dyn std::error::Error>> {
     let json = fs::read_to_string("save.json")?;
     let save: GameSave = serde_json::from_str(&json)?;

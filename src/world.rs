@@ -61,7 +61,7 @@ impl CityWorld {
         let first_names_female = vec!["Mary", "Patricia", "Jennifer", "Linda", "Barbara"];
         let last_names = vec!["Smith", "Johnson", "Williams", "Brown", "Jones"];
 
-        for i in 0..10 {
+        for _ in 0..10 {
             let gender = if rng.gen_bool(0.5) {
                 Gender::Male
             } else {
