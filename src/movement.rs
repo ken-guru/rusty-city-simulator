@@ -1,4 +1,5 @@
 use crate::entities::*;
+use crate::time::GameTime;
 use bevy::prelude::*;
 
 pub struct MovementPlugin;
@@ -11,9 +12,16 @@ impl Plugin for MovementPlugin {
 
 const MOVEMENT_SPEED: f32 = 60.0;
 
-/// Moves citizen.position toward target_position each frame.
-pub fn simple_movement(mut citizens: Query<&mut Citizen>, time: Res<Time>) {
-    let delta = time.delta_secs();
+/// Moves citizen.position toward target_position each frame, respecting time_scale.
+pub fn simple_movement(
+    mut citizens: Query<&mut Citizen>,
+    time: Res<Time>,
+    game_time: Res<GameTime>,
+) {
+    if game_time.time_scale == 0.0 {
+        return; // paused
+    }
+    let delta = time.delta_secs() * game_time.time_scale;
 
     for mut citizen in citizens.iter_mut() {
         if let Some(target) = citizen.target_position {

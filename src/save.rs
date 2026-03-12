@@ -52,7 +52,9 @@ fn handle_save_load(
     world: Res<crate::world::CityWorld>,
     game_time: Res<GameTime>,
 ) {
-    if input.just_pressed(KeyCode::KeyS) {
+    // Ctrl+S to save (avoids conflict with WASD camera pan)
+    let ctrl = input.pressed(KeyCode::ControlLeft) || input.pressed(KeyCode::ControlRight);
+    if ctrl && input.just_pressed(KeyCode::KeyS) {
         if let Err(e) = save_game(&world, &game_time) {
             eprintln!("Failed to save game: {}", e);
         }

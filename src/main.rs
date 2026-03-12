@@ -1,4 +1,4 @@
-use bevy::input::mouse::MouseWheel;
+use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 
 mod aging;
@@ -28,11 +28,16 @@ use world::*;
 #[derive(Resource)]
 struct GameState {
     camera_zoom: f32,
+    /// True while right-mouse-button (or middle) is held for drag-panning.
+    is_dragging: bool,
 }
 
 impl Default for GameState {
     fn default() -> Self {
-        Self { camera_zoom: 1.0 }
+        Self {
+            camera_zoom: 1.0,
+            is_dragging: false,
+        }
     }
 }
 
@@ -105,27 +110,53 @@ fn setup(
 
 fn camera_controls(
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
-    input: Res<ButtonInput<KeyCode>>,
+    key_input: Res<ButtonInput<KeyCode>>,
+    mouse_input: Res<ButtonInput<MouseButton>>,
     mut game_state: ResMut<GameState>,
     mut mouse_wheel_events: EventReader<MouseWheel>,
+    mut mouse_motion_events: EventReader<MouseMotion>,
 ) {
     let mut camera = camera_query.single_mut();
     let pan_speed = 8.0 / game_state.camera_zoom;
     let mut pan = Vec3::ZERO;
 
-    if input.pressed(KeyCode::ArrowUp)    || input.pressed(KeyCode::KeyW) { pan.y += pan_speed; }
-    if input.pressed(KeyCode::ArrowDown)  || input.pressed(KeyCode::KeyS) { pan.y -= pan_speed; }
-    if input.pressed(KeyCode::ArrowLeft)  || input.pressed(KeyCode::KeyA) { pan.x -= pan_speed; }
-    if input.pressed(KeyCode::ArrowRight) || input.pressed(KeyCode::KeyD) { pan.x += pan_speed; }
+    // Keyboard pan: arrow keys only (WASD conflicts with other bindings).
+    if key_input.pressed(KeyCode::ArrowUp)    || key_input.pressed(KeyCode::KeyW) { pan.y += pan_speed; }
+    if key_input.pressed(KeyCode::ArrowDown)  { pan.y -= pan_speed; }
+    if key_input.pressed(KeyCode::ArrowLeft)  || key_input.pressed(KeyCode::KeyA) { pan.x -= pan_speed; }
+    if key_input.pressed(KeyCode::ArrowRight) || key_input.pressed(KeyCode::KeyD) { pan.x += pan_speed; }
     camera.translation += pan;
 
-    for event in mouse_wheel_events.read() {
-        if let bevy::input::mouse::MouseScrollUnit::Line = event.unit {
-            if event.y > 0.0 {
-                game_state.camera_zoom *= 1.1;
-            } else if event.y < 0.0 {
-                game_state.camera_zoom /= 1.1;
+    // Drag-to-pan: hold right mouse button (or middle button) and move pointer.
+    game_state.is_dragging = mouse_input.pressed(MouseButton::Right)
+        || mouse_input.pressed(MouseButton::Middle);
+
+    if game_state.is_dragging {
+        for ev in mouse_motion_events.read() {
+            // Screen delta → world delta: invert Y (screen Y is down, world Y is up),
+            // divide by zoom so the pan keeps up with the cursor.
+            camera.translation.x -= ev.delta.x / game_state.camera_zoom;
+            camera.translation.y += ev.delta.y / game_state.camera_zoom;
+        }
+    } else {
+        // Consume events so they don't accumulate
+        mouse_motion_events.clear();
+    }
+
+    // Zoom: scroll wheel (Line units) and trackpad (Pixel units).
+    for ev in mouse_wheel_events.read() {
+        let zoom_delta = match ev.unit {
+            bevy::input::mouse::MouseScrollUnit::Line => {
+                // Mouse wheel: each line click is a ~10% step.
+                ev.y * 0.1
             }
+            bevy::input::mouse::MouseScrollUnit::Pixel => {
+                // Trackpad: pixels are much smaller — scale down.
+                ev.y * 0.003
+            }
+        };
+        if zoom_delta != 0.0 {
+            game_state.camera_zoom *= 1.0 + zoom_delta;
             game_state.camera_zoom = game_state.camera_zoom.clamp(0.2, 8.0);
         }
     }

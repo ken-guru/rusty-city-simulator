@@ -68,8 +68,9 @@ fn setup_ui(mut commands: Commands) {
                 Text::new(
                     "● Blue: Male citizen   ● Pink: Female citizen\n\
                      ■ Brown: Home   ■ Blue: Office   ■ Yellow: Shop\n\
-                     WASD/Arrows: Pan  |  Scroll: Zoom  |  Space: Pause\n\
-                     1/2/3/4: Speed (0.5x/1x/2x/4x)  |  S: Save",
+                     WASD/Arrows: Pan  |  Right-click drag: Pan\n\
+                     Scroll/Pinch: Zoom  |  Space: Pause\n\
+                     1/2/3/4: Speed (0.5x/1x/2x/4x)  |  Ctrl+S: Save",
                 ),
                 TextFont { font_size: 12.0, ..Default::default() },
                 TextColor(Color::srgb(0.55, 0.55, 0.55)),
