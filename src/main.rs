@@ -4,6 +4,7 @@ use bevy::prelude::*;
 mod aging;
 mod ai;
 mod entities;
+mod grid;
 mod hovered;
 mod housing;
 mod movement;

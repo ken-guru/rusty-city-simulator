@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::entities::Building;
+use crate::grid::are_grid_adjacent;
 use crate::time::GameTime;
 use crate::world::CityWorld;
 
@@ -82,7 +84,18 @@ impl RoadNetwork {
     }
 
     /// Record that a citizen took a direct shortcut from `from` to `to`.
-    pub fn record_shortcut(&mut self, from: Vec2, to: Vec2, current_day: f32) {
+    /// Endpoints are snapped to the nearest building centre so multiple shortcuts
+    /// between the same two buildings always merge into a single desire-path segment.
+    pub fn record_shortcut(
+        &mut self,
+        from: Vec2,
+        to: Vec2,
+        current_day: f32,
+        buildings: &[Building],
+    ) {
+        let from = snap_to_building(from, buildings);
+        let to   = snap_to_building(to,   buildings);
+
         if (to - from).length() < 30.0 {
             return;
         }
@@ -179,20 +192,19 @@ impl RoadNetwork {
         None
     }
 
-    /// Connect a new building to the nearest 1–2 existing road nodes.
-    pub fn connect_new_building(&mut self, building_pos: Vec2, current_day: f32) {
-        let mut endpoints: Vec<Vec2> = Vec::new();
-        for seg in &self.segments {
-            if !endpoints.iter().any(|e| nodes_close(*e, seg.start)) {
-                endpoints.push(seg.start);
+    /// Connect a new building to all grid-adjacent existing buildings.
+    pub fn connect_new_building(
+        &mut self,
+        building_pos: Vec2,
+        current_day: f32,
+        all_buildings: &[Building],
+    ) {
+        for b in all_buildings {
+            if (b.position - building_pos).length() > 1.0
+                && are_grid_adjacent(b.position, building_pos)
+            {
+                self.connect(building_pos, b.position, SegmentType::Path, current_day);
             }
-            if !endpoints.iter().any(|e| nodes_close(*e, seg.end)) {
-                endpoints.push(seg.end);
-            }
-        }
-        endpoints.sort_by_key(|&e| ((e - building_pos).length() * 100.0) as i32);
-        for ep in endpoints.into_iter().take(2) {
-            self.connect(building_pos, ep, SegmentType::Path, current_day);
         }
     }
 }
@@ -201,6 +213,15 @@ impl RoadNetwork {
 
 pub fn nodes_close(a: Vec2, b: Vec2) -> bool {
     (a - b).length() < NODE_MERGE_RADIUS
+}
+
+/// Snap a world position to the centre of the nearest building.
+fn snap_to_building(pos: Vec2, buildings: &[Building]) -> Vec2 {
+    buildings
+        .iter()
+        .min_by_key(|b| ((b.position - pos).length() * 100.0) as i32)
+        .map(|b| b.position)
+        .unwrap_or(pos)
 }
 
 fn nearest_node(segments: &[&RoadSegment], pos: Vec2, max_dist: f32) -> Option<Vec2> {
@@ -230,33 +251,14 @@ impl Plugin for RoadsPlugin {
     }
 }
 
-/// At startup, connect all initial buildings into an organic road network using
-/// a greedy nearest-neighbor spanning approach.
+/// At startup, connect all grid-adjacent building pairs with Road segments.
+/// This produces a pure rectilinear (Manhattan-style) road network.
 fn generate_initial_roads(mut network: ResMut<RoadNetwork>, world: Res<CityWorld>) {
-    let positions: Vec<Vec2> = world.buildings.iter().map(|b| b.position).collect();
-    if positions.is_empty() {
-        return;
-    }
-
-    // Greedy MST: each building connects to the nearest already-connected building.
-    let mut connected: Vec<Vec2> = vec![positions[0]];
-    for &pos in &positions[1..] {
-        let nearest = *connected
-            .iter()
-            .min_by_key(|&&c| ((c - pos).length() * 100.0) as i32)
-            .unwrap();
-        network.connect(pos, nearest, SegmentType::Road, 0.0);
-        connected.push(pos);
-
-        // Also link to a second neighbor if close enough (adds network density).
-        let second = connected
-            .iter()
-            .copied()
-            .filter(|&c| !nodes_close(c, nearest))
-            .min_by_key(|&c| ((c - pos).length() * 100.0) as i32);
-        if let Some(s) = second {
-            if (s - pos).length() < 450.0 {
-                network.connect(pos, s, SegmentType::Road, 0.0);
+    let buildings = &world.buildings;
+    for i in 0..buildings.len() {
+        for j in (i + 1)..buildings.len() {
+            if are_grid_adjacent(buildings[i].position, buildings[j].position) {
+                network.connect(buildings[i].position, buildings[j].position, SegmentType::Road, 0.0);
             }
         }
     }
@@ -318,18 +320,47 @@ fn evolve_roads(
     });
 }
 
-fn draw_roads(mut gizmos: Gizmos, network: Res<RoadNetwork>) {
+fn draw_roads(mut gizmos: Gizmos, network: Res<RoadNetwork>, world: Res<CityWorld>) {
     for seg in &network.segments {
+        let (rs, re) = edge_to_edge(seg.start, seg.end, &world.buildings);
         match seg.seg_type {
             SegmentType::Road => {
-                gizmos.line_2d(seg.start, seg.end, Color::srgb(0.58, 0.55, 0.48));
+                gizmos.line_2d(rs, re, Color::srgb(0.62, 0.59, 0.50));
             }
             SegmentType::Path => {
-                gizmos.line_2d(seg.start, seg.end, Color::srgb(0.48, 0.34, 0.18));
+                gizmos.line_2d(rs, re, Color::srgb(0.50, 0.36, 0.18));
             }
             SegmentType::Desire => {
-                gizmos.line_2d(seg.start, seg.end, Color::srgba(0.45, 0.32, 0.16, 0.35));
+                gizmos.line_2d(rs, re, Color::srgba(0.45, 0.32, 0.16, 0.35));
             }
         }
     }
+}
+
+/// Compute road endpoints offset to building edges so the line doesn't clip
+/// through the building rectangles.
+fn edge_to_edge(
+    a: Vec2,
+    b: Vec2,
+    buildings: &[Building],
+) -> (Vec2, Vec2) {
+    let dir = (b - a).normalize_or_zero();
+
+    let half_a = buildings
+        .iter()
+        .find(|bld| (bld.position - a).length() < 5.0)
+        .map(|bld| {
+            if dir.x.abs() >= dir.y.abs() { bld.size.x * 0.5 } else { bld.size.y * 0.5 }
+        })
+        .unwrap_or(0.0);
+
+    let half_b = buildings
+        .iter()
+        .find(|bld| (bld.position - b).length() < 5.0)
+        .map(|bld| {
+            if dir.x.abs() >= dir.y.abs() { bld.size.x * 0.5 } else { bld.size.y * 0.5 }
+        })
+        .unwrap_or(0.0);
+
+    (a + dir * half_a, b - dir * half_b)
 }

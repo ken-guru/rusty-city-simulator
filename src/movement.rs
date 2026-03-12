@@ -1,6 +1,7 @@
 use crate::entities::*;
 use crate::roads::RoadNetwork;
 use crate::time::GameTime;
+use crate::world::CityWorld;
 use bevy::prelude::*;
 
 pub struct MovementPlugin;
@@ -19,6 +20,7 @@ pub fn simple_movement(
     time: Res<Time>,
     game_time: Res<GameTime>,
     mut road_network: ResMut<RoadNetwork>,
+    world: Res<CityWorld>,
 ) {
     if game_time.time_scale == 0.0 {
         return; // paused
@@ -50,7 +52,7 @@ pub fn simple_movement(
                 if citizen.on_shortcut && citizen.waypoints.is_empty() {
                     // Shortcut journey completed — record the desire path.
                     if let Some(from) = citizen.shortcut_from.take() {
-                        road_network.record_shortcut(from, citizen.position, now);
+                        road_network.record_shortcut(from, citizen.position, now, &world.buildings);
                     }
                     citizen.on_shortcut = false;
                 } else if !citizen.on_shortcut {

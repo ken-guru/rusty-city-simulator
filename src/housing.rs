@@ -1,6 +1,7 @@
 use crate::entities::*;
+use crate::grid::{cardinal_neighbors, cell_to_world, world_to_cell, CELL_SIZE};
 use crate::roads::RoadNetwork;
-use crate::world::CityWorld;
+use crate::world::{building_stats, CityWorld};
 use bevy::prelude::*;
 
 #[derive(Event)]
@@ -24,78 +25,90 @@ fn check_housing_pressure(
     game_time: Res<crate::time::GameTime>,
 ) {
     let delta = time.delta_secs() * game_time.time_scale;
-    // Check only occasionally (roughly once every 10s at 1x)
     if !should_tick(delta, 0.1) {
         return;
     }
 
-    let total_home_capacity: usize = world.buildings.iter()
+    let total_home_capacity: usize = world
+        .buildings.iter()
         .filter(|b| b.building_type == BuildingType::Home)
         .map(|b| b.capacity_residents)
         .sum();
-
-    let total_residents: usize = world.buildings.iter()
+    let total_residents: usize = world
+        .buildings.iter()
         .filter(|b| b.building_type == BuildingType::Home)
         .map(|b| b.resident_ids.len())
         .sum();
 
-    // Build a new home if occupancy > 80%
+    // Build a new home when occupancy > 80%.
     if total_residents as f32 / total_home_capacity.max(1) as f32 > 0.8 {
-        let new_home = place_new_building(&world, BuildingType::Home);
-        world.buildings.push(new_home.clone());
-        building_events.send(NewBuildingEvent { building: new_home });
-    }
-
-    let adult_count = world.citizens.iter().filter(|c| c.age >= 18.0 && c.age <= 65.0).count();
-    let office_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Office).count();
-    let shop_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Shop).count();
-
-    // New office when adults : office ratio exceeds 6 : 1
-    if adult_count > office_count * 6 {
-        let new_office = place_new_building(&world, BuildingType::Office);
-        world.buildings.push(new_office.clone());
-        building_events.send(NewBuildingEvent { building: new_office });
-    }
-
-    // New shop when adults : shop ratio exceeds 8 : 1
-    if adult_count > shop_count * 8 {
-        let new_shop = place_new_building(&world, BuildingType::Shop);
-        world.buildings.push(new_shop.clone());
-        building_events.send(NewBuildingEvent { building: new_shop });
-    }
-}
-
-fn place_new_building(world: &CityWorld, kind: BuildingType) -> Building {
-    // Find a spot not too close to existing buildings
-    let (size, cap_res, cap_work) = match kind {
-        BuildingType::Home   => (Vec2::new(60.0, 60.0), 4, 0),
-        BuildingType::Office => (Vec2::new(80.0, 80.0), 0, 10),
-        BuildingType::Shop   => (Vec2::new(60.0, 60.0), 0, 5),
-        BuildingType::Public => (Vec2::new(70.0, 70.0), 0, 0),
-    };
-
-    let position = find_free_spot(world, size);
-
-    Building::new(kind, position, size, cap_res, cap_work)
-}
-
-fn find_free_spot(world: &CityWorld, size: Vec2) -> Vec2 {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let min_dist = (size.x + 80.0) as i32;
-
-    for _ in 0..50 {
-        let x = rng.gen_range(-400..400) as f32;
-        let y = rng.gen_range(-400..400) as f32;
-        let pos = Vec2::new(x, y);
-        if world.buildings.iter().all(|b| (b.position - pos).length() > min_dist as f32) {
-            return pos;
+        if let Some((building, cell)) = place_new_building(&world, BuildingType::Home) {
+            world.occupied_cells.insert(cell);
+            world.buildings.push(building.clone());
+            building_events.send(NewBuildingEvent { building });
         }
     }
-    // Fallback: just place it further out
-    let angle = rng.gen_range(0.0..std::f32::consts::TAU);
-    let dist = rng.gen_range(300.0..500.0_f32);
-    Vec2::new(angle.cos() * dist, angle.sin() * dist)
+
+    // Use total population (not just adults) so new buildings appear as soon as
+    // the city grows — babies count toward demand even before adulthood.
+    let total_pop   = world.citizens.len();
+    let office_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Office).count();
+    let shop_count   = world.buildings.iter().filter(|b| b.building_type == BuildingType::Shop).count();
+
+    // 1 office per 5 citizens
+    if total_pop > office_count * 5 {
+        if let Some((building, cell)) = place_new_building(&world, BuildingType::Office) {
+            world.occupied_cells.insert(cell);
+            world.buildings.push(building.clone());
+            building_events.send(NewBuildingEvent { building });
+        }
+    }
+
+    // 1 shop per 7 citizens
+    if total_pop > shop_count * 7 {
+        if let Some((building, cell)) = place_new_building(&world, BuildingType::Shop) {
+            world.occupied_cells.insert(cell);
+            world.buildings.push(building.clone());
+            building_events.send(NewBuildingEvent { building });
+        }
+    }
+}
+
+/// Find a free grid cell adjacent to the existing city, place a building there.
+/// Returns None if no suitable cell is found.
+fn place_new_building(world: &CityWorld, kind: BuildingType) -> Option<(Building, (i32, i32))> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+
+    // Collect all empty cells adjacent to at least one occupied cell.
+    let mut candidates: Vec<(i32, i32)> = Vec::new();
+    for &(col, row) in &world.occupied_cells {
+        for (nc, nr) in cardinal_neighbors(col, row) {
+            if !world.occupied_cells.contains(&(nc, nr))
+                && !candidates.contains(&(nc, nr))
+            {
+                candidates.push((nc, nr));
+            }
+        }
+    }
+
+    let (col, row) = if candidates.is_empty() {
+        // Fallback: pick a grid cell at a random distance from the origin.
+        let angle = rng.gen_range(0.0_f32..std::f32::consts::TAU);
+        let dist  = rng.gen_range(3..7) as f32 * CELL_SIZE;
+        world_to_cell(Vec2::new(angle.cos() * dist, angle.sin() * dist))
+    } else {
+        candidates[rng.gen_range(0..candidates.len())]
+    };
+
+    // Double-check the cell is still free (race safety).
+    if world.occupied_cells.contains(&(col, row)) {
+        return None;
+    }
+
+    let position = cell_to_world(col, row);
+    let (size, cap_res, cap_work) = building_stats(kind);
+    Some((Building::new(kind, position, size, cap_res, cap_work), (col, row)))
 }
 
 fn spawn_building(
@@ -104,6 +117,7 @@ fn spawn_building(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut building_events: EventReader<NewBuildingEvent>,
     mut road_network: ResMut<RoadNetwork>,
+    world: Res<CityWorld>,
     game_time: Res<crate::time::GameTime>,
 ) {
     for event in building_events.read() {
@@ -122,10 +136,15 @@ fn spawn_building(
             b.clone(),
         ));
 
-        // Connect the new building to the existing road network.
-        road_network.connect_new_building(b.position, game_time.current_day());
+        // Connect to all grid-adjacent existing buildings.
+        road_network.connect_new_building(b.position, game_time.current_day(), &world.buildings);
 
-        info!("New building constructed: {:?} at ({:.0},{:.0})", b.building_type, b.position.x, b.position.y);
+        info!(
+            "New {:?} at grid {:?}, world ({:.0},{:.0})",
+            b.building_type,
+            world_to_cell(b.position),
+            b.position.x, b.position.y
+        );
     }
 }
 
