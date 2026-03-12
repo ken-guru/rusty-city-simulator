@@ -9,6 +9,7 @@ mod time;
 mod ui;
 mod aging;
 mod hovered;
+mod save;
 
 use entities::*;
 use world::*;
@@ -18,6 +19,7 @@ use time::GameTimePlugin;
 use ui::UIPlugin;
 use aging::AgingPlugin;
 use hovered::HoveredEntity;
+use save::SaveLoadPlugin;
 
 #[derive(Resource)]
 struct GameState {
@@ -44,6 +46,7 @@ fn main() {
         .add_plugins(GameTimePlugin)
         .add_plugins(AgingPlugin)
         .add_plugins(UIPlugin)
+        .add_plugins(SaveLoadPlugin)
         .insert_resource(GameState::default())
         .insert_resource(HoveredEntity::default())
         .add_systems(Startup, setup)
@@ -137,10 +140,6 @@ fn camera_controls(
     }
 
     camera.scale = Vec3::new(1.0 / game_state.camera_zoom, 1.0 / game_state.camera_zoom, 1.0);
-
-    if input.just_pressed(KeyCode::Space) {
-        game_state.paused = !game_state.paused;
-    }
 }
 
 fn update_hovered_entity(

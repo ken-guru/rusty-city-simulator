@@ -60,6 +60,26 @@ fn setup_ui(mut commands: Commands) {
                 InfoText,
             ));
         });
+
+    // Controls help (bottom left)
+    commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(10.0),
+            bottom: Val::Px(10.0),
+            flex_direction: FlexDirection::Column,
+            ..Default::default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("WASD/Arrows: Pan | Scroll: Zoom | Space: Pause\n1/2/3/4: Speed Control | S: Save"),
+                TextFont {
+                    font_size: 12.0,
+                    ..Default::default()
+                },
+                TextColor(Color::srgb(0.6, 0.6, 0.6)),
+            ));
+        });
 }
 
 fn update_time_ui(
@@ -69,7 +89,12 @@ fn update_time_ui(
     if let Ok(mut text) = text_query.get_single_mut() {
         let day = game_time.current_day();
         let hour = game_time.current_hour();
-        text.0 = format!("Day: {:.1} | Hour: {:.1}", day, hour);
+        let speed_str = if game_time.time_scale == 0.0 {
+            "PAUSED".to_string()
+        } else {
+            format!("{}x", game_time.time_scale)
+        };
+        text.0 = format!("Day: {:.1} | Hour: {:.1} | Speed: {}", day, hour, speed_str);
     }
 }
 

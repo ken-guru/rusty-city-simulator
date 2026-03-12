@@ -4,6 +4,7 @@ use bevy::prelude::*;
 pub struct GameTime {
     pub elapsed_secs: f32,
     pub day_length_secs: f32, // game seconds per in-game day
+    pub time_scale: f32, // 0.0 = paused, 1.0 = normal, 2.0 = 2x speed
 }
 
 impl GameTime {
@@ -11,6 +12,7 @@ impl GameTime {
         Self {
             elapsed_secs: 0.0,
             day_length_secs: 120.0, // 2 minutes = 1 day
+            time_scale: 1.0,
         }
     }
 
@@ -28,10 +30,36 @@ pub struct GameTimePlugin;
 impl Plugin for GameTimePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameTime::new())
-            .add_systems(Update, update_game_time);
+            .add_systems(Update, (update_game_time, handle_time_controls));
     }
 }
 
 fn update_game_time(mut game_time: ResMut<GameTime>, time: Res<Time>) {
-    game_time.elapsed_secs += time.delta_secs();
+    game_time.elapsed_secs += time.delta_secs() * game_time.time_scale;
+}
+
+fn handle_time_controls(
+    input: Res<ButtonInput<KeyCode>>,
+    mut game_time: ResMut<GameTime>,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        if game_time.time_scale == 0.0 {
+            game_time.time_scale = 1.0;
+        } else {
+            game_time.time_scale = 0.0;
+        }
+    }
+
+    if input.just_pressed(KeyCode::Digit1) {
+        game_time.time_scale = 0.5; // slow motion
+    }
+    if input.just_pressed(KeyCode::Digit2) {
+        game_time.time_scale = 1.0; // normal
+    }
+    if input.just_pressed(KeyCode::Digit3) {
+        game_time.time_scale = 2.0; // fast forward
+    }
+    if input.just_pressed(KeyCode::Digit4) {
+        game_time.time_scale = 4.0; // very fast
+    }
 }
