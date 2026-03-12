@@ -11,20 +11,47 @@ pub struct TimeText;
 #[derive(Component)]
 pub struct InfoText;
 
-/// Marks a toolbar button and what it does.
+/// Marks the quit confirmation dialog root entity.
+#[derive(Component)]
+struct QuitDialogRoot;
+
+/// Actions for toolbar buttons.
 #[derive(Component, Clone, Debug)]
 pub enum ToolbarAction {
     TogglePause,
     SetSpeed(f32),
     Save,
+    Quit,
 }
+
+/// Actions for buttons inside the quit dialog.
+#[derive(Component, Clone, Debug)]
+enum QuitDialogAction {
+    SaveAndQuit,
+    QuitNoSave,
+    Cancel,
+}
+
+/// Tracks whether the quit confirmation dialog is visible.
+#[derive(Resource, Default)]
+struct QuitDialogVisible(bool);
 
 pub struct UIPlugin;
 
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_ui)
-            .add_systems(Update, (update_time_ui, update_hovered_info, toolbar_interaction));
+        app.init_resource::<QuitDialogVisible>()
+            .add_systems(Startup, setup_ui)
+            .add_systems(
+                Update,
+                (
+                    update_time_ui,
+                    update_hovered_info,
+                    toolbar_interaction,
+                    quit_dialog_interaction,
+                    sync_quit_dialog_visibility,
+                ),
+            );
     }
 }
 
@@ -75,8 +102,8 @@ fn setup_ui(mut commands: Commands) {
         .with_children(|parent| {
             parent.spawn((
                 Text::new(
-                    "● Blue: Male   ● Pink: Female\n\
-                     ■ Brown: Home   ■ Blue: Office   ■ Yellow: Shop   ■ Green: Park\n\
+                    "* Blue: Male   * Pink: Female\n\
+                     # Brown: Home   # Blue: Office   # Yellow: Shop   # Green: Park\n\
                      WASD/Arrows: Pan  |  Right-click drag: Pan\n\
                      Scroll/Pinch: Zoom  |  Space: Pause\n\
                      1/2/3/4: Speed (0.5x/1x/2x/4x)  |  F5: Save",
@@ -103,12 +130,71 @@ fn setup_ui(mut commands: Commands) {
         })
         .insert(BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.65)))
         .with_children(|parent| {
-            toolbar_button(parent, "⏸  Pause", ToolbarAction::TogglePause);
-            toolbar_button(parent, "0.5×",     ToolbarAction::SetSpeed(0.5));
-            toolbar_button(parent, "1×",       ToolbarAction::SetSpeed(1.0));
-            toolbar_button(parent, "2×",       ToolbarAction::SetSpeed(2.0));
-            toolbar_button(parent, "4×",       ToolbarAction::SetSpeed(4.0));
-            toolbar_button(parent, "💾  Save", ToolbarAction::Save);
+            toolbar_button(parent, "Pause",   ToolbarAction::TogglePause);
+            toolbar_button(parent, "0.5x",    ToolbarAction::SetSpeed(0.5));
+            toolbar_button(parent, "1x",      ToolbarAction::SetSpeed(1.0));
+            toolbar_button(parent, "2x",      ToolbarAction::SetSpeed(2.0));
+            toolbar_button(parent, "4x",      ToolbarAction::SetSpeed(4.0));
+            toolbar_button(parent, "Save",    ToolbarAction::Save);
+            toolbar_button(parent, "Quit",    ToolbarAction::Quit);
+        });
+
+    // Quit confirmation dialog (hidden by default)
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                top: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                display: Display::None,
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+            ZIndex(100),
+            QuitDialogRoot,
+        ))
+        .with_children(|overlay| {
+            overlay
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        row_gap: Val::Px(16.0),
+                        padding: UiRect::all(Val::Px(32.0)),
+                        ..Default::default()
+                    },
+                    BackgroundColor(Color::srgba(0.12, 0.15, 0.20, 0.97)),
+                    BorderRadius::all(Val::Px(10.0)),
+                ))
+                .with_children(|dialog| {
+                    dialog.spawn((
+                        Text::new("Quit the game?"),
+                        TextFont { font_size: 22.0, ..Default::default() },
+                        TextColor(Color::srgb(0.95, 0.95, 0.95)),
+                    ));
+                    dialog.spawn((
+                        Text::new("Any unsaved progress will be lost."),
+                        TextFont { font_size: 14.0, ..Default::default() },
+                        TextColor(Color::srgb(0.65, 0.65, 0.65)),
+                    ));
+                    // Button row
+                    dialog
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: Val::Px(12.0),
+                            ..Default::default()
+                        })
+                        .with_children(|row| {
+                            dialog_button(row, "Save & Quit",       QuitDialogAction::SaveAndQuit, Color::srgba(0.15, 0.40, 0.20, 0.95));
+                            dialog_button(row, "Quit Without Saving", QuitDialogAction::QuitNoSave, Color::srgba(0.40, 0.15, 0.15, 0.95));
+                            dialog_button(row, "Cancel",             QuitDialogAction::Cancel,     Color::srgba(0.20, 0.22, 0.28, 0.95));
+                        });
+                });
         });
 }
 
@@ -135,6 +221,29 @@ fn toolbar_button(parent: &mut ChildBuilder, label: &str, action: ToolbarAction)
         });
 }
 
+fn dialog_button(parent: &mut ChildBuilder, label: &str, action: QuitDialogAction, bg: Color) {
+    parent
+        .spawn((
+            Button,
+            Node {
+                padding: UiRect::axes(Val::Px(18.0), Val::Px(10.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..Default::default()
+            },
+            BorderRadius::all(Val::Px(6.0)),
+            BackgroundColor(bg),
+            action,
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(label),
+                TextFont { font_size: 14.0, ..Default::default() },
+                TextColor(Color::srgb(0.95, 0.95, 0.95)),
+            ));
+        });
+}
+
 fn toolbar_interaction(
     mut interaction_query: Query<
         (&Interaction, &ToolbarAction, &mut BackgroundColor),
@@ -142,6 +251,7 @@ fn toolbar_interaction(
     >,
     mut game_time: ResMut<GameTime>,
     mut save_events: EventWriter<SaveRequestEvent>,
+    mut quit_visible: ResMut<QuitDialogVisible>,
 ) {
     for (interaction, action, mut bg) in &mut interaction_query {
         match interaction {
@@ -161,6 +271,9 @@ fn toolbar_interaction(
                     ToolbarAction::Save => {
                         save_events.send(SaveRequestEvent);
                     }
+                    ToolbarAction::Quit => {
+                        quit_visible.0 = true;
+                    }
                 }
             }
             Interaction::Hovered => {
@@ -170,6 +283,46 @@ fn toolbar_interaction(
                 *bg = BackgroundColor(Color::srgba(0.18, 0.22, 0.28, 0.9));
             }
         }
+    }
+}
+
+fn quit_dialog_interaction(
+    mut interaction_query: Query<
+        (&Interaction, &QuitDialogAction),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut save_events: EventWriter<SaveRequestEvent>,
+    mut app_exit: EventWriter<AppExit>,
+    mut quit_visible: ResMut<QuitDialogVisible>,
+) {
+    for (interaction, action) in &mut interaction_query {
+        if *interaction == Interaction::Pressed {
+            match action {
+                QuitDialogAction::SaveAndQuit => {
+                    save_events.send(SaveRequestEvent);
+                    app_exit.send(AppExit::Success);
+                }
+                QuitDialogAction::QuitNoSave => {
+                    app_exit.send(AppExit::Success);
+                }
+                QuitDialogAction::Cancel => {
+                    quit_visible.0 = false;
+                }
+            }
+        }
+    }
+}
+
+/// Show or hide the quit dialog based on the `QuitDialogVisible` resource.
+fn sync_quit_dialog_visibility(
+    quit_visible: Res<QuitDialogVisible>,
+    mut dialog_query: Query<&mut Node, With<QuitDialogRoot>>,
+) {
+    if !quit_visible.is_changed() {
+        return;
+    }
+    for mut node in &mut dialog_query {
+        node.display = if quit_visible.0 { Display::Flex } else { Display::None };
     }
 }
 
@@ -205,25 +358,25 @@ fn update_hovered_info(
 
     if let Some(entity) = hovered.0 {
         if let Ok(c) = citizens.get(entity) {
-            let gender_sym = match c.gender {
-                Gender::Male   => "♂",
-                Gender::Female => "♀",
+            let gender_label = match c.gender {
+                Gender::Male   => "M",
+                Gender::Female => "F",
             };
             let activity = match c.current_activity {
-                ActivityType::Idle         => "🔵 Idle",
-                ActivityType::Walking      => "🚶 Walking",
-                ActivityType::Eating       => "🍽 Eating",
-                ActivityType::Sleeping     => "💤 Sleeping",
-                ActivityType::Working      => "💼 Working",
-                ActivityType::Socializing  => "💬 Socialising",
-                ActivityType::VisitingPark => "🌳 At Park",
+                ActivityType::Idle         => "Idle",
+                ActivityType::Walking      => "Walking",
+                ActivityType::Eating       => "Eating",
+                ActivityType::Sleeping     => "Sleeping",
+                ActivityType::Working      => "Working",
+                ActivityType::Socializing  => "Socialising",
+                ActivityType::VisitingPark => "At Park",
             };
             text.0 = format!(
-                "{} {} — {}\nAge: {:.1}  ({})\nActivity: {}\n\
-                 Hunger:   {:.0}%  Energy: {:.0}%\n\
-                 Social:   {:.0}%  Hygiene:{:.0}%",
+                "{} ({}) -- {}\nAge: {:.1}  [{}]\nActivity: {}\n\
+                 Hunger:  {:.0}%  Energy: {:.0}%\n\
+                 Social:  {:.0}%  Hygiene:{:.0}%",
                 c.name,
-                gender_sym,
+                gender_label,
                 c.get_age_group(),
                 c.age,
                 c.id.split('-').next().unwrap_or(""),

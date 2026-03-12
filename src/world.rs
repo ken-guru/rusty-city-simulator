@@ -7,6 +7,7 @@ use rand::Rng;
 
 /// ECS component that marks a park entity (not a building).
 #[derive(Component, Clone)]
+#[allow(dead_code)]
 pub struct ParkMarker {
     pub cell: (i32, i32),
 }
@@ -141,11 +142,6 @@ impl CityWorld {
             }
         }
         new_parks
-    }
-
-    /// World-space position of the centre of a park cell.
-    pub fn park_position(cell: (i32, i32)) -> Vec2 {
-        cell_to_world(cell.0, cell.1)
     }
 }
 
