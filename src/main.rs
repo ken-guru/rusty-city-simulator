@@ -64,7 +64,7 @@ fn main() {
         .insert_resource(GameState::default())
         .insert_resource(HoveredEntity::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, (camera_controls, update_hovered_entity))
+        .add_systems(Update, (camera_controls, auto_zoom_camera, update_hovered_entity))
         .run();
 }
 
@@ -189,5 +189,46 @@ fn update_hovered_entity(
             hovered.0 = Some(entity);
             break;
         }
+    }
+}
+
+/// Slowly zooms the camera out as the city grows, keeping all buildings visible.
+/// Never forces a zoom-in — only drifts toward a more zoomed-out target.
+fn auto_zoom_camera(
+    world: Res<CityWorld>,
+    windows: Query<&Window>,
+    mut camera_query: Query<&mut Transform, With<Camera2d>>,
+    mut game_state: ResMut<GameState>,
+    time: Res<Time>,
+) {
+    if world.buildings.is_empty() {
+        return;
+    }
+
+    // Compute the axis-aligned bounding box of all building centres.
+    let min_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MAX, f32::min);
+    let max_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MIN, f32::max);
+    let min_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MAX, f32::min);
+    let max_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MIN, f32::max);
+
+    // Add half a cell (building size) plus a generous margin on each side.
+    let margin = 160.0;
+    let city_w = (max_x - min_x) + margin * 2.0;
+    let city_h = (max_y - min_y) + margin * 2.0;
+
+    let (vw, vh) = windows
+        .get_single()
+        .map(|w| (w.width(), w.height()))
+        .unwrap_or((1280.0, 720.0));
+
+    let target_zoom = (vw / city_w).min(vh / city_h).clamp(0.25, 1.5);
+
+    // Only drift outward (smaller zoom value) — never force a zoom-in.
+    if target_zoom < game_state.camera_zoom {
+        let speed = 0.05; // ~5 % per second
+        game_state.camera_zoom +=
+            (target_zoom - game_state.camera_zoom) * speed * time.delta_secs();
+        let mut camera = camera_query.single_mut();
+        camera.scale = Vec3::splat(1.0 / game_state.camera_zoom);
     }
 }

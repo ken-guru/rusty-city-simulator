@@ -73,15 +73,10 @@ fn run_citizen_ai(
             let offset = Vec2::new(rng.gen_range(-20.0..20.0), rng.gen_range(-20.0..20.0));
             let destination = pos + offset;
 
-            // Citizens in critical need take a shortcut to satisfy that need fast.
-            let in_a_hurry = citizen.hunger > 0.85 || (1.0 - citizen.energy) > 0.90;
-
-            if in_a_hurry {
-                citizen.target_position = Some(destination);
-                citizen.on_shortcut = true;
-                citizen.shortcut_from = Some(citizen.position);
-                citizen.waypoints.clear();
-            } else if let Some(mut waypoints) =
+            // Always try the road network first. A shortcut (and potential desire path)
+            // is only justified when no road connection exists between the two points —
+            // this prevents diagonal desire paths across already-connected city blocks.
+            if let Some(mut waypoints) =
                 road_network.find_road_path(citizen.position, destination)
             {
                 // Route via road network. Stored reversed so `pop()` yields the first node.
@@ -91,7 +86,7 @@ fn run_citizen_ai(
                 citizen.shortcut_from = None;
                 citizen.target_position = None;
             } else {
-                // No road route — go direct and record as a shortcut.
+                // No road route — go direct and record as a potential desire path.
                 citizen.target_position = Some(destination);
                 citizen.on_shortcut = true;
                 citizen.shortcut_from = Some(citizen.position);

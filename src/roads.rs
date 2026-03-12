@@ -99,6 +99,13 @@ impl RoadNetwork {
         if (to - from).length() < 30.0 {
             return;
         }
+
+        // Reject diagonal desire paths — only grid-aligned (same row or same column).
+        let dx = (to.x - from.x).abs();
+        let dy = (to.y - from.y).abs();
+        if dx > 5.0 && dy > 5.0 {
+            return;
+        }
         // Skip if a proper road/path already covers this connection.
         let covered = self.segments.iter().any(|s| {
             matches!(s.seg_type, SegmentType::Road | SegmentType::Path)
