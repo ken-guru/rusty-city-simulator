@@ -44,6 +44,10 @@ impl Default for GameState {
 }
 
 fn main() {
+    // Build CityWorld up-front so it's available as a Resource before any
+    // Startup systems run (including RoadsPlugin::generate_initial_roads).
+    let city_world = CityWorld::new();
+
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugins(NeedsDecayPlugin)
@@ -55,6 +59,7 @@ fn main() {
         .add_plugins(RoadsPlugin)
         .add_plugins(UIPlugin)
         .add_plugins(SaveLoadPlugin)
+        .insert_resource(city_world)
         .insert_resource(GameState::default())
         .insert_resource(HoveredEntity::default())
         .add_systems(Startup, setup)
@@ -66,10 +71,9 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    world: Res<CityWorld>,
 ) {
     commands.spawn(Camera2d::default());
-
-    let world = CityWorld::new();
 
     // Ground plane
     commands.spawn((
@@ -107,8 +111,6 @@ fn setup(
             citizen.clone(),
         ));
     }
-
-    commands.insert_resource(world);
 }
 
 fn camera_controls(
