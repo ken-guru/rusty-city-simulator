@@ -10,7 +10,7 @@ pub struct NeedsDecayPlugin;
 
 impl Plugin for NeedsDecayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (decay_needs, run_citizen_ai, satisfy_needs_at_destination));
+        app.add_systems(Update, (decay_needs, run_citizen_ai, satisfy_needs_at_destination).run_if(in_state(crate::AppState::InGame)));
     }
 }
 

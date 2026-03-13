@@ -8,7 +8,7 @@ pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (simple_movement, sync_citizen_transforms));
+        app.add_systems(Update, (simple_movement, sync_citizen_transforms).run_if(in_state(crate::AppState::InGame)));
     }
 }
 

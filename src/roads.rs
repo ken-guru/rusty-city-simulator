@@ -7,6 +7,7 @@ use crate::entities::Building;
 use crate::grid::{cell_to_world, is_building_cell, world_to_cell};
 use crate::time::GameTime;
 use crate::world::CityWorld;
+use crate::AppState;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -362,8 +363,8 @@ impl Plugin for RoadsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(RoadNetwork::default())
             .insert_resource(RoadEntities::default())
-            .add_systems(Startup, generate_initial_roads)
-            .add_systems(Update, (evolve_roads, sync_road_entities));
+            .add_systems(OnEnter(AppState::InGame), generate_initial_roads)
+            .add_systems(Update, (evolve_roads, sync_road_entities).run_if(in_state(AppState::InGame)));
     }
 }
 
@@ -373,6 +374,10 @@ impl Plugin for RoadsPlugin {
 /// A main street runs through all corridor cells between the two initial building rows,
 /// connecting all building entrances horizontally.
 fn generate_initial_roads(mut network: ResMut<RoadNetwork>, world: ResMut<CityWorld>) {
+    // Skip if already populated (loaded from a save file).
+    if !network.segments.is_empty() {
+        return;
+    }
     let buildings = world.buildings.clone();
 
     // 1. Add one entry segment per building: building → entrance corridor cell.

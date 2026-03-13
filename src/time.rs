@@ -30,7 +30,7 @@ pub struct GameTimePlugin;
 impl Plugin for GameTimePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameTime::new())
-            .add_systems(Update, (update_game_time, handle_time_controls));
+            .add_systems(Update, (update_game_time, handle_time_controls).run_if(in_state(crate::AppState::InGame)));
     }
 }
 

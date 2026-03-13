@@ -17,7 +17,7 @@ pub struct ReproductionPlugin;
 impl Plugin for ReproductionPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<BirthEvent>()
-            .add_systems(Update, (check_reproduction, spawn_newborn).chain());
+            .add_systems(Update, (check_reproduction, spawn_newborn).chain().run_if(in_state(crate::AppState::InGame)));
     }
 }
 

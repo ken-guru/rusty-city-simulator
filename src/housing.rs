@@ -15,7 +15,7 @@ pub struct HousingPlugin;
 impl Plugin for HousingPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<NewBuildingEvent>()
-            .add_systems(Update, (check_housing_pressure, spawn_building).chain());
+            .add_systems(Update, (check_housing_pressure, spawn_building).chain().run_if(in_state(crate::AppState::InGame)));
     }
 }
 

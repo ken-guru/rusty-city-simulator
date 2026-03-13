@@ -98,9 +98,25 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    world: Res<CityWorld>,
+    mut world: ResMut<CityWorld>,
     sprite_assets: Res<SpriteAssets>,
+    mut game_time: ResMut<time::GameTime>,
+    mut road_network: ResMut<roads::RoadNetwork>,
+    mut pending_load: ResMut<save::PendingLoad>,
 ) {
+    // If the start screen queued a save to load, apply it before spawning entities.
+    if let Some(path) = pending_load.0.take() {
+        match save::load_save(&path) {
+            Ok(save_data) => {
+                *world = save_data.world;
+                game_time.elapsed_secs = save_data.time.elapsed_secs;
+                game_time.time_scale   = save_data.time.time_scale;
+                *road_network          = save_data.road_network;
+            }
+            Err(e) => eprintln!("Failed to apply loaded save: {e}"),
+        }
+    }
+
     // Ground plane
     commands.spawn((
         Mesh2d(meshes.add(Rectangle::new(8000.0, 8000.0))),

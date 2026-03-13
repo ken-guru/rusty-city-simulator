@@ -8,17 +8,23 @@ use crate::roads::RoadNetwork;
 use crate::time::GameTime;
 use crate::version::GAME_VERSION;
 use crate::world::CityWorld;
+use crate::AppState;
 
 // ─── Save directory ──────────────────────────────────────────────────────────
 
 const SAVES_DIR: &str = "saves";
-#[allow(dead_code)]
 const INCOMPAT_FILE: &str = "saves/.incompatible.json";
 
 // ─── Events ──────────────────────────────────────────────────────────────────
 
 #[derive(Event, Default)]
 pub struct SaveRequestEvent;
+
+// ─── Pending load (set by start screen, applied by setup) ────────────────────
+
+/// If `Some`, the `setup` system will load this save file when entering InGame.
+#[derive(Resource, Default)]
+pub struct PendingLoad(pub Option<PathBuf>);
 
 // ─── On-disk format ──────────────────────────────────────────────────────────
 
@@ -44,7 +50,6 @@ pub struct GameTimeSave {
 
 // ─── Save metadata (for the save list UI) ────────────────────────────────────
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct SaveMeta {
     /// Full path to the save file.
@@ -90,11 +95,9 @@ pub fn save_game(
     Ok(path)
 }
 
-// ─── Functions used by the start screen (deferred) ───────────────────────────
-// These will be wired up when the start screen is fully implemented.
+// ─── Functions used by the start screen ──────────────────────────────────────
 
 /// Deserialise a save file from `path`.
-#[allow(dead_code)]
 pub fn load_save(path: &Path) -> Result<GameSave, Box<dyn std::error::Error>> {
     let json = fs::read_to_string(path)?;
     let save: GameSave = serde_json::from_str(&json)?;
@@ -102,7 +105,6 @@ pub fn load_save(path: &Path) -> Result<GameSave, Box<dyn std::error::Error>> {
 }
 
 /// Return all save files in `saves/`, newest first.
-#[allow(dead_code)]
 pub fn list_saves() -> Vec<SaveMeta> {
     let incompatible = load_incompatible_list();
 
@@ -138,7 +140,6 @@ pub fn list_saves() -> Vec<SaveMeta> {
 }
 
 /// Record `filename` as known-incompatible.
-#[allow(dead_code)]
 pub fn mark_incompatible(filename: &str) {
     let mut list = load_incompatible_list();
     if !list.contains(&filename.to_string()) {
@@ -188,7 +189,6 @@ fn is_leap(y: u32) -> bool {
     (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
-#[allow(dead_code)]
 fn format_filename_as_time(filename: &str) -> String {
     let stem = filename.trim_end_matches(".json");
     let parts: Vec<&str> = stem.splitn(3, '_').collect();
@@ -206,7 +206,6 @@ fn format_filename_as_time(filename: &str) -> String {
     filename.to_string()
 }
 
-#[allow(dead_code)]
 fn read_version_field(path: &Path) -> String {
     #[derive(Deserialize)]
     struct VersionOnly {
@@ -220,13 +219,11 @@ fn read_version_field(path: &Path) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Default)]
 struct IncompatibleList {
     incompatible: Vec<String>,
 }
 
-#[allow(dead_code)]
 fn load_incompatible_list() -> Vec<String> {
     fs::read_to_string(INCOMPAT_FILE)
         .ok()
@@ -235,7 +232,6 @@ fn load_incompatible_list() -> Vec<String> {
         .unwrap_or_default()
 }
 
-#[allow(dead_code)]
 fn save_incompatible_list(list: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let data = IncompatibleList { incompatible: list.to_vec() };
     let _ = fs::create_dir_all(SAVES_DIR);
@@ -250,7 +246,8 @@ pub struct SaveLoadPlugin;
 impl Plugin for SaveLoadPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<SaveRequestEvent>()
-            .add_systems(Update, handle_save_load);
+            .init_resource::<PendingLoad>()
+            .add_systems(Update, handle_save_load.run_if(in_state(AppState::InGame)));
     }
 }
 
