@@ -180,6 +180,8 @@ fn setup(
     mut game_time: ResMut<time::GameTime>,
     mut road_network: ResMut<roads::RoadNetwork>,
     mut pending_load: ResMut<save::PendingLoad>,
+    mut queue: ResMut<roads::ConstructionQueue>,
+    mut log: ResMut<roads::ConstructionLog>,
 ) {
     // If the start screen queued a save to load, apply it before spawning entities.
     if let Some(path) = pending_load.0.take() {
@@ -189,6 +191,8 @@ fn setup(
                 game_time.elapsed_secs = save_data.time.elapsed_secs;
                 game_time.time_scale   = save_data.time.time_scale;
                 *road_network          = save_data.road_network;
+                *queue                 = save_data.queue;
+                *log                   = save_data.log;
 
                 // Reset citizen navigation state so stale waypoints/targets from
                 // the saved game don't cause pathfinding issues on re-entry.

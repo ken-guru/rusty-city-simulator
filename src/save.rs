@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::entities::Citizen;
-use crate::roads::RoadNetwork;
+use crate::roads::{ConstructionLog, ConstructionQueue, RoadNetwork};
 use crate::time::GameTime;
 use crate::version::GAME_VERSION;
 use crate::world::CityWorld;
@@ -37,6 +37,12 @@ pub struct GameSave {
     pub world: CityWorld,
     pub time: GameTimeSave,
     pub road_network: RoadNetwork,
+    /// Pending construction projects. Missing in older saves → empty queue.
+    #[serde(default)]
+    pub queue: ConstructionQueue,
+    /// Completed/discarded project history. Missing in older saves → empty log.
+    #[serde(default)]
+    pub log: ConstructionLog,
 }
 
 fn default_version() -> String {
@@ -74,6 +80,8 @@ pub fn save_game(
     world: &CityWorld,
     game_time: &GameTime,
     road_network: &RoadNetwork,
+    queue: &ConstructionQueue,
+    log: &ConstructionLog,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     fs::create_dir_all(SAVES_DIR)?;
 
@@ -88,6 +96,8 @@ pub fn save_game(
             time_scale: game_time.time_scale,
         },
         road_network: road_network.clone(),
+        queue: ConstructionQueue { projects: queue.projects.clone() },
+        log: ConstructionLog { entries: log.entries.clone() },
     };
 
     let json = serde_json::to_string(&save)?;
@@ -283,6 +293,8 @@ fn handle_save_load(
     mut world: ResMut<CityWorld>,
     game_time: Res<GameTime>,
     road_network: Res<RoadNetwork>,
+    queue: Res<ConstructionQueue>,
+    log: Res<ConstructionLog>,
     citizen_query: Query<&Citizen>,
 ) {
     let triggered_by_key = input.just_pressed(KeyCode::F5);
@@ -292,7 +304,7 @@ fn handle_save_load(
         let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
         sync_citizens_to_world(&mut world, &ecs_citizens);
 
-        if let Err(e) = save_game(&world, &game_time, &road_network) {
+        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log) {
             eprintln!("Failed to save game: {e}");
         }
     }

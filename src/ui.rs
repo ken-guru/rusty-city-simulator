@@ -611,6 +611,8 @@ fn handle_pending_quit(
     mut world: ResMut<CityWorld>,
     game_time: Res<GameTime>,
     road_network: Res<RoadNetwork>,
+    queue: Res<ConstructionQueue>,
+    log: Res<ConstructionLog>,
     mut next_state: ResMut<NextState<AppState>>,
     mut quit_visible: ResMut<QuitDialogVisible>,
     citizen_query: Query<&Citizen>,
@@ -623,7 +625,7 @@ fn handle_pending_quit(
         let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
         sync_citizens_to_world(&mut world, &ecs_citizens);
 
-        if let Err(e) = save_game(&world, &game_time, &road_network) {
+        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log) {
             eprintln!("Failed to save before quit: {e}");
         }
     }

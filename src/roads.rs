@@ -69,7 +69,7 @@ pub struct RoadNetwork {
 pub const NODE_MERGE_RADIUS: f32 = 25.0;
 
 /// A player-suggested road construction project.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ConstructionProject {
     pub waypoints: Vec<Vec2>,
     pub built_count: usize,
@@ -91,7 +91,7 @@ impl ConstructionProject {
 }
 
 /// Outcome of a completed construction project.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ProjectStatus {
     /// At least one genuinely new road segment was built.
     Completed,
@@ -100,7 +100,7 @@ pub enum ProjectStatus {
 }
 
 /// An archived construction project (completed or discarded).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletedProject {
     pub label: String,
     pub from_pos: Vec2,
@@ -112,13 +112,13 @@ pub struct CompletedProject {
 
 /// Historical record of all finished construction projects.
 /// Capped at 15 entries (oldest dropped first).
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Serialize, Deserialize)]
 pub struct ConstructionLog {
     pub entries: Vec<CompletedProject>,
 }
 
 /// Queue of road construction projects (player-suggested or city-initiated).
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Serialize, Deserialize)]
 pub struct ConstructionQueue {
     pub projects: Vec<ConstructionProject>,
 }
@@ -386,6 +386,32 @@ impl RoadNetwork {
             }
         }
         best
+    }
+
+    /// Return unique passable road nodes whose distance from `pos` is within
+    /// `[min_dist, max_dist]`. Used by the AI for road-bounded wandering.
+    pub fn passable_nodes_near(&self, pos: Vec2, min_dist: f32, max_dist: f32) -> Vec<Vec2> {
+        let mut nodes: Vec<Vec2> = Vec::new();
+        for seg in &self.segments {
+            if !matches!(
+                seg.seg_type,
+                SegmentType::Road
+                    | SegmentType::Path
+                    | SegmentType::ParkPath
+                    | SegmentType::PlayerSuggested
+            ) {
+                continue;
+            }
+            for &node in &[seg.start, seg.end] {
+                let d = (node - pos).length();
+                if d >= min_dist && d <= max_dist
+                    && !nodes.iter().any(|&n: &Vec2| (n - node).length() < NODE_MERGE_RADIUS)
+                {
+                    nodes.push(node);
+                }
+            }
+        }
+        nodes
     }
 
     /// Attempt to create one cross-connecting road between two spatially-close but

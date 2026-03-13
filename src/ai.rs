@@ -53,6 +53,18 @@ fn run_citizen_ai(
 
     for (entity, mut citizen) in citizens.iter_mut() {
         if hovered.0 == Some(entity) { continue; }
+
+        // Recovery: if the citizen has drifted off the road network (no road node
+        // reachable within the normal BFS search radius), snap them back to the
+        // absolute nearest node so the AI can route normally again.
+        if road_network.nearest_node_to(citizen.position, 350.0).is_none() {
+            if let Some(snap) = road_network.nearest_node_to(citizen.position, f32::MAX) {
+                citizen.position = snap;
+                citizen.waypoints.clear();
+                citizen.target_position = None;
+            }
+        }
+
         // Only re-decide when idle (no movement target or pending waypoints)
         if citizen.target_position.is_some() || !citizen.waypoints.is_empty() {
             continue;
@@ -104,17 +116,24 @@ fn run_citizen_ai(
                 citizen.waypoints.clear();
             }
         } else {
-            // Wander randomly when no building found — move along one axis only.
-            let axis_horiz: bool = rng.random();
-            let dist = rng.random_range(1..=3) as f32 * crate::grid::CELL_SIZE;
-            let wander = if axis_horiz {
-                Vec2::new(citizen.position.x + if rng.random() { dist } else { -dist }, citizen.position.y)
-            } else {
-                Vec2::new(citizen.position.x, citizen.position.y + if rng.random() { dist } else { -dist })
-            };
-            citizen.target_position = Some(wander);
-            citizen.current_activity = ActivityType::Walking;
-            citizen.waypoints.clear();
+            // Idle/Walking with no specific building target — wander to a random
+            // nearby road node so citizens always stay on the network.
+            let wander_nodes = road_network.passable_nodes_near(
+                citizen.position,
+                CELL_SIZE * 0.5,   // min: not the node they're already on
+                CELL_SIZE * 4.0,   // max: up to 4 cells away
+            );
+            if !wander_nodes.is_empty() {
+                let target = wander_nodes[rng.random_range(0..wander_nodes.len())];
+                if let Some(mut waypoints) = road_network.find_road_path(citizen.position, target) {
+                    waypoints.reverse();
+                    citizen.waypoints = waypoints;
+                    citizen.target_position = None;
+                    citizen.current_activity = ActivityType::Walking;
+                }
+                // else: no connected path yet — stay idle until roads develop
+            }
+            // No passable nodes in range: stay idle (city may just be starting up)
         }
     }
 }
