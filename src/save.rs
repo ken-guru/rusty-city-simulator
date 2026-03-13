@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::entities::Citizen;
 use crate::roads::RoadNetwork;
 use crate::time::GameTime;
 use crate::version::GAME_VERSION;
@@ -93,6 +94,31 @@ pub fn save_game(
     fs::write(&path, json)?;
     println!("Game saved to {}", path.display());
     Ok(path)
+}
+
+/// Reconcile `world.citizens` with the live ECS citizen components.
+///
+/// The ECS components are the authoritative source during gameplay — movement, AI,
+/// and aging all mutate the `Citizen` component directly. `world.citizens` is only
+/// updated when new citizens are born (reproduction). This function syncs the two
+/// so that saves always capture the full, up-to-date citizen state.
+///
+/// - Citizens in `ecs_citizens` that already exist in `world.citizens` (matched by id)
+///   are overwritten with the ECS data.
+/// - Citizens present in ECS but absent from the vec are appended.
+/// - Citizens present in the vec but absent from ECS are removed (they have died or
+///   been despawned).
+pub fn sync_citizens_to_world(world: &mut CityWorld, ecs_citizens: &[Citizen]) {
+    // Overwrite / append from ECS.
+    for ecs_c in ecs_citizens {
+        if let Some(entry) = world.citizens.iter_mut().find(|c| c.id == ecs_c.id) {
+            *entry = ecs_c.clone();
+        } else {
+            world.citizens.push(ecs_c.clone());
+        }
+    }
+    // Remove citizens no longer in ECS.
+    world.citizens.retain(|c| ecs_citizens.iter().any(|e| e.id == c.id));
 }
 
 // ─── Functions used by the start screen ──────────────────────────────────────
@@ -254,13 +280,18 @@ impl Plugin for SaveLoadPlugin {
 fn handle_save_load(
     input: Res<ButtonInput<KeyCode>>,
     mut save_events: EventReader<SaveRequestEvent>,
-    world: Res<CityWorld>,
+    mut world: ResMut<CityWorld>,
     game_time: Res<GameTime>,
     road_network: Res<RoadNetwork>,
+    citizen_query: Query<&Citizen>,
 ) {
     let triggered_by_key = input.just_pressed(KeyCode::F5);
     let triggered_by_ui  = save_events.read().next().is_some();
     if triggered_by_key || triggered_by_ui {
+        // Sync live ECS citizen state into world.citizens before serialising.
+        let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
+        sync_citizens_to_world(&mut world, &ecs_citizens);
+
         if let Err(e) = save_game(&world, &game_time, &road_network) {
             eprintln!("Failed to save game: {e}");
         }

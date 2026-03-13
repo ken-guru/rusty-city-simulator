@@ -1,7 +1,7 @@
 use crate::entities::*;
 use crate::hovered::HoveredEntity;
 use crate::roads::RoadNetwork;
-use crate::save::{save_game, SaveRequestEvent};
+use crate::save::{save_game, sync_citizens_to_world, SaveRequestEvent};
 use crate::time::GameTime;
 use crate::world::CityWorld;
 use crate::AppState;
@@ -345,16 +345,21 @@ fn quit_dialog_interaction(
 /// AppExit event can deadlock the Metal renderer.
 fn handle_pending_quit(
     mut pending: ResMut<PendingQuit>,
-    world: Res<CityWorld>,
+    mut world: ResMut<CityWorld>,
     game_time: Res<GameTime>,
     road_network: Res<RoadNetwork>,
     mut next_state: ResMut<NextState<AppState>>,
     mut quit_visible: ResMut<QuitDialogVisible>,
+    citizen_query: Query<&Citizen>,
 ) {
     if !pending.active {
         return;
     }
     if pending.save_first {
+        // Sync live ECS citizen state into world.citizens before serialising.
+        let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
+        sync_citizens_to_world(&mut world, &ecs_citizens);
+
         if let Err(e) = save_game(&world, &game_time, &road_network) {
             eprintln!("Failed to save before quit: {e}");
         }

@@ -137,6 +137,15 @@ fn setup(
                 game_time.elapsed_secs = save_data.time.elapsed_secs;
                 game_time.time_scale   = save_data.time.time_scale;
                 *road_network          = save_data.road_network;
+
+                // Reset citizen navigation state so stale waypoints/targets from
+                // the saved game don't cause pathfinding issues on re-entry.
+                // The AI will assign fresh activities on the first tick.
+                for citizen in &mut world.citizens {
+                    citizen.waypoints.clear();
+                    citizen.target_position = None;
+                    citizen.current_activity = ActivityType::Idle;
+                }
             }
             Err(e) => eprintln!("Failed to apply loaded save: {e}"),
         }
