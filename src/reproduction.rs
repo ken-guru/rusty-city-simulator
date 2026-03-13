@@ -1,7 +1,7 @@
 use crate::entities::*;
 use crate::world::CityWorld;
 use bevy::prelude::*;
-use rand::Rng;
+use rand::RngExt;
 use uuid::Uuid;
 
 #[derive(Event)]
@@ -32,7 +32,7 @@ fn check_reproduction(
     time: Res<Time>,
     game_time: Res<crate::time::GameTime>,
 ) {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let delta = time.delta_secs() * game_time.time_scale;
 
     // Collect eligible adults
@@ -67,17 +67,17 @@ fn check_reproduction(
     for female in &females {
         // Low-probability birth check per frame (~once every ~60s per eligible woman at 1x)
         let birth_chance = delta * 0.016;
-        if !rng.gen_bool(birth_chance.clamp(0.0, 1.0) as f64) {
+        if !rng.random_bool(birth_chance.clamp(0.0, 1.0) as f64) {
             continue;
         }
 
-        let gender = if rng.gen_bool(0.5) { Gender::Male } else { Gender::Female };
+        let gender = if rng.random_bool(0.5) { Gender::Male } else { Gender::Female };
         let name = {
             let first = match gender {
-                Gender::Male => FIRST_NAMES_MALE[rng.gen_range(0..FIRST_NAMES_MALE.len())],
-                Gender::Female => FIRST_NAMES_FEMALE[rng.gen_range(0..FIRST_NAMES_FEMALE.len())],
+                Gender::Male => FIRST_NAMES_MALE[rng.random_range(0..FIRST_NAMES_MALE.len())],
+                Gender::Female => FIRST_NAMES_FEMALE[rng.random_range(0..FIRST_NAMES_FEMALE.len())],
             };
-            let last = LAST_NAMES[rng.gen_range(0..LAST_NAMES.len())];
+            let last = LAST_NAMES[rng.random_range(0..LAST_NAMES.len())];
             format!("{} {}", first, last)
         };
 
@@ -88,8 +88,8 @@ fn check_reproduction(
         let (home_id, birth_pos) = if let Some(b) = home {
             let id = b.id.clone();
             let pos = b.position + Vec2::new(
-                rng.gen_range(-15.0..15.0),
-                rng.gen_range(-15.0..15.0),
+                rng.random_range(-15.0..15.0),
+                rng.random_range(-15.0..15.0),
             );
             // Reserve the slot now
             b.resident_ids.push(Uuid::new_v4().to_string()); // placeholder, updated after spawn

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use crate::entities::*;
 use crate::grid::{cell_to_world, is_building_cell};
-use rand::Rng;
+use rand::RngExt;
 
 /// ECS component that marks a park entity (not a building).
 #[derive(Component, Clone)]
@@ -45,7 +45,7 @@ pub struct CityWorld {
 
 impl CityWorld {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut buildings = Vec::new();
         let mut occupied_cells = HashSet::new();
 
@@ -86,12 +86,12 @@ impl CityWorld {
 
         let mut citizens = Vec::new();
         for _ in 0..10 {
-            let gender = if rng.gen_bool(0.5) { Gender::Male } else { Gender::Female };
+            let gender = if rng.random_bool(0.5) { Gender::Male } else { Gender::Female };
             let first = match gender {
-                Gender::Male   => first_names_male[rng.gen_range(0..first_names_male.len())],
-                Gender::Female => first_names_female[rng.gen_range(0..first_names_female.len())],
+                Gender::Male   => first_names_male[rng.random_range(0..first_names_male.len())],
+                Gender::Female => first_names_female[rng.random_range(0..first_names_female.len())],
             };
-            let last = last_names[rng.gen_range(0..last_names.len())];
+            let last = last_names[rng.random_range(0..last_names.len())];
             citizens.push(Citizen::new(format!("{} {}", first, last), gender, Vec2::ZERO));
         }
 
@@ -106,7 +106,7 @@ impl CityWorld {
                         building.resident_ids.push(id.clone());
                         citizens[citizen_idx].home_building_id = Some(building.id.clone());
                         citizens[citizen_idx].position = building.position
-                            + Vec2::new(rng.gen_range(-20.0..20.0), rng.gen_range(-20.0..20.0));
+                            + Vec2::new(rng.random_range(-20.0..20.0), rng.random_range(-20.0..20.0));
                         citizen_idx += 1;
                     }
                 }

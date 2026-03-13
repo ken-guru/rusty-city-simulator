@@ -178,7 +178,8 @@ Before considering a work session finished, always verify:
 1. **Zero warnings**: `cargo build --release` must complete with no warnings
 2. **All tests pass**: `cargo test` must show `test result: ok`
 3. **README up to date**: reflects current controls, features, and module list
-4. **Commit changes**: every session's work should be committed with a descriptive message
+4. **Version bumped**: update `version` in `Cargo.toml` on every commit (see Versioning below)
+5. **Commit changes**: every session's work should be committed with a descriptive message
 
 Quick validation:
 ```sh
@@ -186,6 +187,18 @@ cargo build --release && cargo test
 ```
 
 Both must succeed before committing.
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). The version in `Cargo.toml` must be updated in **every commit**:
+
+| Change type | Version bump | Example |
+|---|---|---|
+| Bug fix, performance improvement, no new behaviour | **Patch** | `0.2.0` -> `0.2.1` |
+| New feature, UI addition, dependency upgrade | **Minor** | `0.2.0` -> `0.3.0` |
+| Breaking save-file format or major architecture change | **Major** | (post-1.0 only) |
+
+The project is pre-1.0; breaking changes increment the **minor** version.
 
 ## Features
 
@@ -330,7 +343,8 @@ Before considering a work session finished, always verify:
 1. **Zero warnings**: `cargo build --release` must complete with no warnings
 2. **All tests pass**: `cargo test` must show `test result: ok`
 3. **README up to date**: reflects current controls, features, and module list
-4. **Commit changes**: every session's work should be committed with a descriptive message
+4. **Version bumped**: update `version` in `Cargo.toml` on every commit (see Versioning below)
+5. **Commit changes**: every session's work should be committed with a descriptive message
 
 Quick validation:
 ```sh
@@ -338,4 +352,16 @@ cargo build --release && cargo test
 ```
 
 Both must succeed before committing.
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). The version in `Cargo.toml` must be updated in **every commit**:
+
+| Change type | Version bump | Example |
+|---|---|---|
+| Bug fix, performance improvement, no new behaviour | **Patch** | `0.2.0` -> `0.2.1` |
+| New feature, UI addition, dependency upgrade | **Minor** | `0.2.0` -> `0.3.0` |
+| Breaking save-file format or major architecture change | **Major** | (post-1.0 only) |
+
+The project is pre-1.0; breaking changes increment the **minor** version.
 

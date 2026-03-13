@@ -5,7 +5,7 @@ use crate::sprites::SpriteAssets;
 use crate::world::{building_stats, CityWorld, ParkCorridorMarker, ParkMarker};
 use crate::time::GameTime;
 use bevy::prelude::*;
-use rand::Rng;
+use rand::RngExt;
 
 #[derive(Event)]
 pub struct NewBuildingEvent {
@@ -86,13 +86,12 @@ fn check_housing_pressure(
 /// Find a free building-cell adjacent to the existing city, place a building there.
 /// All buildings live on even (col, row) cells so there is always a corridor between them.
 fn place_new_building(world: &CityWorld, kind: BuildingType) -> Option<(Building, (i32, i32))> {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // ~15% of the time try two building-cell steps away, leaving one empty building cell
     // and two corridor cells free (potential future buildings and roads).
     const SKIP_CHANCE: f64 = 0.15;
-    let try_skip = rng.gen_bool(SKIP_CHANCE);
+    let try_skip = rng.random_bool(SKIP_CHANCE);
 
     let is_blocked = |cell: &(i32, i32)| {
         world.occupied_cells.contains(cell)
@@ -124,13 +123,13 @@ fn place_new_building(world: &CityWorld, kind: BuildingType) -> Option<(Building
     }
 
     let (col, row) = if try_skip && !far.is_empty() {
-        far[rng.gen_range(0..far.len())]
+        far[rng.random_range(0..far.len())]
     } else if !near.is_empty() {
-        near[rng.gen_range(0..near.len())]
+        near[rng.random_range(0..near.len())]
     } else {
         // Fallback: nearest even cell in a random direction.
-        let angle = rng.gen_range(0.0_f32..std::f32::consts::TAU);
-        let dist  = rng.gen_range(2..5) as f32 * CELL_SIZE * 2.0;
+        let angle = rng.random_range(0.0_f32..std::f32::consts::TAU);
+        let dist  = rng.random_range(2..5) as f32 * CELL_SIZE * 2.0;
         let raw   = world_to_cell(Vec2::new(angle.cos() * dist, angle.sin() * dist));
         // Snap to nearest even cell.
         let sc = if raw.0 % 2 == 0 { raw.0 } else { raw.0 + 1 };
@@ -264,7 +263,7 @@ fn spawn_building(
             // If a real road already runs through this corridor, absorb it into
             // the park path with ~40% probability (road gradually becomes a park).
             if road_network.corridor_has_real_road(corridor_cell)
-                && rand::thread_rng().gen_bool(0.40)
+                && rand::rng().random_bool(0.40)
             {
                 road_network.convert_corridor_segments_to_park_path(corridor_cell);
                 info!("Road absorbed into park corridor at {:?}", corridor_cell);
@@ -284,6 +283,5 @@ fn spawn_building(
 }
 
 fn should_tick(delta: f32, rate: f32) -> bool {
-    use rand::Rng;
-    rand::thread_rng().gen_bool((delta * rate).clamp(0.0, 1.0) as f64)
+    rand::rng().random_bool((delta * rate).clamp(0.0, 1.0) as f64)
 }

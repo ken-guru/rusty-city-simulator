@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
@@ -280,8 +280,8 @@ impl RoadNetwork {
 
         // ~60% chance: attempt a second connection to a different nearby road node,
         // creating a cross-link between two branches of the network.
-        let mut rng = rand::thread_rng();
-        if rng.gen_bool(0.60) {
+        let mut rng = rand::rng();
+        if rng.random_bool(0.60) {
             self.try_second_connection(building.position, entrance_cell, primary_target, current_day);
         }
     }
@@ -417,7 +417,7 @@ impl RoadNetwork {
             return false;
         }
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         // Try up to 5 random origins; track the best candidate by savings score.
         let num_attempts = std::cmp::min(5, corridor_nodes.len());
@@ -427,10 +427,10 @@ impl RoadNetwork {
         'outer: for _ in 0..num_attempts {
             // Pick a random unvisited origin.
             let idx = {
-                let mut i = rng.gen_range(0..corridor_nodes.len());
+                let mut i = rng.random_range(0..corridor_nodes.len());
                 let mut guard = 0;
                 while tried.contains(&i) {
-                    i = rng.gen_range(0..corridor_nodes.len());
+                    i = rng.random_range(0..corridor_nodes.len());
                     guard += 1;
                     if guard > corridor_nodes.len() {
                         continue 'outer;
@@ -773,11 +773,11 @@ fn auto_suggest_construction(
         return;
     }
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Pick a random building as the "from" building; try several "to" candidates.
     let buildings = &world.buildings;
-    let from_idx = rng.gen_range(0..buildings.len());
+    let from_idx = rng.random_range(0..buildings.len());
     let from_b = &buildings[from_idx];
 
     // Find the building whose road path is longest relative to its grid distance.
@@ -1032,7 +1032,7 @@ fn evolve_roads(
         return;
     }
     // Stagger checks to once per ~5 real seconds.
-    if !rand::thread_rng().gen_bool((time.delta_secs() * 0.2).clamp(0.0, 1.0) as f64) {
+    if !rand::rng().random_bool((time.delta_secs() * 0.2).clamp(0.0, 1.0) as f64) {
         return;
     }
 

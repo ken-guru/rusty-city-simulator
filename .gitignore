@@ -1,7 +1,7 @@
 /target
 /target/
 Cargo.lock
-save.json
+saves/
 *.swp
 *.swo
 .DS_Store

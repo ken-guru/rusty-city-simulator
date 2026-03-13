@@ -5,7 +5,7 @@ use crate::roads::RoadNetwork;
 use crate::time::GameTime;
 use crate::world::{park_positions, CityWorld};
 use bevy::prelude::*;
-use rand::Rng;
+use rand::RngExt;
 
 pub struct NeedsDecayPlugin;
 
@@ -48,7 +48,7 @@ fn run_citizen_ai(
     game_time: Res<GameTime>,
     hovered: Res<HoveredEntity>,
 ) {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let delta = time.delta_secs() * game_time.time_scale;
 
     for (entity, mut citizen) in citizens.iter_mut() {
@@ -59,7 +59,7 @@ fn run_citizen_ai(
         }
 
         // Small per-frame probability to re-evaluate (~once every 3s at 1x speed)
-        if !rng.gen_bool((delta * 0.33).clamp(0.0, 1.0) as f64) {
+        if !rng.random_bool((delta * 0.33).clamp(0.0, 1.0) as f64) {
             continue;
         }
 
@@ -105,12 +105,12 @@ fn run_citizen_ai(
             }
         } else {
             // Wander randomly when no building found — move along one axis only.
-            let axis_horiz: bool = rng.gen();
-            let dist = rng.gen_range(1..=3) as f32 * crate::grid::CELL_SIZE;
+            let axis_horiz: bool = rng.random();
+            let dist = rng.random_range(1..=3) as f32 * crate::grid::CELL_SIZE;
             let wander = if axis_horiz {
-                Vec2::new(citizen.position.x + if rng.gen() { dist } else { -dist }, citizen.position.y)
+                Vec2::new(citizen.position.x + if rng.random() { dist } else { -dist }, citizen.position.y)
             } else {
-                Vec2::new(citizen.position.x, citizen.position.y + if rng.gen() { dist } else { -dist })
+                Vec2::new(citizen.position.x, citizen.position.y + if rng.random() { dist } else { -dist })
             };
             citizen.target_position = Some(wander);
             citizen.current_activity = ActivityType::Walking;
