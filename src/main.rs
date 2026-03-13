@@ -276,9 +276,12 @@ fn setup(
 
     // Spawn park corridor entities from saved state (visual park paths between parks).
     for &(col, row) in &world.park_corridor_cells {
-        let is_ns = col % 2 != 0 && row % 2 == 0;
+        let is_cross = col % 2 != 0 && row % 2 != 0;
+        let is_ns    = col % 2 != 0 && row % 2 == 0;
         let corridor_pos = grid::cell_to_world(col, row);
-        let image = if is_ns {
+        let image = if is_cross {
+            sprite_assets.park_corridor_cross.clone()
+        } else if is_ns {
             sprite_assets.park_corridor_ns.clone()
         } else {
             sprite_assets.park_corridor_ew.clone()

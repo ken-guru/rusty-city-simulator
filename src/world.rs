@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use crate::entities::*;
 use crate::grid::{cell_to_world, is_building_cell};
 use rand::RngExt;
@@ -134,54 +134,126 @@ impl CityWorld {
             || self.park_cells.contains(&c)
     }
 
-    /// Check candidate building cells for promotion to parks.
-    /// A building-type cell becomes a park when all 4 cardinal building-cell neighbors
-    /// (at distance 2) are occupied by buildings. This creates interior courtyards.
+    /// Check candidate building cells for promotion to parks using flood-fill.
+    ///
+    /// When a building is placed, we seed from the 4 cardinal building-cell neighbours
+    /// of each changed cell, then BFS through all connected empty building-cells to find
+    /// the full enclosed region. A region is "enclosed" when every cell in it has all
+    /// 4 of its cardinal building-cell neighbours either occupied (building/park) or
+    /// also inside the region. If the region is enclosed, every cell in it becomes a park.
+    ///
+    /// A cap of 100 cells prevents runaway BFS on the open outer area of the city.
     pub fn detect_new_parks(&mut self, changed_cells: &[(i32, i32)]) -> Vec<(i32, i32)> {
-        let mut new_parks = Vec::new();
+        let mut all_new_parks: Vec<(i32, i32)> = Vec::new();
+        // Track cells already assigned to a component this call so we don't
+        // start a second BFS from the same region.
+        let mut globally_visited: HashSet<(i32, i32)> = HashSet::new();
 
-        // Candidates: building-type cells adjacent (distance 2) to each changed cell.
-        let mut candidates: Vec<(i32, i32)> = Vec::new();
+        // Collect unique seed candidates: building-cell neighbours of each changed cell.
+        let mut seeds: Vec<(i32, i32)> = Vec::new();
         for &(col, row) in changed_cells {
-            for (dc, dr) in [(2i32,0i32),(-2,0),(0,2),(0,-2)] {
+            for (dc, dr) in [(2i32, 0i32), (-2, 0), (0, 2), (0, -2)] {
                 let c = (col + dc, row + dr);
-                // Only building cells can become parks.
-                if is_building_cell(c.0, c.1) && !candidates.contains(&c) {
-                    candidates.push(c);
+                if is_building_cell(c.0, c.1)
+                    && !self.cell_taken(c.0, c.1)
+                    && !globally_visited.contains(&c)
+                    && !seeds.contains(&c)
+                {
+                    seeds.push(c);
                 }
             }
         }
 
-        for cell @ (col, row) in candidates {
-            if self.cell_taken(col, row) { continue; }
-            // All 4 cardinal building-cell neighbors at distance 2 must be occupied
-            // by either buildings or parks.
-            let enclosed = [(2i32,0i32),(-2,0),(0,2),(0,-2)].iter().all(|&(dc, dr)| {
-                let n = (col + dc, row + dr);
-                self.occupied_cells.contains(&n) || self.park_cells.contains(&n)
+        for seed in seeds {
+            if self.cell_taken(seed.0, seed.1) || globally_visited.contains(&seed) {
+                continue;
+            }
+
+            // BFS flood-fill from this seed through connected empty building-cells.
+            let component = self.flood_fill_empty_region(seed);
+
+            // Mark all cells as seen regardless of whether they form a park.
+            for &c in &component {
+                globally_visited.insert(c);
+            }
+
+            // An empty component means the BFS hit the size cap → not enclosed.
+            if component.is_empty() {
+                continue;
+            }
+
+            // A region is enclosed when every external neighbour of every cell is occupied.
+            let component_set: HashSet<(i32, i32)> = component.iter().copied().collect();
+            let enclosed = component.iter().all(|&(c, r)| {
+                [(2i32, 0i32), (-2, 0), (0, 2), (0, -2)].iter().all(|&(dc, dr)| {
+                    let n = (c + dc, r + dr);
+                    self.occupied_cells.contains(&n)
+                        || self.park_cells.contains(&n)
+                        || component_set.contains(&n)
+                })
             });
+
             if enclosed {
-                self.park_cells.insert(cell);
-                new_parks.push(cell);
+                for cell in &component {
+                    self.park_cells.insert(*cell);
+                    all_new_parks.push(*cell);
+                }
             }
         }
-        new_parks
+
+        all_new_parks
+    }
+
+    /// BFS through all connected empty building-cells reachable from `start`.
+    ///
+    /// Returns the component, or an empty Vec if the component exceeds `MAX_CELLS`
+    /// (signalling that the region is too large to be a small enclosed courtyard).
+    fn flood_fill_empty_region(&self, start: (i32, i32)) -> Vec<(i32, i32)> {
+        const MAX_CELLS: usize = 100;
+        let mut component = Vec::new();
+        let mut queue: VecDeque<(i32, i32)> = VecDeque::new();
+        let mut seen: HashSet<(i32, i32)> = HashSet::new();
+
+        queue.push_back(start);
+        seen.insert(start);
+
+        while let Some(cell) = queue.pop_front() {
+            if component.len() >= MAX_CELLS {
+                return Vec::new(); // too large → not an enclosed courtyard
+            }
+            component.push(cell);
+
+            for (dc, dr) in [(2i32, 0i32), (-2, 0), (0, 2), (0, -2)] {
+                let n = (cell.0 + dc, cell.1 + dr);
+                if !seen.contains(&n)
+                    && is_building_cell(n.0, n.1)
+                    && !self.cell_taken(n.0, n.1)
+                {
+                    seen.insert(n);
+                    queue.push_back(n);
+                }
+            }
+        }
+
+        component
     }
 
     /// Check whether any corridor cells adjacent to newly-created parks should
     /// become park corridors (visual + walkable park paths).
     ///
-    /// A corridor cell becomes a park corridor when both of its building-cell
-    /// neighbours in the corridor direction are park cells:
-    /// - Horizontal corridor (c%2==1, r%2==0): needs (c-1,r) and (c+1,r) both parks.
-    /// - Vertical corridor (c%2==0, r%2==1): needs (c,r-1) and (c,r+1) both parks.
+    /// Three kinds of park corridor cells exist:
+    ///
+    /// * **Horizontal corridor** (c%2==1, r%2==0): needs (c-1,r) and (c+1,r) both parks.
+    /// * **Vertical corridor** (c%2==0, r%2==1): needs (c,r-1) and (c,r+1) both parks.
+    /// * **Cross cell** (c%2==1, r%2==1): needs all 4 corner building-cells
+    ///   (c-1,r-1), (c+1,r-1), (c-1,r+1), (c+1,r+1) to all be parks.
     ///
     /// Returns the list of newly-created park corridor cells.
     pub fn detect_park_corridors(&mut self, new_parks: &[(i32, i32)]) -> Vec<(i32, i32)> {
         let mut new_corridors = Vec::new();
 
         for &(pc, pr) in new_parks {
-            // Check the 4 adjacent corridor cells of this park cell.
+            // ── Cardinal neighbours → horizontal / vertical corridors ──────────
             for &(dc, dr) in &[(1i32, 0i32), (-1, 0), (0, 1i32), (0, -1)] {
                 let cc = pc + dc;
                 let cr = pr + dr;
@@ -209,6 +281,33 @@ impl CityWorld {
                     }
                 }
             }
+
+            // ── Diagonal neighbours → cross cells ─────────────────────────────
+            // A cross cell sits at the corner of 4 building cells.  It becomes a
+            // park corridor when all 4 surrounding building-cells are parks.
+            for &(dc, dr) in &[(1i32, 1i32), (-1i32, 1i32), (1i32, -1i32), (-1i32, -1i32)] {
+                let cc = pc + dc; // both odd for a true cross cell
+                let cr = pr + dr;
+                if self.park_corridor_cells.contains(&(cc, cr)) {
+                    continue;
+                }
+                if cc % 2 == 0 || cr % 2 == 0 {
+                    continue; // only handle odd-odd cross cells here
+                }
+                // All 4 surrounding building-cells must be parks.
+                let sw = (cc - 1, cr - 1);
+                let se = (cc + 1, cr - 1);
+                let nw = (cc - 1, cr + 1);
+                let ne = (cc + 1, cr + 1);
+                if self.park_cells.contains(&sw)
+                    && self.park_cells.contains(&se)
+                    && self.park_cells.contains(&nw)
+                    && self.park_cells.contains(&ne)
+                {
+                    self.park_corridor_cells.insert((cc, cr));
+                    new_corridors.push((cc, cr));
+                }
+            }
         }
         new_corridors
     }
@@ -232,6 +331,82 @@ pub fn building_stats(kind: BuildingType) -> (Vec2, usize, usize) {
 impl Default for CityWorld {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a minimal CityWorld with the given occupied building-cells.
+    fn world_with_occupied(cells: &[(i32, i32)]) -> CityWorld {
+        let mut w = CityWorld {
+            citizens: vec![],
+            buildings: vec![],
+            simulation_time: 0.0,
+            occupied_cells: cells.iter().copied().collect(),
+            crossroad_cells: HashSet::new(),
+            park_cells: HashSet::new(),
+            park_corridor_cells: HashSet::new(),
+        };
+        // Mark occupied cells with a dummy building so cell_taken returns true.
+        for &(c, r) in cells {
+            w.occupied_cells.insert((c, r));
+        }
+        w
+    }
+
+    #[test]
+    fn single_enclosed_cell_becomes_park() {
+        // 4 buildings surround (0, 0) — the classic 1-cell courtyard.
+        //   (-2,0)  (0,0)  (2,0)  ← (0,0) is the empty cell
+        //            ↑ and (0,2) + (0,-2) form the enclosure
+        let mut world = world_with_occupied(&[(-2, 0), (2, 0), (0, 2), (0, -2)]);
+        // Simulating placing the last building at (2,0).
+        let parks = world.detect_new_parks(&[(2, 0)]);
+        assert_eq!(parks, vec![(0, 0)], "enclosed single cell should become a park");
+        assert!(world.park_cells.contains(&(0, 0)));
+    }
+
+    #[test]
+    fn multi_cell_enclosed_region_all_become_parks() {
+        // A 1×2 pair of empty cells, fully enclosed:
+        //
+        //   (-2,0) (0,0) (2,0)     ← (0,0) and (0,2) are empty
+        //   (-2,2) (0,2) (2,2)
+        //
+        // Plus caps above and below: (-2,-2),(0,-2),(2,-2) and (-2,4),(0,4),(2,4)
+        let occupied = [
+            (-2, -2), (0, -2), (2, -2),
+            (-2,  0),           (2,  0),
+            (-2,  2),           (2,  2),
+            (-2,  4), (0,  4), (2,  4),
+        ];
+        let mut world = world_with_occupied(&occupied);
+        let parks = world.detect_new_parks(&[(2, 0)]);
+        let mut parks_sorted = parks.clone();
+        parks_sorted.sort();
+        assert_eq!(parks_sorted, vec![(0, 0), (0, 2)], "both enclosed cells should become parks");
+    }
+
+    #[test]
+    fn open_region_does_not_become_park() {
+        // Only 2 sides occupied — region is open to the east.
+        let mut world = world_with_occupied(&[(-2, 0), (0, 2), (0, -2)]);
+        let parks = world.detect_new_parks(&[(-2, 0)]);
+        assert!(parks.is_empty(), "open region must not become a park");
+    }
+
+    #[test]
+    fn cross_corridor_detected_for_2x2_park() {
+        // 4 adjacent park cells → cross cell at (1,1) should be detected.
+        let mut world = world_with_occupied(&[]);
+        world.park_cells.insert((0, 0));
+        world.park_cells.insert((2, 0));
+        world.park_cells.insert((0, 2));
+        world.park_cells.insert((2, 2));
+        let corridors = world.detect_park_corridors(&[(0,0),(2,0),(0,2),(2,2)]);
+        assert!(corridors.contains(&(1, 1)), "cross cell (1,1) should be detected");
     }
 }
 

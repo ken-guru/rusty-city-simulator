@@ -369,9 +369,12 @@ fn spawn_building(
         let current_day = game_time.current_day();
         for corridor_cell in new_corridors {
             let (cc, cr) = corridor_cell;
-            let is_ns = cc % 2 != 0 && cr % 2 == 0;
+            let is_cross = cc % 2 != 0 && cr % 2 != 0;
+            let is_ns    = cc % 2 != 0 && cr % 2 == 0;
             let corridor_pos = cell_to_world(cc, cr);
-            let image = if is_ns {
+            let image = if is_cross {
+                sprite_assets.park_corridor_cross.clone()
+            } else if is_ns {
                 sprite_assets.park_corridor_ns.clone()
             } else {
                 sprite_assets.park_corridor_ew.clone()
@@ -395,7 +398,8 @@ fn spawn_building(
             } else {
                 road_network.add_park_path(corridor_cell, current_day);
             }
-            info!("Park corridor at grid {:?} ({})", corridor_cell, if is_ns { "N-S" } else { "E-W" });
+            let kind_str = if is_cross { "cross" } else if is_ns { "N-S" } else { "E-W" };
+            info!("Park corridor at grid {:?} ({})", corridor_cell, kind_str);
         }
 
         info!(

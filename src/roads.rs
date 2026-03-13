@@ -580,6 +580,8 @@ impl RoadNetwork {
     ///
     /// * Horizontal corridor (c%2==1, r%2==0): parks are E and W — path goes E-W (c-1,r)→(c,r)→(c+1,r)
     /// * Vertical corridor (c%2==0, r%2==1): parks are N and S — path goes N-S (c,r-1)→(c,r)→(c,r+1)
+    /// * Cross cell (c%2==1, r%2==1): intersection of 4 park cells — connect to all 4 adjacent
+    ///   corridor positions so citizens can pass through in any cardinal direction.
     pub fn add_park_path(&mut self, cell: (i32, i32), current_day: f32) {
         let (c, r) = cell;
         let here = cell_to_world(c, r);
@@ -595,6 +597,17 @@ impl RoadNetwork {
             let south = cell_to_world(c, r + 1);
             self.connect(north, here, SegmentType::ParkPath, current_day);
             self.connect(here, south, SegmentType::ParkPath, current_day);
+        } else if c % 2 != 0 && r % 2 != 0 {
+            // Cross cell: connect to the 4 adjacent corridor positions so the
+            // intersection is reachable from all 4 directions.
+            let west  = cell_to_world(c - 1, r);
+            let east  = cell_to_world(c + 1, r);
+            let south = cell_to_world(c, r - 1);
+            let north = cell_to_world(c, r + 1);
+            self.connect(west,  here, SegmentType::ParkPath, current_day);
+            self.connect(here,  east, SegmentType::ParkPath, current_day);
+            self.connect(south, here, SegmentType::ParkPath, current_day);
+            self.connect(here, north, SegmentType::ParkPath, current_day);
         }
     }
 

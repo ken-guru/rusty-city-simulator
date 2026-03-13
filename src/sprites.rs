@@ -22,6 +22,8 @@ pub struct SpriteAssets {
     pub park_corridor_ns: Handle<Image>,
     /// Park corridor with E-W walking path (vertical corridor cell between two N-S parks).
     pub park_corridor_ew: Handle<Image>,
+    /// Cross-path corridor at the intersection of 4 adjacent park cells (odd,odd cell).
+    pub park_corridor_cross: Handle<Image>,
 }
 
 impl SpriteAssets {
@@ -49,7 +51,11 @@ pub fn setup_sprites(mut commands: Commands, mut images: ResMut<Assets<Image>>) 
     let park = images.add(park_sprite());
     let park_corridor_ns = images.add(park_corridor_ns_sprite());
     let park_corridor_ew = images.add(park_corridor_ew_sprite());
-    commands.insert_resource(SpriteAssets { homes, offices, shops, park, park_corridor_ns, park_corridor_ew });
+    let park_corridor_cross = images.add(park_corridor_cross_sprite());
+    commands.insert_resource(SpriteAssets {
+        homes, offices, shops, park,
+        park_corridor_ns, park_corridor_ew, park_corridor_cross,
+    });
 }
 
 // ─── Image builder ───────────────────────────────────────────────────────────
@@ -527,4 +533,43 @@ fn park_corridor_ew_sprite() -> Image {
         px(210, 200, 165),  // 7 footprint (lighter stone)
     ];
     build_image(12, 12, &PARK_CORRIDOR_EW_PIXELS, &palette)
+}
+
+// ─── Park corridor cross sprite (12×12) ──────────────────────────────────────
+//
+// A "+" shaped intersection: vertical stone path in columns 4-7,
+// horizontal path in rows 4-7, grass in the 4 corner quadrants.
+// Palette same as the other corridor sprites.
+
+#[rustfmt::skip]
+const PARK_CORRIDOR_CROSS_PIXELS: [u8; 144] = [
+    // rows 0-3: grass corners with vertical path column in middle
+    2, 1, 1, 2, 6, 5, 5, 6, 2, 1, 1, 2,
+    1, 1, 2, 1, 5, 5, 5, 5, 1, 2, 1, 1,
+    1, 2, 1, 1, 6, 5, 5, 6, 1, 1, 2, 1,
+    2, 1, 1, 1, 5, 7, 7, 5, 1, 1, 1, 2,
+    // rows 4-7: full-width horizontal path (overrides grass corners)
+    6, 5, 6, 5, 6, 5, 5, 6, 5, 6, 5, 6,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    6, 5, 6, 5, 7, 5, 5, 7, 5, 6, 5, 6,
+    // rows 8-11: grass corners with vertical path column in middle
+    2, 1, 1, 1, 6, 5, 5, 6, 1, 1, 1, 2,
+    1, 1, 2, 1, 5, 5, 5, 5, 1, 2, 1, 1,
+    1, 2, 1, 1, 6, 5, 5, 6, 1, 1, 2, 1,
+    1, 1, 1, 1, 5, 5, 5, 5, 1, 1, 1, 1,
+];
+
+fn park_corridor_cross_sprite() -> Image {
+    let palette: [[u8; 4]; 8] = [
+        CLEAR,
+        px( 95, 165,  65),  // 1 light grass
+        px( 65, 120,  40),  // 2 dark grass
+        px( 45, 110,  30),  // 3 (unused)
+        px(100,  65,  20),  // 4 (unused)
+        px(190, 175, 145),  // 5 path stone
+        px(155, 142, 110),  // 6 path edge (darker stone)
+        px(210, 200, 165),  // 7 footprint (lighter stone)
+    ];
+    build_image(12, 12, &PARK_CORRIDOR_CROSS_PIXELS, &palette)
 }
