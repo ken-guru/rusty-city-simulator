@@ -6,7 +6,9 @@ use crate::time::GameTime;
 use crate::world::CityWorld;
 use crate::AppState;
 use crate::{ActiveRoute, BuildingSelection};
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
+use bevy::ui::ComputedNode;
 
 #[derive(Component)]
 pub struct TimeText;
@@ -61,6 +63,10 @@ pub struct HoveredLogItem(pub Option<usize>);
 /// Marks the game toolbar (bottom bar) so it can be hidden on the start screen.
 #[derive(Component)]
 struct ToolbarRoot;
+
+/// Marks a panel inner container that supports mouse-wheel scrolling.
+#[derive(Component)]
+struct PanelScrollable;
 
 /// Marks the quit confirmation dialog root entity.
 #[derive(Component)]
@@ -153,6 +159,7 @@ impl Plugin for UIPlugin {
                     rebuild_log_panel,
                     sync_log_hover_state,
                     sync_log_highlight,
+                    scroll_panels,
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -197,12 +204,16 @@ fn setup_ui(mut commands: Commands) {
                 padding: UiRect::all(Val::Px(8.0)),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(2.0),
+                max_height: Val::Px(220.0),
+                overflow: Overflow::scroll_y(),
                 display: Display::None,
                 ..Default::default()
             },
             BackgroundColor(Color::srgba(0.08, 0.12, 0.18, 0.88)),
             BorderRadius::all(Val::Px(6.0)),
             ZIndex(40),
+            ScrollPosition::default(),
+            PanelScrollable,
             QueuePanel,
         ));
 
@@ -213,12 +224,16 @@ fn setup_ui(mut commands: Commands) {
                 padding: UiRect::all(Val::Px(8.0)),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(2.0),
+                max_height: Val::Px(220.0),
+                overflow: Overflow::scroll_y(),
                 display: Display::None,
                 ..Default::default()
             },
             BackgroundColor(Color::srgba(0.06, 0.10, 0.08, 0.88)),
             BorderRadius::all(Val::Px(6.0)),
             ZIndex(39),
+            ScrollPosition::default(),
+            PanelScrollable,
             LogPanel,
         ));
     });
@@ -989,6 +1004,7 @@ fn rebuild_queue_panel(
     queue: Res<ConstructionQueue>,
     panel_query: Query<Entity, With<QueuePanel>>,
     mut panel_node_query: Query<&mut Node, With<QueuePanel>>,
+    mut scroll_query: Query<&mut ScrollPosition, With<QueuePanel>>,
     mut commands: Commands,
 ) {
     if !queue.is_changed() { return; }
@@ -1003,6 +1019,9 @@ fn rebuild_queue_panel(
     }
 
     panel_node.display = Display::Flex;
+    if let Ok(mut scroll) = scroll_query.get_single_mut() {
+        scroll.offset_y = 0.0;
+    }
 
     commands.entity(panel_entity).with_children(|panel| {
         // Header row
@@ -1195,6 +1214,7 @@ fn rebuild_log_panel(
     log: Res<ConstructionLog>,
     panel_query: Query<Entity, With<LogPanel>>,
     mut panel_node_query: Query<&mut Node, With<LogPanel>>,
+    mut scroll_query: Query<&mut ScrollPosition, With<LogPanel>>,
     mut commands: Commands,
 ) {
     if !log.is_changed() { return; }
@@ -1209,6 +1229,10 @@ fn rebuild_log_panel(
     }
 
     panel_node.display = Display::Flex;
+    // Scroll to top whenever content changes so newest entry is visible.
+    if let Ok(mut scroll) = scroll_query.get_single_mut() {
+        scroll.offset_y = 0.0;
+    }
 
     commands.entity(panel_entity).with_children(|panel| {
         // Header
@@ -1224,10 +1248,16 @@ fn rebuild_log_panel(
                 ProjectStatus::Completed => ("[+]", Color::srgb(0.3, 1.0, 0.4)),
                 ProjectStatus::Discarded => ("[x]", Color::srgb(1.0, 0.35, 0.35)),
             };
+            let msg_color = match entry.status {
+                ProjectStatus::Completed => Color::srgb(0.55, 0.85, 0.55),
+                ProjectStatus::Discarded => Color::srgb(0.75, 0.45, 0.45),
+            };
 
             panel.spawn((
                 Node {
                     padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(1.0),
                     ..Default::default()
                 },
                 Button,
@@ -1240,6 +1270,11 @@ fn rebuild_log_panel(
                     Text::new(format!("{} {}", icon, entry.label)),
                     TextFont { font_size: 11.0, ..Default::default() },
                     TextColor(icon_color),
+                ));
+                row.spawn((
+                    Text::new(entry.message.clone()),
+                    TextFont { font_size: 10.0, ..Default::default() },
+                    TextColor(msg_color),
                 ));
             });
         }
@@ -1318,6 +1353,46 @@ fn sync_log_highlight(
                 },
                 LogHighlightMarker,
             ));
+        }
+    }
+}
+
+/// Scrolls the queue and log panels when the mouse wheel moves over them.
+/// Uses ComputedNode size + GlobalTransform to hit-test cursor against each panel.
+fn scroll_panels(
+    mut mouse_wheel: EventReader<MouseWheel>,
+    windows: Query<&Window>,
+    mut panels: Query<(&ComputedNode, &GlobalTransform, &mut ScrollPosition), With<PanelScrollable>>,
+) {
+    let Ok(window) = windows.get_single() else { return };
+    let Some(cursor_pos): Option<Vec2> = window.cursor_position() else { return };
+    let scale = window.scale_factor();
+
+    let delta: f32 = mouse_wheel.read()
+        .map(|e| match e.unit {
+            MouseScrollUnit::Line  => e.y * 20.0,
+            MouseScrollUnit::Pixel => e.y,
+        })
+        .sum();
+
+    if delta == 0.0 { return; }
+
+    for (computed, transform, mut scroll) in panels.iter_mut() {
+        // ComputedNode.size() is in physical pixels — convert to logical.
+        let size = computed.size() / scale;
+        // UI GlobalTransform: translation = (center_x, -center_y) in logical pixels
+        // relative to window, with Y flipped vs cursor coordinates.
+        let center = transform.translation().truncate();
+        let half = size / 2.0;
+        // Cursor is logical pixels, Y increasing downward from top-left.
+        // Node occupies: x in [cx-hw, cx+hw], y in [-cy-hh, -cy+hh].
+        if cursor_pos.x >= center.x - half.x
+            && cursor_pos.x <= center.x + half.x
+            && cursor_pos.y >= -center.y - half.y
+            && cursor_pos.y <= -center.y + half.y
+        {
+            // Positive delta = scroll up => decrease offset_y.
+            scroll.offset_y = (scroll.offset_y - delta).max(0.0);
         }
     }
 }

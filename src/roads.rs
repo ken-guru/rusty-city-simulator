@@ -108,6 +108,8 @@ pub struct CompletedProject {
     /// The full waypoint list the project attempted to build.
     pub waypoints: Vec<Vec2>,
     pub status: ProjectStatus,
+    /// Human-readable outcome: rejection reason or success detail.
+    pub message: String,
 }
 
 /// Historical record of all finished construction projects.
@@ -906,7 +908,7 @@ fn advance_construction(
     for mut project in queue.projects.drain(..) {
         // Degenerate — archive immediately as Discarded.
         if project.waypoints.len() < 2 {
-            archive_project(&mut log, project, false);
+            archive_project(&mut log, project, false, "No viable path found");
             continue;
         }
 
@@ -919,7 +921,12 @@ fn advance_construction(
         // Already finished (edge case) — archive.
         if project.built_count >= project.waypoints.len().saturating_sub(1) {
             let ok = project.segments_added > 0;
-            archive_project(&mut log, project, ok);
+            let msg = if ok {
+                format!("+{} road segment(s) built", project.segments_added)
+            } else {
+                "Route already exists".to_string()
+            };
+            archive_project(&mut log, project, ok, &msg);
             continue;
         }
 
@@ -935,7 +942,12 @@ fn advance_construction(
         if project.built_count >= project.waypoints.len().saturating_sub(1) {
             // Project finished — archive it.
             let ok = project.segments_added > 0;
-            archive_project(&mut log, project, ok);
+            let msg = if ok {
+                format!("+{} road segment(s) built", project.segments_added)
+            } else {
+                "Route already exists".to_string()
+            };
+            archive_project(&mut log, project, ok, &msg);
         } else {
             still_active.push(project);
         }
@@ -944,7 +956,7 @@ fn advance_construction(
     queue.projects = still_active;
 }
 
-fn archive_project(log: &mut ConstructionLog, project: ConstructionProject, success: bool) {
+fn archive_project(log: &mut ConstructionLog, project: ConstructionProject, success: bool, message: &str) {
     const LOG_CAP: usize = 15;
     log.entries.push(CompletedProject {
         label: project.label,
@@ -952,6 +964,7 @@ fn archive_project(log: &mut ConstructionLog, project: ConstructionProject, succ
         to_pos: project.to_pos,
         waypoints: project.waypoints,
         status: if success { ProjectStatus::Completed } else { ProjectStatus::Discarded },
+        message: message.to_string(),
     });
     if log.entries.len() > LOG_CAP {
         log.entries.remove(0);
