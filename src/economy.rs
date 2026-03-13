@@ -117,20 +117,25 @@ fn update_economy(
                 .unwrap_or(0);
             let _ = append_log(&format!(
                 "\n=== SESSION STARTED (unix: {now}) ===\n\
-                 day | balance | citizens | shops | income | bldg_cost(n) | road_cost(n_segs) | park_cost(n_cells) | travel | net | elapsed\n"
+                 day | balance | ecs_cit | world_cit | shops | income | bldg_cost(n) | road_cost(n_segs) | park_cells | park_corridors | travel(avg_dist) | net | elapsed\n"
             ));
         }
+        let world_citizen_count = world.citizens.len();
+        let park_corridor_count = world.park_corridor_cells.len();
         let _ = append_log(&format!(
-            "DAY {:.1} | bal={:.0} | cit={} | shops={} | inc={:.0} | bldg={:.0}({}) | road={:.0}({}) | park={:.0}({}) | travel={:.0} | net={:.0} | elapsed={:.2}\n",
+            "DAY {:.1} | bal={:.0} | ecs_cit={} | world_cit={} | shops={} | inc={:.0} | bldg={:.0}({}) | road={:.0}({}) | parks={} | corridors={} | travel={:.0}(avg={:.0}px) | net={:.0} | elapsed={:.2}\n",
             current_day,
             economy.balance,
             citizen_count as u32,
+            world_citizen_count,
             shop_count as u32,
             economy.daily_income,
             building_cost, building_count,
             road_cost, road_segment_count,
-            park_cost, park_cell_count,
+            park_cell_count,
+            park_corridor_count,
             travel_overhead,
+            avg_travel,
             net,
             days_elapsed,
         ));

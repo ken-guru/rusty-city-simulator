@@ -578,23 +578,23 @@ impl RoadNetwork {
     /// Add walkable `ParkPath` road segments through a park corridor cell so that
     /// citizens can navigate through the park.
     ///
-    /// * Horizontal corridor (c%2==1, r%2==0): adds N-S segments (c,r-1)→(c,r)→(c,r+1)
-    /// * Vertical corridor (c%2==0, r%2==1): adds E-W segments (c-1,r)→(c,r)→(c+1,r)
+    /// * Horizontal corridor (c%2==1, r%2==0): parks are E and W — path goes E-W (c-1,r)→(c,r)→(c+1,r)
+    /// * Vertical corridor (c%2==0, r%2==1): parks are N and S — path goes N-S (c,r-1)→(c,r)→(c,r+1)
     pub fn add_park_path(&mut self, cell: (i32, i32), current_day: f32) {
         let (c, r) = cell;
         let here = cell_to_world(c, r);
         if c % 2 != 0 && r % 2 == 0 {
-            // Horizontal corridor between two E-W buildings/parks: path goes N-S.
-            let north = cell_to_world(c, r - 1);
-            let south = cell_to_world(c, r + 1);
-            self.connect(north, here, SegmentType::ParkPath, current_day);
-            self.connect(here, south, SegmentType::ParkPath, current_day);
-        } else if c % 2 == 0 && r % 2 != 0 {
-            // Vertical corridor between two N-S buildings/parks: path goes E-W.
+            // Horizontal corridor: parks sit to the east and west — connect them E-W.
             let west = cell_to_world(c - 1, r);
             let east = cell_to_world(c + 1, r);
             self.connect(west, here, SegmentType::ParkPath, current_day);
             self.connect(here, east, SegmentType::ParkPath, current_day);
+        } else if c % 2 == 0 && r % 2 != 0 {
+            // Vertical corridor: parks sit to the north and south — connect them N-S.
+            let north = cell_to_world(c, r - 1);
+            let south = cell_to_world(c, r + 1);
+            self.connect(north, here, SegmentType::ParkPath, current_day);
+            self.connect(here, south, SegmentType::ParkPath, current_day);
         }
     }
 
