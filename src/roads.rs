@@ -1,10 +1,11 @@
 use bevy::prelude::*;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
 
 use crate::entities::Building;
-use crate::grid::{cell_to_world, is_building_cell, world_to_cell};
+use crate::grid::{cell_to_world, is_building_cell, world_to_cell, CELL_SIZE};
 use crate::time::GameTime;
 use crate::world::CityWorld;
 use crate::AppState;
@@ -98,6 +99,9 @@ impl RoadNetwork {
 
     /// Find a route from `start` to `end` through Road/Path segments.
     /// Returns `Some(waypoints)` in travel order (ending at `end`), or `None` if not connected.
+    ///
+    /// Building-centre nodes (even,even grid cells) are valid only as the first or last
+    /// waypoint — citizens must never transit THROUGH a building en route to somewhere else.
     pub fn find_road_path(&self, start: Vec2, end: Vec2) -> Option<Vec<Vec2>> {
         let passable: Vec<&RoadSegment> = self
             .segments
@@ -117,6 +121,8 @@ impl RoadNetwork {
         }
 
         // BFS over the road graph to find shortest hop-count path.
+        // Building-centre nodes are excluded as intermediate hops — they are only
+        // valid as the destination (end_node).
         use std::collections::VecDeque;
         let mut visited: Vec<Vec2> = vec![start_node];
         let mut queue: VecDeque<(Vec2, Vec<Vec2>)> = VecDeque::new();
@@ -139,6 +145,10 @@ impl RoadNetwork {
                         result.push(end);
                         return Some(result);
                     }
+                    // Skip building-centre nodes as intermediate hops.
+                    if is_building_pos(n) {
+                        continue;
+                    }
                     if !visited.iter().any(|v| nodes_close(*v, n)) {
                         visited.push(n);
                         let mut new_path = path.clone();
@@ -152,12 +162,14 @@ impl RoadNetwork {
     }
 
     /// Connect a new building to all nearby existing buildings.
-    ///
     /// Connect a new building to the road network using the corridor model.
     ///
     /// Adds an entry segment from the building centre to its entrance corridor cell,
     /// then uses BFS through corridor cells to find the shortest path to any
     /// existing road node, laying new road segments along the way.
+    ///
+    /// With ~30% probability, also attempts a SECOND connection to a different nearby
+    /// road node, creating a cross-link that helps break the single-tree topology.
     pub fn connect_new_building(
         &mut self,
         building: &Building,
@@ -168,7 +180,6 @@ impl RoadNetwork {
         let entrance = building.entrance_pos();
 
         // Snapshot all existing road nodes BEFORE adding the entry segment.
-        // The BFS must find a pre-existing network node, not one we are about to create.
         let existing_nodes: Vec<Vec2> = self
             .segments
             .iter()
@@ -181,15 +192,109 @@ impl RoadNetwork {
         // BFS from the entrance cell through corridor cells to the nearest
         // existing road node. Lay road segments along every cell in the path.
         let entrance_cell = world_to_cell(entrance);
+        let mut primary_target: Option<Vec2> = None;
         if let Some(path) = bfs_to_road_node(&existing_nodes, entrance_cell) {
             let mut prev_pos = entrance;
-            for &(cc, cr) in path.iter().skip(1) { // skip entrance_cell itself
+            for &(cc, cr) in path.iter().skip(1) {
                 let here = cell_to_world(cc, cr);
                 self.connect(prev_pos, here, SegmentType::Road, current_day);
                 prev_pos = here;
-                // Stop once we've reached an existing node.
                 let reached = existing_nodes.iter().any(|&n| nodes_close(n, here));
                 if reached {
+                    primary_target = Some(here);
+                    break;
+                }
+            }
+        }
+
+        // ~30% chance: attempt a second connection to a different nearby road node,
+        // creating a cross-link between two branches of the network.
+        let mut rng = rand::thread_rng();
+        if rng.gen_bool(0.30) {
+            self.try_second_connection(building.position, entrance_cell, primary_target, current_day);
+        }
+    }
+
+    /// Try to connect the building's entrance to a SECOND road node (different from
+    /// `primary_target`) within DUAL_CONNECT_RADIUS, via a corridor BFS path.
+    /// Adds: building_pos → entrance_B entry segment + BFS corridor path.
+    fn try_second_connection(
+        &mut self,
+        _building_pos: Vec2,
+        entrance_cell: (i32, i32),
+        primary_target: Option<Vec2>,
+        current_day: f32,
+    ) {
+        // Collect corridor road nodes (non-building-pos nodes) within radius.
+        let radius = DUAL_CONNECT_RADIUS;
+        let entrance_world = cell_to_world(entrance_cell.0, entrance_cell.1);
+        let candidates: Vec<Vec2> = self
+            .segments
+            .iter()
+            .flat_map(|s| [s.start, s.end])
+            .filter(|&n| {
+                // Must be a corridor node (not a building centre).
+                if is_building_pos(n) { return false; }
+                // Must be within radius.
+                if (n - entrance_world).length() > radius { return false; }
+                // Must not already be the primary connection target.
+                if let Some(pt) = primary_target {
+                    if nodes_close(n, pt) { return false; }
+                }
+                // Must not already be the building's own entrance.
+                if nodes_close(n, entrance_world) { return false; }
+                true
+            })
+            .collect::<Vec<_>>();
+        // Dedup by proximity (Vec2 isn't Hash).
+        let mut candidates_dedup: Vec<Vec2> = Vec::new();
+        for c in candidates {
+            if !candidates_dedup.iter().any(|&x| nodes_close(x, c)) {
+                candidates_dedup.push(c);
+            }
+        }
+        let candidates = candidates_dedup;
+
+        if candidates.is_empty() {
+            return;
+        }
+
+        // Pick the nearest candidate.
+        let Some(target) = candidates
+            .iter()
+            .min_by(|a, b| {
+                let da = (*a - entrance_world).length();
+                let db = (*b - entrance_world).length();
+                da.partial_cmp(&db).unwrap()
+            })
+            .copied()
+        else {
+            return;
+        };
+
+        // Check no direct segment already exists between entrance and target.
+        let already = self.segments.iter().any(|s| {
+            (nodes_close(s.start, entrance_world) && nodes_close(s.end, target))
+                || (nodes_close(s.start, target) && nodes_close(s.end, entrance_world))
+        });
+        if already {
+            return;
+        }
+
+        let target_cell = world_to_cell(target);
+        if let Some(path) = bfs_between_nodes(entrance_cell, target_cell) {
+            if path.len() > DUAL_CONNECT_MAX_CELLS {
+                return;
+            }
+            // Add entry segment from building centre to entrance_B (reuse same entrance for now;
+            // the building_pos → entrance entry segment already exists from the primary).
+            // Walk the BFS path from entrance to target.
+            let mut prev_pos = cell_to_world(entrance_cell.0, entrance_cell.1);
+            for &(cc, cr) in path.iter().skip(1) {
+                let here = cell_to_world(cc, cr);
+                self.connect(prev_pos, here, SegmentType::Road, current_day);
+                prev_pos = here;
+                if nodes_close(here, target) {
                     break;
                 }
             }
@@ -212,9 +317,110 @@ impl RoadNetwork {
         best
     }
 
+    /// Attempt to create one cross-connecting road between two spatially-close but
+    /// graph-distant corridor road nodes. Called periodically by a Bevy system.
+    ///
+    /// Returns true if a new connection was added.
+    pub fn try_periodic_cross_connect(&mut self, current_day: f32) -> bool {
+        // Collect unique corridor (non-building-centre) road nodes.
+        let corridor_nodes: Vec<Vec2> = {
+            let mut seen: HashSet<u64> = HashSet::new();
+            let mut out = Vec::new();
+            for seg in &self.segments {
+                for &n in &[seg.start, seg.end] {
+                    if is_building_pos(n) { continue; }
+                    // Use quantised key for dedup.
+                    let key = ((n.x as i64) << 20) ^ (n.y as i64);
+                    if seen.insert(key as u64) {
+                        out.push(n);
+                    }
+                }
+            }
+            out
+        };
+
+        if corridor_nodes.len() < 4 {
+            return false;
+        }
+
+        // Pick a random corridor node as the starting point.
+        let mut rng = rand::thread_rng();
+        let origin = corridor_nodes[rng.gen_range(0..corridor_nodes.len())];
+        let origin_cell = world_to_cell(origin);
+
+        // Search for another corridor node within radius that has no direct segment.
+        let candidates: Vec<Vec2> = corridor_nodes
+            .iter()
+            .filter(|&&n| {
+                if nodes_close(n, origin) { return false; }
+                if (n - origin).length() > CROSS_CONNECT_RADIUS { return false; }
+                // No direct segment already exists between them.
+                !self.segments.iter().any(|s| {
+                    (nodes_close(s.start, origin) && nodes_close(s.end, n))
+                        || (nodes_close(s.start, n) && nodes_close(s.end, origin))
+                })
+            })
+            .copied()
+            .collect();
+
+        if candidates.is_empty() {
+            return false;
+        }
+
+        // Pick the nearest candidate.
+        let Some(target) = candidates
+            .iter()
+            .min_by(|a, b| {
+                let da = (*a - origin).length();
+                let db = (*b - origin).length();
+                da.partial_cmp(&db).unwrap()
+            })
+            .copied()
+        else {
+            return false;
+        };
+
+        let target_cell = world_to_cell(target);
+        if let Some(path) = bfs_between_nodes(origin_cell, target_cell) {
+            if path.len() > 12 {
+                return false; // Too long to be a useful cross-link.
+            }
+            let mut prev_pos = origin;
+            for &(cc, cr) in path.iter().skip(1) {
+                let here = cell_to_world(cc, cr);
+                self.connect(prev_pos, here, SegmentType::Road, current_day);
+                prev_pos = here;
+                if nodes_close(here, target) {
+                    break;
+                }
+            }
+            info!("Periodic cross-connect: added road bridge ({} cells).", path.len());
+            return true;
+        }
+        false
+    }
+
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/// Radius within which to look for a second road connection for a new building.
+const DUAL_CONNECT_RADIUS: f32 = CELL_SIZE * 6.0; // ~720 px
+
+/// Maximum corridor cells for a dual or cross-connect BFS path.
+const DUAL_CONNECT_MAX_CELLS: usize = 15;
+
+/// How many game-days between periodic cross-connect attempts.
+const CROSS_CONNECT_INTERVAL_DAYS: f32 = 20.0;
+
+/// Spatial search radius for periodic cross-connects.
+const CROSS_CONNECT_RADIUS: f32 = CELL_SIZE * 8.0; // ~960 px
+
+/// Returns true if `pos` corresponds to a building-centre grid cell (even col, even row).
+fn is_building_pos(pos: Vec2) -> bool {
+    let (c, r) = world_to_cell(pos);
+    is_building_cell(c, r)
+}
 
 pub fn nodes_close(a: Vec2, b: Vec2) -> bool {
     (a - b).length() < NODE_MERGE_RADIUS
@@ -297,6 +503,58 @@ fn bfs_to_road_node(
     None
 }
 
+/// BFS from `start_cell` through corridor cells to a SPECIFIC `target_cell`.
+///
+/// Unlike `bfs_to_road_node`, this targets a single known cell rather than any
+/// existing road node. Used for cross-connect and dual-connection paths.
+/// Returns the cell path (inclusive of start and target) or None if unreachable
+/// within the budget (≤ 300 cells) or if start == target.
+fn bfs_between_nodes(start: (i32, i32), target: (i32, i32)) -> Option<Vec<(i32, i32)>> {
+    if start == target {
+        return None;
+    }
+    let mut came_from: HashMap<(i32, i32), Option<(i32, i32)>> = HashMap::new();
+    let mut queue: VecDeque<(i32, i32)> = VecDeque::new();
+    came_from.insert(start, None);
+    queue.push_back(start);
+
+    const MAX_CELLS: usize = 300;
+
+    while let Some(cell) = queue.pop_front() {
+        if cell == target {
+            // Reconstruct path.
+            let mut path = Vec::new();
+            let mut cur = cell;
+            loop {
+                path.push(cur);
+                match came_from.get(&cur) {
+                    Some(Some(prev)) => cur = *prev,
+                    _ => break,
+                }
+            }
+            path.reverse();
+            return Some(path);
+        }
+
+        if came_from.len() > MAX_CELLS {
+            break;
+        }
+
+        for (dc, dr) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+            let next = (cell.0 + dc, cell.1 + dr);
+            if came_from.contains_key(&next) {
+                continue;
+            }
+            if is_building_cell(next.0, next.1) {
+                continue;
+            }
+            came_from.insert(next, Some(cell));
+            queue.push_back(next);
+        }
+    }
+    None
+}
+
 // ─── Plugin ─────────────────────────────────────────────────────────────────
 
 /// Tracks the ECS entity that renders each road segment (keyed by segment id).
@@ -307,14 +565,23 @@ pub struct RoadEntities {
     pub map: HashMap<String, (Entity, SegmentType)>,
 }
 
+/// Tracks the last game-day on which a periodic cross-connect was attempted.
+#[derive(Resource, Default)]
+pub struct LastCrossConnectDay(pub f32);
+
 pub struct RoadsPlugin;
 
 impl Plugin for RoadsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(RoadNetwork::default())
             .insert_resource(RoadEntities::default())
+            .insert_resource(LastCrossConnectDay::default())
             .add_systems(OnEnter(AppState::InGame), generate_initial_roads)
-            .add_systems(Update, (evolve_roads, sync_road_entities).run_if(in_state(AppState::InGame)));
+            .add_systems(
+                Update,
+                (evolve_roads, periodic_cross_connect, sync_road_entities)
+                    .run_if(in_state(AppState::InGame)),
+            );
     }
 }
 
@@ -399,7 +666,6 @@ fn evolve_roads(
         return;
     }
     // Stagger checks to once per ~5 real seconds.
-    use rand::Rng;
     if !rand::thread_rng().gen_bool((time.delta_secs() * 0.2).clamp(0.0, 1.0) as f64) {
         return;
     }
@@ -442,6 +708,24 @@ fn evolve_roads(
             && (now - s.last_used_day) > DESIRE_REMOVE_DAYS
             && s.usage < DESIRE_THRESHOLD)
     });
+}
+
+/// Periodically attempts to create a cross-connecting road between two nearby but
+/// graph-distant road nodes. Fires approximately every CROSS_CONNECT_INTERVAL_DAYS game-days.
+fn periodic_cross_connect(
+    mut network: ResMut<RoadNetwork>,
+    mut last_day: ResMut<LastCrossConnectDay>,
+    game_time: Res<GameTime>,
+) {
+    if game_time.time_scale == 0.0 {
+        return;
+    }
+    let now = game_time.current_day();
+    if now - last_day.0 < CROSS_CONNECT_INTERVAL_DAYS {
+        return;
+    }
+    last_day.0 = now;
+    network.try_periodic_cross_connect(now);
 }
 
 fn sync_road_entities(
@@ -600,5 +884,92 @@ mod tests {
         for &(c, r) in &path {
             assert!(!is_building_cell(c, r));
         }
+    }
+
+    // ── bfs_between_nodes tests ──────────────────────────────────────────────
+
+    #[test]
+    fn bfs_between_same_cell_returns_none() {
+        assert!(bfs_between_nodes((1, 1), (1, 1)).is_none());
+    }
+
+    #[test]
+    fn bfs_between_adjacent_corridor_cells() {
+        // (1, 1) and (3, 1) are corridor cells separated by the corridor cell (2, 1).
+        let path = bfs_between_nodes((1, 1), (3, 1)).expect("should find path");
+        assert_eq!(path.first(), Some(&(1, 1)));
+        assert_eq!(path.last(), Some(&(3, 1)));
+        for &(c, r) in &path {
+            assert!(!is_building_cell(c, r), "path cell ({c},{r}) is a building cell");
+        }
+    }
+
+    #[test]
+    fn bfs_between_nodes_avoids_building_cells() {
+        // (1, 1) to (1, 3) cannot go through (1, 2) [col=1 odd, row=2 even → corridor ok]
+        // Actually (1, 2): col=1 odd → corridor cell. Should be reachable directly.
+        let path = bfs_between_nodes((1, 1), (1, 3)).expect("should find path");
+        for &(c, r) in &path {
+            assert!(!is_building_cell(c, r), "path cell ({c},{r}) is a building cell");
+        }
+        assert_eq!(path.first(), Some(&(1, 1)));
+        assert_eq!(path.last(), Some(&(1, 3)));
+    }
+
+    // ── is_building_pos tests ────────────────────────────────────────────────
+
+    #[test]
+    fn is_building_pos_identifies_building_centres() {
+        // (0, 0) cell → world (0, 0): even,even → building pos.
+        assert!(is_building_pos(crate::grid::cell_to_world(0, 0)));
+        // (1, 1) cell → odd,odd → corridor.
+        assert!(!is_building_pos(crate::grid::cell_to_world(1, 1)));
+        // (2, 0) cell → even,even → building pos.
+        assert!(is_building_pos(crate::grid::cell_to_world(2, 0)));
+        // (1, 0) cell → odd,even → corridor.
+        assert!(!is_building_pos(crate::grid::cell_to_world(1, 0)));
+    }
+
+    // ── find_road_path building-transit exclusion test ───────────────────────
+
+    #[test]
+    fn find_road_path_excludes_building_transit() {
+        // Layout: two corridor nodes connected only through a building centre.
+        //   A (corridor, 120,120) --seg--> B (building, 240,0) --seg--> C (corridor, 360,120)
+        // find_road_path from A to C should return None because B is a building pos
+        // and cannot be used as a transit hop.
+        let mut network = RoadNetwork::default();
+        let a = Vec2::new(120.0, 120.0); // corridor cell (1,1)
+        let b = Vec2::new(240.0, 0.0);   // building cell (2,0)
+        let c = Vec2::new(360.0, 120.0); // corridor cell (3,1)
+        network.segments.push(RoadSegment {
+            id: "ab".into(), start: a, end: b, seg_type: SegmentType::Road,
+            usage: 0.0, last_used_day: 0.0,
+        });
+        network.segments.push(RoadSegment {
+            id: "bc".into(), start: b, end: c, seg_type: SegmentType::Road,
+            usage: 0.0, last_used_day: 0.0,
+        });
+        // Direct path A→C doesn't exist, and B is a building so can't transit.
+        // A is start_node, C is end_node, B would be the only intermediate.
+        let result = network.find_road_path(a, c);
+        assert!(result.is_none(), "should not route through a building centre: {result:?}");
+    }
+
+    #[test]
+    fn find_road_path_allows_building_as_destination() {
+        // A citizen can still reach a building — it's the DESTINATION, not transit.
+        //   A (corridor) --seg--> B (building centre, destination)
+        let mut network = RoadNetwork::default();
+        let a = Vec2::new(120.0, 120.0); // corridor cell (1,1)
+        let b = Vec2::new(240.0, 0.0);   // building cell (2,0) — destination
+        network.segments.push(RoadSegment {
+            id: "ab".into(), start: a, end: b, seg_type: SegmentType::Road,
+            usage: 0.0, last_used_day: 0.0,
+        });
+        // start ≈ a (corridor), end = b (building).
+        // start_node = a, end_node = b → direct single-hop.
+        let result = network.find_road_path(a, b);
+        assert!(result.is_some(), "should be able to route TO a building centre");
     }
 }

@@ -115,6 +115,7 @@ fn cleanup_ingame(
     // Reset simulation resources to defaults so setup() starts fresh.
     commands.insert_resource(CityWorld::new());
     commands.insert_resource(roads::RoadNetwork::default());
+    commands.insert_resource(roads::LastCrossConnectDay::default());
     commands.insert_resource(time::GameTime::new());
 }
 
