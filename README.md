@@ -10,8 +10,10 @@ A Rust-based city simulation where citizens autonomously live out their daily li
 - **Reproduction**: Adults of opposite genders can reproduce, growing the population
 - **Dynamic City Growth**: New buildings (homes, offices, shops) spawn as the population grows
 - **Grid-based Road Network**: Roads form organically between buildings in corridor cells between them
+- **Organic Cross-Connections**: Periodic road cross-links and dual-building connections break long travel detours; connections are prioritised by travel savings
 - **Road Evolution**: Lightly used roads degrade; new roads extend to connect new buildings
-- **Parks**: Enclosed spaces surrounded by buildings automatically become parks citizens can visit
+- **Parks**: Enclosed spaces surrounded by buildings automatically become parks citizens can visit; adjacent parks merge visually across corridor cells with walkable paths through them
+- **Park Corridors**: When two parks are adjacent, the corridor cell between them becomes a walkable park path citizens can traverse
 - **Pixel Art Sprites**: Distinct sprites for homes, offices, shops, and parks
 - **Start Screen**: New game or load a saved game from a list
 - **Multiple Saves**: Timestamped save files with version compatibility tracking
@@ -77,11 +79,14 @@ Citizens travel exclusively along established roads. If no road connects two loc
 ### Road Network
 - Roads exist in the *corridor* cells between buildings — they never pass through buildings
 - New buildings are automatically connected to the nearest road via BFS path-finding
+- **Cross-connections**: ~60% of new buildings gain a second road link; periodic cross-links also fire every 4 game-days, prioritising connections that save the most travel distance
 - Lightly-used road segments degrade from Road → Path → removed over time
 - Crossroad cells where multiple roads meet are protected from building placement
 
 ### Parks
-When a cell is completely enclosed by occupied cells on all eight sides, it becomes a park. Parks can never be built upon and offer citizens a place to rest and socialise.
+When a building cell is enclosed by 4 occupied building-cell neighbours, it becomes a park. Parks can never be built upon and offer citizens a place to rest and socialise.
+
+When two adjacent parks share a corridor cell between them, that corridor cell becomes a **park corridor**: visually part of the park (grass with a stone path), and walkable so citizens can cut through.
 
 ### Population Growth
 When the population grows, new buildings are placed on the grid and connected to the road network. The mix of homes, offices, and shops expands proportionally.
@@ -122,7 +127,7 @@ The city uses a two-cell-type grid:
 | Cell type | Rule | Contents |
 |-----------|------|----------|
 | **Building cell** | `col % 2 == 0` AND `row % 2 == 0` | building, park, or empty |
-| **Corridor cell** | everything else | road, crossroads, or empty |
+| **Corridor cell** | everything else | road, crossroads, park corridor, or empty |
 
 Adjacent building cells are always 240 px apart (2 × `CELL_SIZE`), ensuring a 120 px corridor always exists between them. Each building has exactly **one entrance direction** (N/S/E/W) which connects it to the road network.
 

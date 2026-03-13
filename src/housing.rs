@@ -2,7 +2,8 @@ use crate::entities::*;
 use crate::grid::{cell_to_world, is_building_cell, world_to_cell, CELL_SIZE};
 use crate::roads::RoadNetwork;
 use crate::sprites::SpriteAssets;
-use crate::world::{building_stats, CityWorld, ParkMarker};
+use crate::world::{building_stats, CityWorld, ParkCorridorMarker, ParkMarker};
+use crate::time::GameTime;
 use bevy::prelude::*;
 
 #[derive(Event)]
@@ -23,7 +24,7 @@ fn check_housing_pressure(
     mut world: ResMut<CityWorld>,
     mut building_events: EventWriter<NewBuildingEvent>,
     time: Res<Time>,
-    game_time: Res<crate::time::GameTime>,
+    game_time: Res<GameTime>,
 ) {
     let delta = time.delta_secs() * game_time.time_scale;
     if !should_tick(delta, 0.1) {
@@ -183,7 +184,7 @@ fn spawn_building(
     mut road_network: ResMut<RoadNetwork>,
     mut world: ResMut<CityWorld>,
     sprite_assets: Res<SpriteAssets>,
-    game_time: Res<crate::time::GameTime>,
+    game_time: Res<GameTime>,
 ) {
     for event in building_events.read() {
         let b = &event.building;
@@ -217,7 +218,7 @@ fn spawn_building(
         // Detect any cells that became fully enclosed and should become parks.
         let cell = world_to_cell(b.position);
         let new_parks = world.detect_new_parks(&[cell]);
-        for park_cell in new_parks {
+        for park_cell in &new_parks {
             let park_pos = cell_to_world(park_cell.0, park_cell.1);
             commands.spawn((
                 Sprite {
@@ -226,9 +227,35 @@ fn spawn_building(
                     ..default()
                 },
                 Transform::from_xyz(park_pos.x, park_pos.y, -0.25),
-                ParkMarker { cell: park_cell },
+                ParkMarker { cell: *park_cell },
             ));
             info!("Park created at grid {:?}", park_cell);
+        }
+
+        // Detect corridor cells that now bridge two adjacent parks and turn
+        // them into walkable park corridor paths.
+        let new_corridors = world.detect_park_corridors(&new_parks);
+        let current_day = game_time.current_day();
+        for corridor_cell in new_corridors {
+            let (cc, cr) = corridor_cell;
+            let is_ns = cc % 2 != 0 && cr % 2 == 0;
+            let corridor_pos = cell_to_world(cc, cr);
+            let image = if is_ns {
+                sprite_assets.park_corridor_ns.clone()
+            } else {
+                sprite_assets.park_corridor_ew.clone()
+            };
+            commands.spawn((
+                Sprite {
+                    image,
+                    custom_size: Some(Vec2::splat(CELL_SIZE)),
+                    ..default()
+                },
+                Transform::from_xyz(corridor_pos.x, corridor_pos.y, -0.3),
+                ParkCorridorMarker { cell: corridor_cell, is_ns },
+            ));
+            road_network.add_park_path(corridor_cell, current_day);
+            info!("Park corridor at grid {:?} ({})", corridor_cell, if is_ns { "N-S" } else { "E-W" });
         }
 
         info!(

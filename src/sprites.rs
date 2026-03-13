@@ -18,6 +18,10 @@ pub struct SpriteAssets {
     pub offices: Vec<Handle<Image>>,   // 3 variants
     pub shops:   Vec<Handle<Image>>,   // 3 variants
     pub park:    Handle<Image>,        // single park sprite
+    /// Park corridor with N-S walking path (horizontal corridor cell between two E-W parks).
+    pub park_corridor_ns: Handle<Image>,
+    /// Park corridor with E-W walking path (vertical corridor cell between two N-S parks).
+    pub park_corridor_ew: Handle<Image>,
 }
 
 impl SpriteAssets {
@@ -43,7 +47,9 @@ pub fn setup_sprites(mut commands: Commands, mut images: ResMut<Assets<Image>>) 
     let offices: Vec<Handle<Image>> = (0..3).map(|v| images.add(office_sprite(v))).collect();
     let shops: Vec<Handle<Image>> = (0..3).map(|v| images.add(shop_sprite(v))).collect();
     let park = images.add(park_sprite());
-    commands.insert_resource(SpriteAssets { homes, offices, shops, park });
+    let park_corridor_ns = images.add(park_corridor_ns_sprite());
+    let park_corridor_ew = images.add(park_corridor_ew_sprite());
+    commands.insert_resource(SpriteAssets { homes, offices, shops, park, park_corridor_ns, park_corridor_ew });
 }
 
 // ─── Image builder ───────────────────────────────────────────────────────────
@@ -456,4 +462,66 @@ fn park_sprite() -> Image {
         px(190, 175, 145),  // 5 path stone
     ];
     build_image(12, 12, &PARK_PIXELS, &palette)
+}
+
+// ─── Park corridor sprites ────────────────────────────────────────────────────
+//
+// Palette: 0 transparent  1 light grass  2 dark grass  5 path stone
+
+#[rustfmt::skip]
+const PARK_CORRIDOR_NS_PIXELS: [u8; 144] = [
+    // rows 0-11: 12 wide — grass sides, stone path down the centre (cols 5-6)
+    1, 1, 1, 1, 2, 5, 5, 2, 1, 1, 1, 1,
+    1, 2, 1, 1, 2, 5, 5, 2, 1, 1, 2, 1,
+    1, 1, 2, 1, 1, 5, 5, 1, 1, 2, 1, 1,
+    1, 1, 1, 2, 1, 5, 5, 1, 2, 1, 1, 1,
+    2, 1, 1, 1, 2, 5, 5, 2, 1, 1, 1, 2,
+    1, 1, 2, 1, 1, 5, 5, 1, 1, 2, 1, 1,
+    1, 2, 1, 1, 1, 5, 5, 1, 1, 1, 2, 1,
+    1, 1, 1, 2, 2, 5, 5, 2, 2, 1, 1, 1,
+    2, 1, 2, 1, 1, 5, 5, 1, 1, 2, 1, 2,
+    1, 1, 1, 1, 2, 5, 5, 2, 1, 1, 1, 1,
+    1, 2, 1, 2, 1, 5, 5, 1, 2, 1, 2, 1,
+    1, 1, 1, 1, 1, 5, 5, 1, 1, 1, 1, 1,
+];
+
+#[rustfmt::skip]
+const PARK_CORRIDOR_EW_PIXELS: [u8; 144] = [
+    // rows 0-11: 12 wide — grass top/bottom, stone path across middle (rows 5-6)
+    1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1,
+    1, 2, 1, 1, 1, 2, 2, 1, 1, 1, 2, 1,
+    1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1,
+    2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 2,
+    1, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1,
+    2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 2,
+    1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1,
+    1, 2, 1, 1, 1, 2, 2, 1, 1, 1, 2, 1,
+    1, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1,
+];
+
+fn park_corridor_ns_sprite() -> Image {
+    let palette: [[u8; 4]; 6] = [
+        CLEAR,
+        px( 95, 165,  65),  // 1 light grass
+        px( 65, 120,  40),  // 2 dark grass
+        px( 45, 110,  30),  // 3 (unused)
+        px(100,  65,  20),  // 4 (unused)
+        px(190, 175, 145),  // 5 path stone
+    ];
+    build_image(12, 12, &PARK_CORRIDOR_NS_PIXELS, &palette)
+}
+
+fn park_corridor_ew_sprite() -> Image {
+    let palette: [[u8; 4]; 6] = [
+        CLEAR,
+        px( 95, 165,  65),  // 1 light grass
+        px( 65, 120,  40),  // 2 dark grass
+        px( 45, 110,  30),  // 3 (unused)
+        px(100,  65,  20),  // 4 (unused)
+        px(190, 175, 145),  // 5 path stone
+    ];
+    build_image(12, 12, &PARK_CORRIDOR_EW_PIXELS, &palette)
 }

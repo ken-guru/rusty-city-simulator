@@ -103,9 +103,14 @@ fn cleanup_ingame(
     buildings: Query<Entity, With<Building>>,
     citizens: Query<Entity, With<Citizen>>,
     parks: Query<Entity, With<ParkMarker>>,
+    park_corridors: Query<Entity, With<ParkCorridorMarker>>,
     mut road_entities: ResMut<RoadEntities>,
 ) {
-    for entity in buildings.iter().chain(citizens.iter()).chain(parks.iter()) {
+    for entity in buildings.iter()
+        .chain(citizens.iter())
+        .chain(parks.iter())
+        .chain(park_corridors.iter())
+    {
         commands.entity(entity).despawn_recursive();
     }
     // Despawn road mesh entities tracked by RoadEntities.
@@ -184,6 +189,28 @@ fn setup(
             Transform::from_xyz(park_pos.x, park_pos.y, -0.25),
             world::ParkMarker { cell: (col, row) },
         ));
+    }
+
+    // Spawn park corridor entities from saved state (visual park paths between parks).
+    for &(col, row) in &world.park_corridor_cells {
+        let is_ns = col % 2 != 0 && row % 2 == 0;
+        let corridor_pos = grid::cell_to_world(col, row);
+        let image = if is_ns {
+            sprite_assets.park_corridor_ns.clone()
+        } else {
+            sprite_assets.park_corridor_ew.clone()
+        };
+        commands.spawn((
+            Sprite {
+                image,
+                custom_size: Some(Vec2::splat(grid::CELL_SIZE)),
+                ..default()
+            },
+            Transform::from_xyz(corridor_pos.x, corridor_pos.y, -0.3),
+            world::ParkCorridorMarker { cell: (col, row), is_ns },
+        ));
+        // Restore walkable ParkPath road segments for each corridor cell.
+        road_network.add_park_path((col, row), 0.0);
     }
 
     // Spawn citizens

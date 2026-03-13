@@ -20,6 +20,9 @@ pub enum SegmentType {
     Path,
     /// Forming desire path — very faint, accumulates from shortcuts.
     Desire,
+    /// Walkable path through a park corridor — passable by citizens but
+    /// not rendered as a road mesh (the park corridor sprite handles visuals).
+    ParkPath,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -106,7 +109,7 @@ impl RoadNetwork {
         let passable: Vec<&RoadSegment> = self
             .segments
             .iter()
-            .filter(|s| matches!(s.seg_type, SegmentType::Road | SegmentType::Path))
+            .filter(|s| matches!(s.seg_type, SegmentType::Road | SegmentType::Path | SegmentType::ParkPath))
             .collect();
 
         if passable.is_empty() {
@@ -207,10 +210,10 @@ impl RoadNetwork {
             }
         }
 
-        // ~30% chance: attempt a second connection to a different nearby road node,
+        // ~60% chance: attempt a second connection to a different nearby road node,
         // creating a cross-link between two branches of the network.
         let mut rng = rand::thread_rng();
-        if rng.gen_bool(0.30) {
+        if rng.gen_bool(0.60) {
             self.try_second_connection(building.position, entrance_cell, primary_target, current_day);
         }
     }
@@ -320,6 +323,10 @@ impl RoadNetwork {
     /// Attempt to create one cross-connecting road between two spatially-close but
     /// graph-distant corridor road nodes. Called periodically by a Bevy system.
     ///
+    /// Tries up to 5 random origin nodes and picks the candidate that offers the
+    /// greatest travel-distance savings (current road hops − direct BFS hops).
+    /// Skips candidates where savings < 3 hops (not a meaningful shortcut).
+    ///
     /// Returns true if a new connection was added.
     pub fn try_periodic_cross_connect(&mut self, current_day: f32) -> bool {
         // Collect unique corridor (non-building-centre) road nodes.
@@ -329,7 +336,6 @@ impl RoadNetwork {
             for seg in &self.segments {
                 for &n in &[seg.start, seg.end] {
                     if is_building_pos(n) { continue; }
-                    // Use quantised key for dedup.
                     let key = ((n.x as i64) << 20) ^ (n.y as i64);
                     if seen.insert(key as u64) {
                         out.push(n);
@@ -343,61 +349,157 @@ impl RoadNetwork {
             return false;
         }
 
-        // Pick a random corridor node as the starting point.
         let mut rng = rand::thread_rng();
-        let origin = corridor_nodes[rng.gen_range(0..corridor_nodes.len())];
-        let origin_cell = world_to_cell(origin);
 
-        // Search for another corridor node within radius that has no direct segment.
-        let candidates: Vec<Vec2> = corridor_nodes
-            .iter()
-            .filter(|&&n| {
-                if nodes_close(n, origin) { return false; }
-                if (n - origin).length() > CROSS_CONNECT_RADIUS { return false; }
-                // No direct segment already exists between them.
-                !self.segments.iter().any(|s| {
-                    (nodes_close(s.start, origin) && nodes_close(s.end, n))
-                        || (nodes_close(s.start, n) && nodes_close(s.end, origin))
+        // Try up to 5 random origins; track the best candidate by savings score.
+        let num_attempts = std::cmp::min(5, corridor_nodes.len());
+        let mut tried: Vec<usize> = Vec::new();
+        let mut best: Option<(Vec2, Vec<(i32, i32)>, usize)> = None; // (origin, path, savings)
+
+        'outer: for _ in 0..num_attempts {
+            // Pick a random unvisited origin.
+            let idx = {
+                let mut i = rng.gen_range(0..corridor_nodes.len());
+                let mut guard = 0;
+                while tried.contains(&i) {
+                    i = rng.gen_range(0..corridor_nodes.len());
+                    guard += 1;
+                    if guard > corridor_nodes.len() {
+                        continue 'outer;
+                    }
+                }
+                tried.push(i);
+                i
+            };
+            let origin = corridor_nodes[idx];
+            let origin_cell = world_to_cell(origin);
+
+            // Gather candidate nodes: within radius, no direct segment yet.
+            let mut candidates: Vec<Vec2> = corridor_nodes
+                .iter()
+                .filter(|&&n| {
+                    if nodes_close(n, origin) { return false; }
+                    if (n - origin).length() > CROSS_CONNECT_RADIUS { return false; }
+                    !self.segments.iter().any(|s| {
+                        (nodes_close(s.start, origin) && nodes_close(s.end, n))
+                            || (nodes_close(s.start, n) && nodes_close(s.end, origin))
+                    })
                 })
-            })
-            .copied()
-            .collect();
+                .copied()
+                .collect();
 
-        if candidates.is_empty() {
-            return false;
-        }
-
-        // Pick the nearest candidate.
-        let Some(target) = candidates
-            .iter()
-            .min_by(|a, b| {
+            // Sort by proximity so we evaluate the nearest first.
+            candidates.sort_by(|a, b| {
                 let da = (*a - origin).length();
                 let db = (*b - origin).length();
                 da.partial_cmp(&db).unwrap()
-            })
-            .copied()
-        else {
-            return false;
-        };
+            });
 
-        let target_cell = world_to_cell(target);
-        if let Some(path) = bfs_between_nodes(origin_cell, target_cell) {
-            if path.len() > 12 {
-                return false; // Too long to be a useful cross-link.
+            for target in candidates.iter().take(3) {
+                let target_cell = world_to_cell(*target);
+                let Some(path) = bfs_between_nodes(origin_cell, target_cell) else { continue };
+                if path.len() > DUAL_CONNECT_MAX_CELLS { continue; }
+
+                let bfs_hops = path.len();
+                // Compute savings: road path hops vs direct BFS hops.
+                let savings = match self.road_path_hop_count(origin, *target) {
+                    None => bfs_hops + 10, // not connected at all — always worth connecting
+                    Some(road_hops) => {
+                        if road_hops > bfs_hops { road_hops - bfs_hops } else { 0 }
+                    }
+                };
+
+                if savings < 3 { continue; } // not a meaningful shortcut
+
+                let is_better = best.as_ref().map_or(true, |(_, _, s)| savings > *s);
+                if is_better {
+                    best = Some((origin, path, savings));
+                }
+                break; // take the best candidate from this origin and move to next origin
             }
+        }
+
+        if let Some((origin, path, savings)) = best {
             let mut prev_pos = origin;
             for &(cc, cr) in path.iter().skip(1) {
                 let here = cell_to_world(cc, cr);
                 self.connect(prev_pos, here, SegmentType::Road, current_day);
                 prev_pos = here;
-                if nodes_close(here, target) {
-                    break;
-                }
             }
-            info!("Periodic cross-connect: added road bridge ({} cells).", path.len());
+            info!("Periodic cross-connect: savings={} hops, {} cells.", savings, path.len());
             return true;
         }
         false
+    }
+
+    /// Returns the BFS hop count between two world positions over the current road/path network.
+    /// Returns `None` if the two points are not currently connected.
+    /// Only Road and Path segments are considered (not Desire or ParkPath).
+    fn road_path_hop_count(&self, start: Vec2, end: Vec2) -> Option<usize> {
+        let passable: Vec<&RoadSegment> = self
+            .segments
+            .iter()
+            .filter(|s| matches!(s.seg_type, SegmentType::Road | SegmentType::Path))
+            .collect();
+        if passable.is_empty() {
+            return None;
+        }
+        let start_node = nearest_node(&passable, start, 350.0)?;
+        let end_node = nearest_node(&passable, end, 350.0)?;
+        if nodes_close(start_node, end_node) {
+            return Some(0);
+        }
+        use std::collections::VecDeque;
+        let mut visited: Vec<Vec2> = vec![start_node];
+        let mut queue: VecDeque<(Vec2, usize)> = VecDeque::new();
+        queue.push_back((start_node, 0));
+        while let Some((current, hops)) = queue.pop_front() {
+            for seg in &passable {
+                let neighbor = if nodes_close(seg.start, current) {
+                    Some(seg.end)
+                } else if nodes_close(seg.end, current) {
+                    Some(seg.start)
+                } else {
+                    None
+                };
+                if let Some(n) = neighbor {
+                    if nodes_close(n, end_node) {
+                        return Some(hops + 1);
+                    }
+                    if is_building_pos(n) {
+                        continue;
+                    }
+                    if !visited.iter().any(|v| nodes_close(*v, n)) {
+                        visited.push(n);
+                        queue.push_back((n, hops + 1));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Add walkable `ParkPath` road segments through a park corridor cell so that
+    /// citizens can navigate through the park.
+    ///
+    /// * Horizontal corridor (c%2==1, r%2==0): adds N-S segments (c,r-1)→(c,r)→(c,r+1)
+    /// * Vertical corridor (c%2==0, r%2==1): adds E-W segments (c-1,r)→(c,r)→(c+1,r)
+    pub fn add_park_path(&mut self, cell: (i32, i32), current_day: f32) {
+        let (c, r) = cell;
+        let here = cell_to_world(c, r);
+        if c % 2 != 0 && r % 2 == 0 {
+            // Horizontal corridor between two E-W buildings/parks: path goes N-S.
+            let north = cell_to_world(c, r - 1);
+            let south = cell_to_world(c, r + 1);
+            self.connect(north, here, SegmentType::ParkPath, current_day);
+            self.connect(here, south, SegmentType::ParkPath, current_day);
+        } else if c % 2 == 0 && r % 2 != 0 {
+            // Vertical corridor between two N-S buildings/parks: path goes E-W.
+            let west = cell_to_world(c - 1, r);
+            let east = cell_to_world(c + 1, r);
+            self.connect(west, here, SegmentType::ParkPath, current_day);
+            self.connect(here, east, SegmentType::ParkPath, current_day);
+        }
     }
 
 }
@@ -408,13 +510,13 @@ impl RoadNetwork {
 const DUAL_CONNECT_RADIUS: f32 = CELL_SIZE * 6.0; // ~720 px
 
 /// Maximum corridor cells for a dual or cross-connect BFS path.
-const DUAL_CONNECT_MAX_CELLS: usize = 15;
+const DUAL_CONNECT_MAX_CELLS: usize = 20;
 
 /// How many game-days between periodic cross-connect attempts.
-const CROSS_CONNECT_INTERVAL_DAYS: f32 = 20.0;
+const CROSS_CONNECT_INTERVAL_DAYS: f32 = 4.0;
 
 /// Spatial search radius for periodic cross-connects.
-const CROSS_CONNECT_RADIUS: f32 = CELL_SIZE * 8.0; // ~960 px
+const CROSS_CONNECT_RADIUS: f32 = CELL_SIZE * 12.0; // ~1440 px
 
 /// Returns true if `pos` corresponds to a building-centre grid cell (even col, even row).
 fn is_building_pos(pos: Vec2) -> bool {
@@ -675,7 +777,7 @@ fn evolve_roads(
     for seg in &mut network.segments {
         let days_unused = now - seg.last_used_day;
 
-        // Upgrade via accumulated usage.
+        // Upgrade via accumulated usage (only for Desire/Path; ParkPath never upgrades).
         match seg.seg_type {
             SegmentType::Desire if seg.usage >= PATH_THRESHOLD => {
                 seg.seg_type = SegmentType::Path;
@@ -688,7 +790,7 @@ fn evolve_roads(
             _ => {}
         }
 
-        // Degrade via disuse.
+        // Degrade via disuse (ParkPath segments never degrade).
         match seg.seg_type {
             SegmentType::Road if days_unused > ROAD_DEGRADE_DAYS => {
                 seg.seg_type = SegmentType::Path;
@@ -701,6 +803,7 @@ fn evolve_roads(
         }
     }
 
+        // ParkPath segments are not removed by the retain filter below (they never Desire).
     // Remove fully-faded desire paths.
     let now = game_time.current_day();
     network.segments.retain(|s| {
@@ -770,6 +873,7 @@ fn sync_road_entities(
             SegmentType::Road => (20.0_f32, Color::srgb(0.62, 0.59, 0.50)),
             SegmentType::Path => (12.0_f32, Color::srgb(0.50, 0.36, 0.18)),
             SegmentType::Desire => (6.0_f32, Color::srgba(0.45, 0.32, 0.16, 0.35)),
+            SegmentType::ParkPath => continue, // visuals handled by ParkCorridorMarker sprite
         };
 
         let mesh = meshes.add(Rectangle::new(length, width));

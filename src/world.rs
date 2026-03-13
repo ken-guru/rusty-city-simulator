@@ -12,6 +12,17 @@ pub struct ParkMarker {
     pub cell: (i32, i32),
 }
 
+/// ECS component that marks a park corridor entity — a corridor cell visually
+/// merged into an adjacent park, with a walkable path through it.
+#[derive(Component, Clone)]
+#[allow(dead_code)]
+pub struct ParkCorridorMarker {
+    pub cell: (i32, i32),
+    /// True for horizontal corridor cells (c%2==1, r%2==0) where the path runs N-S.
+    /// False for vertical corridor cells (c%2==0, r%2==1) where the path runs E-W.
+    pub is_ns: bool,
+}
+
 #[derive(Resource, Clone, Serialize, Deserialize)]
 pub struct CityWorld {
     pub citizens: Vec<Citizen>,
@@ -26,6 +37,10 @@ pub struct CityWorld {
     /// Building-type cells that have been converted to parks.
     #[serde(default)]
     pub park_cells: HashSet<(i32, i32)>,
+    /// Corridor cells that are visually part of a park (path through the park).
+    /// These are never building cells; they sit between two adjacent park cells.
+    #[serde(default)]
+    pub park_corridor_cells: HashSet<(i32, i32)>,
 }
 
 impl CityWorld {
@@ -105,6 +120,7 @@ impl CityWorld {
             occupied_cells,
             crossroad_cells: HashSet::new(),
             park_cells: HashSet::new(),
+            park_corridor_cells: HashSet::new(),
         }
     }
 }
@@ -148,6 +164,51 @@ impl CityWorld {
             }
         }
         new_parks
+    }
+
+    /// Check whether any corridor cells adjacent to newly-created parks should
+    /// become park corridors (visual + walkable park paths).
+    ///
+    /// A corridor cell becomes a park corridor when both of its building-cell
+    /// neighbours in the corridor direction are park cells:
+    /// - Horizontal corridor (c%2==1, r%2==0): needs (c-1,r) and (c+1,r) both parks.
+    /// - Vertical corridor (c%2==0, r%2==1): needs (c,r-1) and (c,r+1) both parks.
+    ///
+    /// Returns the list of newly-created park corridor cells.
+    pub fn detect_park_corridors(&mut self, new_parks: &[(i32, i32)]) -> Vec<(i32, i32)> {
+        let mut new_corridors = Vec::new();
+
+        for &(pc, pr) in new_parks {
+            // Check the 4 adjacent corridor cells of this park cell.
+            for &(dc, dr) in &[(1i32, 0i32), (-1, 0), (0, 1i32), (0, -1)] {
+                let cc = pc + dc;
+                let cr = pr + dr;
+                if self.park_corridor_cells.contains(&(cc, cr)) {
+                    continue; // already a park corridor
+                }
+                let is_horiz_corridor = cc % 2 != 0 && cr % 2 == 0;
+                let is_vert_corridor  = cc % 2 == 0 && cr % 2 != 0;
+
+                if is_horiz_corridor {
+                    // Horizontal corridor: check both E/W building neighbours.
+                    let west = (cc - 1, cr);
+                    let east = (cc + 1, cr);
+                    if self.park_cells.contains(&west) && self.park_cells.contains(&east) {
+                        self.park_corridor_cells.insert((cc, cr));
+                        new_corridors.push((cc, cr));
+                    }
+                } else if is_vert_corridor {
+                    // Vertical corridor: check both N/S building neighbours.
+                    let south = (cc, cr - 1);
+                    let north = (cc, cr + 1);
+                    if self.park_cells.contains(&south) && self.park_cells.contains(&north) {
+                        self.park_corridor_cells.insert((cc, cr));
+                        new_corridors.push((cc, cr));
+                    }
+                }
+            }
+        }
+        new_corridors
     }
 }
 
