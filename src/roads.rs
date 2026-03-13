@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
 
 use crate::entities::Building;
-use crate::grid::{are_grid_adjacent, are_two_cells_apart, cell_to_world, world_to_cell};
+use crate::grid::{cell_to_world, is_building_cell, world_to_cell};
 use crate::time::GameTime;
 use crate::world::CityWorld;
 
@@ -152,44 +152,47 @@ impl RoadNetwork {
 
     /// Connect a new building to all nearby existing buildings.
     ///
-    /// * 1-cell neighbours get a direct segment.
-    /// * 2-cell neighbours (empty cell between them) get two segments via the
-    ///   crossroads midpoint. Any other building already adjacent to that
-    ///   midpoint is also connected to it.
+    /// Connect a new building to the road network using the corridor model.
     ///
-    /// `crossroad_cells` is updated when a new crossroads node is created.
+    /// Each building connects to the road via exactly ONE entrance corridor cell.
+    /// This method:
+    /// 1. Adds a segment from `building.entrance_pos()` along the corridor cell.
+    /// 2. Connects the entrance corridor cell to any adjacent corridor cells that
+    ///    already have road nodes (extending the street to reach the new building).
     pub fn connect_new_building(
         &mut self,
-        building_pos: Vec2,
+        building: &Building,
         current_day: f32,
-        all_buildings: &[Building],
-        crossroad_cells: &mut HashSet<(i32, i32)>,
+        _all_buildings: &[Building],
+        _crossroad_cells: &mut HashSet<(i32, i32)>,
     ) {
-        for b in all_buildings {
-            let dist = (b.position - building_pos).length();
-            if dist < 1.0 {
-                continue; // same building
-            }
-            if are_grid_adjacent(b.position, building_pos) {
-                self.connect(building_pos, b.position, SegmentType::Road, current_day);
-            } else if are_two_cells_apart(b.position, building_pos) {
-                let mid = (building_pos + b.position) * 0.5;
-                let occupied = all_buildings.iter().any(|x| (x.position - mid).length() < 5.0);
-                if !occupied {
-                    self.connect(building_pos, mid, SegmentType::Road, current_day);
-                    self.connect(mid, b.position, SegmentType::Road, current_day);
-                    crossroad_cells.insert(world_to_cell(mid));
-                    for adj in all_buildings {
-                        if (adj.position - building_pos).length() < 1.0
-                            || (adj.position - b.position).length() < 1.0
-                        {
-                            continue;
-                        }
-                        if are_grid_adjacent(adj.position, mid) {
-                            self.connect(adj.position, mid, SegmentType::Road, current_day);
-                        }
-                    }
+        let entrance = building.entrance_pos();
+        // Entry segment: building centre → entrance corridor cell centre.
+        self.connect(building.position, entrance, SegmentType::Road, current_day);
+
+        // Extend along corridor cells from the entrance to reach the existing network.
+        // Walk in the perpendicular directions (along the corridor row/column).
+        let (ec, er) = world_to_cell(entrance);
+        let corridor_dirs = corridor_walk_dirs(ec, er);
+        for (dc, dr) in corridor_dirs {
+            let mut cc = ec + dc;
+            let mut cr = er + dr;
+            let mut prev = entrance;
+            // Walk up to 10 corridor steps to find an existing road node.
+            for _ in 0..10 {
+                let here = cell_to_world(cc, cr);
+                // Stop if we hit a building cell (can't pass through).
+                if is_building_cell(cc, cr) { break; }
+                // If this corridor node is already in the road network, connect and stop.
+                if self.has_node_near(here) {
+                    self.connect(prev, here, SegmentType::Road, current_day);
+                    break;
                 }
+                // Otherwise extend the road one more step.
+                self.connect(prev, here, SegmentType::Road, current_day);
+                prev = here;
+                cc += dc;
+                cr += dr;
             }
         }
     }
@@ -208,6 +211,13 @@ impl RoadNetwork {
             }
         }
         best
+    }
+
+    /// True if any road node is within 5 px of `pos`.
+    pub fn has_node_near(&self, pos: Vec2) -> bool {
+        self.segments.iter().any(|s| {
+            nodes_close(s.start, pos) || nodes_close(s.end, pos)
+        })
     }
 
     /// Record each adjacent cell-pair in `cells` as a desire-path edge.
@@ -291,8 +301,9 @@ pub fn find_grid_path(
             if visited.contains(&next) {
                 continue;
             }
-            // Building cells are impassable.
-            if world.occupied_cells.contains(&next) {
+            // Building cells (even col AND even row) are always impassable for desire paths —
+            // even if they are not yet occupied.  Roads must stay in corridor cells.
+            if world.occupied_cells.contains(&next) || is_building_cell(next.0, next.1) {
                 continue;
             }
             let mut new_path = path.clone();
@@ -322,6 +333,19 @@ fn nearest_node(segments: &[&RoadSegment], pos: Vec2, max_dist: f32) -> Option<V
     closest
 }
 
+/// Return the two perpendicular walk directions along a corridor cell.
+/// Corridor cells come in two flavours:
+///  - odd col, even row → horizontal corridor → walk East/West (±col)
+///  - even col, odd row → vertical corridor   → walk North/South (±row)
+///  - odd col, odd row  → intersection        → walk all four directions
+fn corridor_walk_dirs(col: i32, row: i32) -> Vec<(i32, i32)> {
+    match (col % 2 != 0, row % 2 != 0) {
+        (true,  false) => vec![(1, 0), (-1, 0)],
+        (false, true)  => vec![(0, 1), (0, -1)],
+        _              => vec![(1, 0), (-1, 0), (0, 1), (0, -1)],
+    }
+}
+
 // ─── Plugin ─────────────────────────────────────────────────────────────────
 
 /// Tracks the ECS entity that renders each road segment (keyed by segment id).
@@ -343,23 +367,67 @@ impl Plugin for RoadsPlugin {
     }
 }
 
-/// At startup, connect all building pairs that are 1 or 2 cells apart with Road segments.
-fn generate_initial_roads(mut network: ResMut<RoadNetwork>, mut world: ResMut<CityWorld>) {
+/// At startup, build the initial road network using the corridor model.
+///
+/// Each building connects via ONE entry segment (building_pos → entrance_corridor_cell).
+/// A main street runs through all corridor cells between the two initial building rows,
+/// connecting all building entrances horizontally.
+fn generate_initial_roads(mut network: ResMut<RoadNetwork>, world: ResMut<CityWorld>) {
     let buildings = world.buildings.clone();
-    for i in 0..buildings.len() {
-        for j in (i + 1)..buildings.len() {
-            let a = buildings[i].position;
-            let b = buildings[j].position;
-            if are_grid_adjacent(a, b) {
-                network.connect(a, b, SegmentType::Road, 0.0);
-            } else if are_two_cells_apart(a, b) {
-                let mid = (a + b) * 0.5;
-                let occupied = buildings.iter().any(|x| (x.position - mid).length() < 5.0);
-                if !occupied {
-                    network.connect(a, mid, SegmentType::Road, 0.0);
-                    network.connect(mid, b, SegmentType::Road, 0.0);
-                    world.crossroad_cells.insert(world_to_cell(mid));
-                }
+
+    // 1. Add one entry segment per building: building → entrance corridor cell.
+    for b in &buildings {
+        let entrance = b.entrance_pos();
+        network.connect(b.position, entrance, SegmentType::Road, 0.0);
+    }
+
+    // 2. Find all unique corridor cells that buildings connect to, group by row or column.
+    //    Build horizontal streets: for each row of entrance cells, connect them in order.
+    //    Build vertical streets: for each column of entrance cells, connect them in order.
+    let entrance_cells: Vec<(i32, i32)> = buildings
+        .iter()
+        .map(|b| world_to_cell(b.entrance_pos()))
+        .collect();
+
+    // Horizontal streets: group by row, connect adjacent corridor cells.
+    let mut rows: HashMap<i32, Vec<i32>> = HashMap::new();
+    for &(c, r) in &entrance_cells {
+        rows.entry(r).or_default().push(c);
+    }
+    for (row, mut cols) in rows {
+        cols.sort();
+        cols.dedup();
+        if cols.len() < 2 { continue; }
+        for window in cols.windows(2) {
+            let (c0, c1) = (window[0], window[1]);
+            // Walk every corridor cell between the two columns.
+            let mut prev = cell_to_world(c0, row);
+            for c in (c0 + 1)..=c1 {
+                if is_building_cell(c, row) { break; } // can't pass through building cell
+                let here = cell_to_world(c, row);
+                network.connect(prev, here, SegmentType::Road, 0.0);
+                prev = here;
+            }
+        }
+    }
+
+    // Vertical streets: group by column, connect adjacent corridor cells.
+    let mut cols: HashMap<i32, Vec<i32>> = HashMap::new();
+    for &(c, r) in &entrance_cells {
+        cols.entry(c).or_default().push(r);
+    }
+    for (col, mut rows_v) in cols {
+        rows_v.sort();
+        rows_v.dedup();
+        if rows_v.len() < 2 { continue; }
+        for window in rows_v.windows(2) {
+            let (r0, r1) = (window[0], window[1]);
+            let mut prev = cell_to_world(col, r0);
+            for r in (r0 + 1)..=r1 {
+                if is_building_cell(col, r) { break; }
+                let here = cell_to_world(col, r);
+                network.connect(prev, here, SegmentType::Road, 0.0);
+                prev = here;
             }
         }
     }
@@ -481,11 +549,15 @@ fn sync_road_entities(
     }
 }
 
-/// Returns road endpoints inset to the facing edges of the two buildings so
-/// the mesh only spans the visible gap, never overlapping a building footprint.
+/// Computes the visual start and end points of a road segment mesh.
+///
+/// Entry segments (building → corridor): inset the start by building half-size.
+/// Street segments (corridor → corridor): use the full corridor center-to-center span.
 fn edge_to_edge(a: Vec2, b: Vec2, buildings: &[Building]) -> (Vec2, Vec2) {
     let dir = (b - a).normalize_or_zero();
 
+    // If `a` is a building centre, inset by the building's half-size so the mesh
+    // starts at the building's facing edge, not its centre.
     let half_a = buildings
         .iter()
         .find(|bld| (bld.position - a).length() < 5.0)
@@ -498,6 +570,7 @@ fn edge_to_edge(a: Vec2, b: Vec2, buildings: &[Building]) -> (Vec2, Vec2) {
         })
         .unwrap_or(0.0);
 
+    // Same for `b`.
     let half_b = buildings
         .iter()
         .find(|bld| (bld.position - b).length() < 5.0)
@@ -539,18 +612,20 @@ mod tests {
     #[test]
     fn grid_path_same_cell() {
         let world = empty_world();
-        let path = find_grid_path((0, 0), (0, 0), &world);
-        assert_eq!(path, Some(vec![(0, 0)]));
+        // Use corridor cells (odd col or odd row).
+        let path = find_grid_path((1, 0), (1, 0), &world);
+        assert_eq!(path, Some(vec![(1, 0)]));
     }
 
     #[test]
     fn grid_path_straight_horizontal() {
         let world = empty_world();
-        let path = find_grid_path((0, 0), (3, 0), &world).expect("path expected");
-        // Should be length 4: (0,0),(1,0),(2,0),(3,0)
+        // Corridor cells along row 1 (odd row): (0,1),(1,1),(2,1),(3,1)
+        let path = find_grid_path((0, 1), (3, 1), &world).expect("path expected");
+        // Should be length 4: (0,1),(1,1),(2,1),(3,1)
         assert_eq!(path.len(), 4);
-        assert_eq!(*path.first().unwrap(), (0, 0));
-        assert_eq!(*path.last().unwrap(), (3, 0));
+        assert_eq!(*path.first().unwrap(), (0, 1));
+        assert_eq!(*path.last().unwrap(), (3, 1));
         // Every step must be horizontal or vertical (no diagonals).
         for pair in path.windows(2) {
             let dx = (pair[1].0 - pair[0].0).abs();
@@ -561,10 +636,11 @@ mod tests {
 
     #[test]
     fn grid_path_avoids_building() {
-        // Block (1,0), forcing path to go around via row 1.
-        let world = world_with_buildings_at(&[(1, 0)]);
-        let path = find_grid_path((0, 0), (2, 0), &world).expect("path expected");
-        assert!(!path.contains(&(1, 0)), "path must not traverse a building cell");
+        // Block occupied corridor (1,1), forcing path to go around.
+        let world = world_with_buildings_at(&[(1, 1)]);
+        // Route from corridor (-1,1) to corridor (3,1) avoiding blocked (1,1).
+        let path = find_grid_path((-1, 1), (3, 1), &world).expect("path expected");
+        assert!(!path.contains(&(1, 1)), "path must not traverse a blocked cell");
         // Verify each step is cardinal.
         for pair in path.windows(2) {
             let dx = (pair[1].0 - pair[0].0).abs();
@@ -575,16 +651,17 @@ mod tests {
 
     #[test]
     fn grid_path_no_path_when_fully_blocked() {
-        // Surround origin on all four sides.
-        let world = world_with_buildings_at(&[(1,0),(-1,0),(0,1),(0,-1)]);
-        let path = find_grid_path((0, 0), (5, 5), &world);
+        // Surround corridor cell (1,0) on all four sides with occupied cells.
+        let world = world_with_buildings_at(&[(2,0),(0,0),(1,1),(1,-1)]);
+        let path = find_grid_path((1, 0), (5, 1), &world);
         assert!(path.is_none(), "should be None when surrounded");
     }
 
     #[test]
     fn grid_path_no_diagonals() {
         let world = empty_world();
-        let path = find_grid_path((0, 0), (3, 3), &world).expect("path expected");
+        // Use corridor cells: (1,0) to (1,3)
+        let path = find_grid_path((1, 0), (1, 3), &world).expect("path expected");
         for pair in path.windows(2) {
             let dx = (pair[1].0 - pair[0].0).abs();
             let dy = (pair[1].1 - pair[0].1).abs();

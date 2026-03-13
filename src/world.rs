@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use crate::entities::*;
-use crate::grid::cell_to_world;
+use crate::grid::{cell_to_world, is_building_cell};
 use rand::Rng;
 
 /// ECS component that marks a park entity (not a building).
@@ -17,14 +17,13 @@ pub struct CityWorld {
     pub citizens: Vec<Citizen>,
     pub buildings: Vec<Building>,
     pub simulation_time: f32,
-    /// Grid cells that currently have a building on them.
+    /// Grid cells that currently have a building on them (always building cells).
     #[serde(default)]
     pub occupied_cells: HashSet<(i32, i32)>,
-    /// Grid cells occupied only by a road crossroads (no building).
-    /// Buildings may not be placed here.
+    /// Corridor cells that host a road crossroads. Buildings never placed here.
     #[serde(default)]
     pub crossroad_cells: HashSet<(i32, i32)>,
-    /// Grid cells that are parks (empty but fully surrounded).
+    /// Building-type cells that have been converted to parks.
     #[serde(default)]
     pub park_cells: HashSet<(i32, i32)>,
 }
@@ -35,25 +34,33 @@ impl CityWorld {
         let mut buildings = Vec::new();
         let mut occupied_cells = HashSet::new();
 
-        // Place initial buildings on a compact 4×2 grid block.
-        // Layout (col, row):
-        //   Row -1:  Home(-1,-1)  Home(0,-1)  Office(1,-1)  Office(2,-1)
-        //   Row  0:  Home(-1, 0)  Home(0, 0)  Shop(1, 0)    Shop(2, 0)
-        let layout: &[(BuildingType, i32, i32)] = &[
-            (BuildingType::Home,   -1, -1),
-            (BuildingType::Home,    0, -1),
-            (BuildingType::Office,  1, -1),
-            (BuildingType::Office,  2, -1),
-            (BuildingType::Home,   -1,  0),
-            (BuildingType::Home,    0,  0),
-            (BuildingType::Shop,    1,  0),
-            (BuildingType::Shop,    2,  0),
+        // Initial 4×2 layout at even cell positions (building cells).
+        // Top row at row=2, bottom row at row=0 — entrance faces south (corridor row 1 / -1).
+        //
+        //   Row  2:  Home(-4,2)  Home(-2,2)  Office(0,2)  Office(2,2)
+        //   Row  0:  Home(-4,0)  Home(-2,0)  Shop(0,0)    Shop(2,0)
+        //
+        // Buildings in both rows face south → their entrances are in corridor row 1 (top)
+        // and corridor row -1 (bottom), forming two parallel streets.
+        let layout: &[(BuildingType, i32, i32, Direction)] = &[
+            // top row: entrance south → corridor row 1
+            (BuildingType::Home,   -4,  2, Direction::South),
+            (BuildingType::Home,   -2,  2, Direction::South),
+            (BuildingType::Office,  0,  2, Direction::South),
+            (BuildingType::Office,  2,  2, Direction::South),
+            // bottom row: entrance north → corridor row 1 (same street)
+            (BuildingType::Home,   -4,  0, Direction::North),
+            (BuildingType::Home,   -2,  0, Direction::North),
+            (BuildingType::Shop,    0,  0, Direction::North),
+            (BuildingType::Shop,    2,  0, Direction::North),
         ];
 
-        for &(kind, col, row) in layout {
+        for &(kind, col, row, entrance) in layout {
             let position = cell_to_world(col, row);
             let (size, cap_res, cap_work) = building_stats(kind);
-            buildings.push(Building::new(kind, position, size, cap_res, cap_work));
+            let mut b = Building::new(kind, position, size, cap_res, cap_work);
+            b.entrance_direction = entrance;
+            buildings.push(b);
             occupied_cells.insert((col, row));
         }
 
@@ -103,8 +110,7 @@ impl CityWorld {
 }
 
 impl CityWorld {
-    /// Check whether `cell` is "taken" (building, crossroads, or park) for
-    /// the purpose of park detection.
+    /// True if a cell is blocked (building, crossroads, or park) for placement purposes.
     fn cell_taken(&self, col: i32, row: i32) -> bool {
         let c = (col, row);
         self.occupied_cells.contains(&c)
@@ -112,29 +118,29 @@ impl CityWorld {
             || self.park_cells.contains(&c)
     }
 
-    /// Scan the 8 neighbours of every newly-occupied cell and promote any
-    /// empty cell that is now fully enclosed to a park.
-    /// Returns the set of newly-created park cells (so the caller can spawn entities).
+    /// Check candidate building cells for promotion to parks.
+    /// A building-type cell becomes a park when all 4 cardinal building-cell neighbors
+    /// (at distance 2) are occupied by buildings. This creates interior courtyards.
     pub fn detect_new_parks(&mut self, changed_cells: &[(i32, i32)]) -> Vec<(i32, i32)> {
         let mut new_parks = Vec::new();
-        // Collect candidate cells: all neighbours of every changed cell.
+
+        // Candidates: building-type cells adjacent (distance 2) to each changed cell.
         let mut candidates: Vec<(i32, i32)> = Vec::new();
         for &(col, row) in changed_cells {
-            for dc in -1i32..=1 {
-                for dr in -1i32..=1 {
-                    if dc == 0 && dr == 0 { continue; }
-                    let c = (col + dc, row + dr);
-                    if !candidates.contains(&c) { candidates.push(c); }
+            for (dc, dr) in [(2i32,0i32),(-2,0),(0,2),(0,-2)] {
+                let c = (col + dc, row + dr);
+                // Only building cells can become parks.
+                if is_building_cell(c.0, c.1) && !candidates.contains(&c) {
+                    candidates.push(c);
                 }
             }
         }
+
         for cell @ (col, row) in candidates {
             if self.cell_taken(col, row) { continue; }
-            // All 8 neighbours must be taken for this to become a park.
-            let enclosed = (-1i32..=1).all(|dc| {
-                (-1i32..=1).all(|dr| {
-                    (dc == 0 && dr == 0) || self.cell_taken(col + dc, row + dr)
-                })
+            // All 4 cardinal building-cell neighbors at distance 2 must be occupied.
+            let enclosed = [(2i32,0i32),(-2,0),(0,2),(0,-2)].iter().all(|&(dc, dr)| {
+                self.occupied_cells.contains(&(col + dc, row + dr))
             });
             if enclosed {
                 self.park_cells.insert(cell);
@@ -153,10 +159,10 @@ pub fn park_positions(world: &CityWorld) -> Vec<Vec2> {
 /// Returns (size, capacity_residents, capacity_workers) for a building type.
 pub fn building_stats(kind: BuildingType) -> (Vec2, usize, usize) {
     match kind {
-        BuildingType::Home   => (Vec2::new(60.0, 60.0), 4, 0),
-        BuildingType::Office => (Vec2::new(80.0, 80.0), 0, 10),
-        BuildingType::Shop   => (Vec2::new(60.0, 60.0), 0, 5),
-        BuildingType::Public => (Vec2::new(70.0, 70.0), 0, 0),
+        BuildingType::Home   => (Vec2::new(90.0, 90.0), 4, 0),
+        BuildingType::Office => (Vec2::new(100.0, 100.0), 0, 10),
+        BuildingType::Shop   => (Vec2::new(90.0, 90.0), 0, 5),
+        BuildingType::Public => (Vec2::new(95.0, 95.0), 0, 0),
     }
 }
 
@@ -165,3 +171,4 @@ impl Default for CityWorld {
         Self::new()
     }
 }
+

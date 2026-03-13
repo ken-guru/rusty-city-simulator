@@ -1,5 +1,5 @@
 use crate::entities::*;
-use crate::grid::{cell_to_world, world_to_cell, CELL_SIZE};
+use crate::grid::{cell_to_world, is_building_cell, world_to_cell, CELL_SIZE};
 use crate::roads::RoadNetwork;
 use crate::sprites::SpriteAssets;
 use crate::world::{building_stats, CityWorld, ParkMarker};
@@ -75,63 +75,106 @@ fn check_housing_pressure(
     }
 }
 
-/// Find a free grid cell adjacent to the existing city, place a building there.
-/// Returns None if no suitable cell is found.
+/// Find a free building-cell adjacent to the existing city, place a building there.
+/// All buildings live on even (col, row) cells so there is always a corridor between them.
 fn place_new_building(world: &CityWorld, kind: BuildingType) -> Option<(Building, (i32, i32))> {
     use rand::Rng;
     let mut rng = rand::thread_rng();
 
-    // ~15% of the time, try to place 2 cells away (leaving an empty crossroads cell).
+    // ~15% of the time try two building-cell steps away, leaving one empty building cell
+    // and two corridor cells free (potential future buildings and roads).
     const SKIP_CHANCE: f64 = 0.15;
     let try_skip = rng.gen_bool(SKIP_CHANCE);
 
-    // A cell is "blocked" if it is occupied, a crossroads, or a park.
     let is_blocked = |cell: &(i32, i32)| {
         world.occupied_cells.contains(cell)
             || world.crossroad_cells.contains(cell)
             || world.park_cells.contains(cell)
     };
 
-    // Collect cells immediately adjacent to the existing city.
+    // Candidates: one building-cell step away (2 cells) from each existing building.
     let mut near: Vec<(i32, i32)> = Vec::new();
-    // Collect cells 2 steps away with an empty intermediate cell.
+    // Far: two building-cell steps (4 cells) with the intermediate building cell also free.
     let mut far: Vec<(i32, i32)> = Vec::new();
 
     for &(col, row) in &world.occupied_cells {
-        for (dc, dr) in [(0i32, 1i32), (0, -1), (1, 0), (-1, 0)] {
-            let adj = (col + dc, row + dr);
+        for (dc, dr) in [(0i32, 2i32), (0, -2), (2, 0), (-2, 0)] {
+            let adj  = (col + dc,     row + dr);
             let skip = (col + 2 * dc, row + 2 * dr);
 
-            if !is_blocked(&adj) && !near.contains(&adj) {
+            if is_building_cell(adj.0, adj.1) && !is_blocked(&adj) && !near.contains(&adj) {
                 near.push(adj);
             }
-            // Far candidate: intermediate AND target must both be free.
-            if !is_blocked(&adj) && !is_blocked(&skip) && !far.contains(&skip) {
+            if is_building_cell(skip.0, skip.1)
+                && !is_blocked(&adj)
+                && !is_blocked(&skip)
+                && !far.contains(&skip)
+            {
                 far.push(skip);
             }
         }
     }
 
-    // Pick from "far" candidates if requested and available; fallback to "near".
     let (col, row) = if try_skip && !far.is_empty() {
         far[rng.gen_range(0..far.len())]
     } else if !near.is_empty() {
         near[rng.gen_range(0..near.len())]
     } else {
-        // Fallback: random radial cell.
+        // Fallback: nearest even cell in a random direction.
         let angle = rng.gen_range(0.0_f32..std::f32::consts::TAU);
-        let dist  = rng.gen_range(3..7) as f32 * CELL_SIZE;
-        world_to_cell(Vec2::new(angle.cos() * dist, angle.sin() * dist))
+        let dist  = rng.gen_range(2..5) as f32 * CELL_SIZE * 2.0;
+        let raw   = world_to_cell(Vec2::new(angle.cos() * dist, angle.sin() * dist));
+        // Snap to nearest even cell.
+        let sc = if raw.0 % 2 == 0 { raw.0 } else { raw.0 + 1 };
+        let sr = if raw.1 % 2 == 0 { raw.1 } else { raw.1 + 1 };
+        (sc, sr)
     };
 
-    // Double-check the cell is still free (race safety).
     if is_blocked(&(col, row)) {
         return None;
     }
 
+    // Choose an entrance direction: prefer a side that already has a road corridor.
+    // Fallback to South.
+    let entrance = best_entrance_direction(world, col, row);
+
     let position = cell_to_world(col, row);
     let (size, cap_res, cap_work) = building_stats(kind);
-    Some((Building::new(kind, position, size, cap_res, cap_work), (col, row)))
+    let mut building = Building::new(kind, position, size, cap_res, cap_work);
+    building.entrance_direction = entrance;
+    Some((building, (col, row)))
+}
+
+/// Pick the entrance direction for a new building at (col, row).
+/// Prefers the side that has an existing road in the adjacent corridor cell.
+fn best_entrance_direction(world: &CityWorld, col: i32, row: i32) -> Direction {
+    // Check which adjacent corridor cells already have buildings pointing to them
+    // (i.e. are part of the existing road network). Prefer those directions.
+    let candidates = [
+        (Direction::South, col,   row - 1),
+        (Direction::North, col,   row + 1),
+        (Direction::West,  col - 1, row),
+        (Direction::East,  col + 1, row),
+    ];
+    // Prefer a direction where the corridor cell is adjacent to another occupied cell
+    // (meaning roads likely already run there).
+    for (dir, ec, er) in &candidates {
+        let has_road_neighbor = [(2i32,0i32),(-2,0),(0,2),(0,-2)].iter().any(|&(dc,dr)| {
+            // An occupied building cell near this corridor means the corridor is on a street.
+            let nc = ec + dc / 2;
+            let nr = er + dr / 2;
+            world.occupied_cells.contains(&(nc * 2, nr * 2))
+        }) || [(1i32,0i32),(-1,0),(0,1),(0,-1)].iter().any(|&(dc,dr)| {
+            let nc = ec + dc;
+            let nr = er + dr;
+            world.occupied_cells.contains(&(nc, nr))
+        });
+        if has_road_neighbor {
+            return *dir;
+        }
+    }
+    // Default: face south.
+    Direction::South
 }
 
 fn spawn_building(
@@ -162,11 +205,10 @@ fn spawn_building(
             b.clone(),
         ));
 
-        // Connect to all grid-adjacent existing buildings (and record any new crossroads).
-        // Clone buildings to avoid holding an immutable borrow while mutably borrowing crossroad_cells.
+        // Connect to the road network via the building's entrance.
         let buildings_snapshot = world.buildings.clone();
         road_network.connect_new_building(
-            b.position,
+            b,
             game_time.current_day(),
             &buildings_snapshot,
             &mut world.crossroad_cells,

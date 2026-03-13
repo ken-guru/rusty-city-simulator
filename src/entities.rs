@@ -2,6 +2,30 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::grid::{cell_to_world, is_corridor_cell, world_to_cell, CELL_SIZE};
+
+/// Cardinal direction for a building's road entrance.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub enum Direction {
+    #[default]
+    South,
+    North,
+    East,
+    West,
+}
+
+impl Direction {
+    /// Grid offset (dcol, drow) from a building cell to its entrance corridor cell.
+    pub fn cell_offset(self) -> (i32, i32) {
+        match self {
+            Direction::North => (0,  1),
+            Direction::South => (0, -1),
+            Direction::East  => (1,  0),
+            Direction::West  => (-1, 0),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum Gender {
     Male,
@@ -117,6 +141,9 @@ pub struct Building {
     pub worker_ids: Vec<String>,
     pub capacity_residents: usize,
     pub capacity_workers: usize,
+    /// The one corridor cell this building connects to for road access.
+    #[serde(default)]
+    pub entrance_direction: Direction,
 }
 
 impl Building {
@@ -136,6 +163,34 @@ impl Building {
             worker_ids: Vec::new(),
             capacity_residents,
             capacity_workers,
+            entrance_direction: Direction::South,
         }
+    }
+
+    /// World position of this building's entrance corridor cell.
+    pub fn entrance_pos(&self) -> Vec2 {
+        let (col, row) = world_to_cell(self.position);
+        let (dc, dr) = self.entrance_direction.cell_offset();
+        let ecol = col + dc;
+        let erow = row + dr;
+        // Entrance must be a corridor cell — assert in debug builds.
+        debug_assert!(
+            is_corridor_cell(ecol, erow),
+            "entrance cell ({},{}) is not a corridor cell",
+            ecol, erow
+        );
+        cell_to_world(ecol, erow)
+    }
+
+    /// Grid cell coordinates of this building's entrance corridor.
+    pub fn entrance_cell(&self) -> (i32, i32) {
+        let (col, row) = world_to_cell(self.position);
+        let (dc, dr) = self.entrance_direction.cell_offset();
+        (col + dc, row + dr)
+    }
+
+    /// How far from the building center to the entrance corridor center.
+    pub fn entrance_distance() -> f32 {
+        CELL_SIZE
     }
 }

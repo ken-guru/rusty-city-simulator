@@ -18,7 +18,33 @@ pub fn world_to_cell(pos: Vec2) -> (i32, i32) {
     )
 }
 
+/// True when this cell can hold a building (both indices even).
+#[inline]
+pub fn is_building_cell(col: i32, row: i32) -> bool {
+    col % 2 == 0 && row % 2 == 0
+}
+
+/// True when this cell is a road corridor (not a building cell).
+#[inline]
+pub fn is_corridor_cell(col: i32, row: i32) -> bool {
+    !is_building_cell(col, row)
+}
+
+/// Returns true when two *building* positions are exactly one building-cell-step apart
+/// (2 × CELL_SIZE on one cardinal axis, zero on the other). There is always exactly
+/// one corridor cell between them.
+#[allow(dead_code)]
+pub fn are_buildings_adjacent(a: Vec2, b: Vec2) -> bool {
+    let d = (b - a).abs();
+    let two = CELL_SIZE * 2.0;
+    let horiz = (d.x - two).abs() < CELL_SIZE * 0.1 && d.y < CELL_SIZE * 0.1;
+    let vert  = (d.y - two).abs() < CELL_SIZE * 0.1 && d.x < CELL_SIZE * 0.1;
+    horiz || vert
+}
+
 /// Returns true when two world positions are exactly one cell apart on a cardinal axis.
+/// Kept for legacy callers; prefer `are_buildings_adjacent` in road-generation code.
+#[allow(dead_code)]
 pub fn are_grid_adjacent(a: Vec2, b: Vec2) -> bool {
     let d = (b - a).abs();
     let horiz = d.x > CELL_SIZE * 0.9 && d.x < CELL_SIZE * 1.1 && d.y < CELL_SIZE * 0.1;
@@ -26,8 +52,8 @@ pub fn are_grid_adjacent(a: Vec2, b: Vec2) -> bool {
     horiz || vert
 }
 
-/// Returns true when two world positions are exactly two cells apart on a cardinal axis
-/// (i.e. there is one empty cell between them).
+/// Returns true when two world positions are exactly two cells apart on a cardinal axis.
+#[allow(dead_code)]
 pub fn are_two_cells_apart(a: Vec2, b: Vec2) -> bool {
     let d = (b - a).abs();
     let two = CELL_SIZE * 2.0;
