@@ -155,3 +155,18 @@ This project is available for learning and modification.
 ## Credits
 
 Built with Bevy engine and inspired by classic city simulation games.
+
+## Development Checklist
+
+Before considering a work session finished, always verify:
+
+1. **Zero warnings**: `cargo build --release` must complete with no warnings
+2. **All tests pass**: `cargo test` must show `test result: ok`
+3. **Commit changes**: every session's work should be committed with a descriptive message
+
+Quick validation command:
+```sh
+cargo build --release && cargo test
+```
+
+Both must succeed before committing. Treat any compiler warning as an error to fix.

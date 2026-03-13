@@ -35,3 +35,79 @@ pub fn are_two_cells_apart(a: Vec2, b: Vec2) -> bool {
     let vert  = (d.y - two).abs() < CELL_SIZE * 0.1 && d.x < CELL_SIZE * 0.1;
     horiz || vert
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cell_to_world_origin() {
+        let pos = cell_to_world(0, 0);
+        assert_eq!(pos, Vec2::ZERO);
+    }
+
+    #[test]
+    fn cell_to_world_positive() {
+        let pos = cell_to_world(1, 2);
+        assert_eq!(pos, Vec2::new(CELL_SIZE, CELL_SIZE * 2.0));
+    }
+
+    #[test]
+    fn cell_to_world_negative() {
+        let pos = cell_to_world(-1, -3);
+        assert_eq!(pos, Vec2::new(-CELL_SIZE, -CELL_SIZE * 3.0));
+    }
+
+    #[test]
+    fn world_to_cell_round_trips() {
+        for col in -3..=3 {
+            for row in -3..=3 {
+                let pos = cell_to_world(col, row);
+                assert_eq!(world_to_cell(pos), (col, row));
+            }
+        }
+    }
+
+    #[test]
+    fn world_to_cell_snaps_near_centre() {
+        // A position slightly off-centre still maps to the same cell.
+        let pos = Vec2::new(CELL_SIZE * 1.4, CELL_SIZE * -2.3);
+        assert_eq!(world_to_cell(pos), (1, -2));
+    }
+
+    #[test]
+    fn are_grid_adjacent_horizontal() {
+        let a = cell_to_world(0, 0);
+        let b = cell_to_world(1, 0);
+        assert!(are_grid_adjacent(a, b));
+        assert!(are_grid_adjacent(b, a));
+    }
+
+    #[test]
+    fn are_grid_adjacent_vertical() {
+        let a = cell_to_world(0, 0);
+        let b = cell_to_world(0, 1);
+        assert!(are_grid_adjacent(a, b));
+    }
+
+    #[test]
+    fn are_grid_adjacent_rejects_diagonal() {
+        let a = cell_to_world(0, 0);
+        let b = cell_to_world(1, 1);
+        assert!(!are_grid_adjacent(a, b));
+    }
+
+    #[test]
+    fn are_two_cells_apart_horizontal() {
+        let a = cell_to_world(0, 0);
+        let b = cell_to_world(2, 0);
+        assert!(are_two_cells_apart(a, b));
+    }
+
+    #[test]
+    fn are_two_cells_apart_rejects_one_cell() {
+        let a = cell_to_world(0, 0);
+        let b = cell_to_world(1, 0);
+        assert!(!are_two_cells_apart(a, b));
+    }
+}

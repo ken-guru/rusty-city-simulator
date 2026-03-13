@@ -20,7 +20,7 @@ pub fn simple_movement(
     time: Res<Time>,
     game_time: Res<GameTime>,
     mut road_network: ResMut<RoadNetwork>,
-    world: Res<CityWorld>,
+    _world: Res<CityWorld>,
 ) {
     if game_time.time_scale == 0.0 {
         return; // paused

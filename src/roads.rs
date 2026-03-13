@@ -84,56 +84,6 @@ impl RoadNetwork {
         }
     }
 
-    /// Record that a citizen took a direct shortcut from `from` to `to`.
-    /// Endpoints are snapped to the nearest building centre so multiple shortcuts
-    /// between the same two buildings always merge into a single desire-path segment.
-    pub fn record_shortcut(
-        &mut self,
-        from: Vec2,
-        to: Vec2,
-        current_day: f32,
-        buildings: &[Building],
-    ) {
-        let from = snap_to_building(from, buildings);
-        let to   = snap_to_building(to,   buildings);
-
-        if (to - from).length() < 30.0 {
-            return;
-        }
-
-        // Reject diagonal desire paths — only grid-aligned (same row or same column).
-        let dx = (to.x - from.x).abs();
-        let dy = (to.y - from.y).abs();
-        if dx > 5.0 && dy > 5.0 {
-            return;
-        }
-        // Skip if a proper road/path already covers this connection.
-        let covered = self.segments.iter().any(|s| {
-            matches!(s.seg_type, SegmentType::Road | SegmentType::Path)
-                && ((nodes_close(s.start, from) && nodes_close(s.end, to))
-                    || (nodes_close(s.start, to) && nodes_close(s.end, from)))
-        });
-        if covered {
-            return;
-        }
-
-        // Increment existing desire segment or create a new one.
-        let existing = self.segments.iter_mut().find(|s| {
-            matches!(s.seg_type, SegmentType::Desire)
-                && ((nodes_close(s.start, from) && nodes_close(s.end, to))
-                    || (nodes_close(s.start, to) && nodes_close(s.end, from)))
-        });
-        if let Some(seg) = existing {
-            seg.usage += 1.0;
-            seg.last_used_day = current_day;
-        } else {
-            let mut seg = RoadSegment::new(from, to, SegmentType::Desire);
-            seg.usage = 1.0;
-            seg.last_used_day = current_day;
-            self.segments.push(seg);
-        }
-    }
-
     /// Record usage of the road segment nearest to `from`→`to`.
     pub fn record_road_use(&mut self, from: Vec2, to: Vec2, current_day: f32) {
         if let Some(seg) = self.segments.iter_mut().find(|s| {
@@ -357,15 +307,6 @@ pub fn find_grid_path(
     None
 }
 
-/// Snap a world position to the centre of the nearest building.
-fn snap_to_building(pos: Vec2, buildings: &[Building]) -> Vec2 {
-    buildings
-        .iter()
-        .min_by_key(|b| ((b.position - pos).length() * 100.0) as i32)
-        .map(|b| b.position)
-        .unwrap_or(pos)
-}
-
 fn nearest_node(segments: &[&RoadSegment], pos: Vec2, max_dist: f32) -> Option<Vec2> {
     let mut closest: Option<Vec2> = None;
     let mut closest_dist = max_dist;
@@ -570,4 +511,84 @@ fn edge_to_edge(a: Vec2, b: Vec2, buildings: &[Building]) -> (Vec2, Vec2) {
         .unwrap_or(0.0);
 
     (a + dir * half_a, b - dir * half_b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::CityWorld;
+    use std::collections::HashSet;
+
+    /// Create a CityWorld with no initial buildings — only the explicitly listed cells occupied.
+    fn empty_world() -> CityWorld {
+        let mut w = CityWorld::new();
+        w.occupied_cells = HashSet::new();
+        w.buildings.clear();
+        w.citizens.clear();
+        w
+    }
+
+    fn world_with_buildings_at(cells: &[(i32, i32)]) -> CityWorld {
+        let mut world = empty_world();
+        for &(col, row) in cells {
+            world.occupied_cells.insert((col, row));
+        }
+        world
+    }
+
+    #[test]
+    fn grid_path_same_cell() {
+        let world = empty_world();
+        let path = find_grid_path((0, 0), (0, 0), &world);
+        assert_eq!(path, Some(vec![(0, 0)]));
+    }
+
+    #[test]
+    fn grid_path_straight_horizontal() {
+        let world = empty_world();
+        let path = find_grid_path((0, 0), (3, 0), &world).expect("path expected");
+        // Should be length 4: (0,0),(1,0),(2,0),(3,0)
+        assert_eq!(path.len(), 4);
+        assert_eq!(*path.first().unwrap(), (0, 0));
+        assert_eq!(*path.last().unwrap(), (3, 0));
+        // Every step must be horizontal or vertical (no diagonals).
+        for pair in path.windows(2) {
+            let dx = (pair[1].0 - pair[0].0).abs();
+            let dy = (pair[1].1 - pair[0].1).abs();
+            assert!(dx + dy == 1, "step must be exactly 1 cell: {:?}", pair);
+        }
+    }
+
+    #[test]
+    fn grid_path_avoids_building() {
+        // Block (1,0), forcing path to go around via row 1.
+        let world = world_with_buildings_at(&[(1, 0)]);
+        let path = find_grid_path((0, 0), (2, 0), &world).expect("path expected");
+        assert!(!path.contains(&(1, 0)), "path must not traverse a building cell");
+        // Verify each step is cardinal.
+        for pair in path.windows(2) {
+            let dx = (pair[1].0 - pair[0].0).abs();
+            let dy = (pair[1].1 - pair[0].1).abs();
+            assert_eq!(dx + dy, 1);
+        }
+    }
+
+    #[test]
+    fn grid_path_no_path_when_fully_blocked() {
+        // Surround origin on all four sides.
+        let world = world_with_buildings_at(&[(1,0),(-1,0),(0,1),(0,-1)]);
+        let path = find_grid_path((0, 0), (5, 5), &world);
+        assert!(path.is_none(), "should be None when surrounded");
+    }
+
+    #[test]
+    fn grid_path_no_diagonals() {
+        let world = empty_world();
+        let path = find_grid_path((0, 0), (3, 3), &world).expect("path expected");
+        for pair in path.windows(2) {
+            let dx = (pair[1].0 - pair[0].0).abs();
+            let dy = (pair[1].1 - pair[0].1).abs();
+            assert_eq!(dx + dy, 1, "diagonal step detected: {:?}", pair);
+        }
+    }
 }

@@ -12,6 +12,7 @@ use crate::world::CityWorld;
 // ─── Save directory ──────────────────────────────────────────────────────────
 
 const SAVES_DIR: &str = "saves";
+#[allow(dead_code)]
 const INCOMPAT_FILE: &str = "saves/.incompatible.json";
 
 // ─── Events ──────────────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ pub struct GameTimeSave {
 
 // ─── Save metadata (for the save list UI) ────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct SaveMeta {
     /// Full path to the save file.
@@ -88,7 +90,11 @@ pub fn save_game(
     Ok(path)
 }
 
+// ─── Functions used by the start screen (deferred) ───────────────────────────
+// These will be wired up when the start screen is fully implemented.
+
 /// Deserialise a save file from `path`.
+#[allow(dead_code)]
 pub fn load_save(path: &Path) -> Result<GameSave, Box<dyn std::error::Error>> {
     let json = fs::read_to_string(path)?;
     let save: GameSave = serde_json::from_str(&json)?;
@@ -96,6 +102,7 @@ pub fn load_save(path: &Path) -> Result<GameSave, Box<dyn std::error::Error>> {
 }
 
 /// Return all save files in `saves/`, newest first.
+#[allow(dead_code)]
 pub fn list_saves() -> Vec<SaveMeta> {
     let incompatible = load_incompatible_list();
 
@@ -111,7 +118,6 @@ pub fn list_saves() -> Vec<SaveMeta> {
             if !filename.ends_with(".json") || filename.starts_with('.') {
                 return None;
             }
-            // Try to read just the version field cheaply.
             let game_version = read_version_field(&path);
             let display_time = format_filename_as_time(&filename);
             let is_current_version = game_version == GAME_VERSION;
@@ -127,12 +133,12 @@ pub fn list_saves() -> Vec<SaveMeta> {
         })
         .collect();
 
-    // Sort newest first (lexicographic on filename = chronological for our timestamp format).
     metas.sort_by(|a, b| b.filename.cmp(&a.filename));
     metas
 }
 
-/// Record `filename` (just the base name, not the path) as known-incompatible.
+/// Record `filename` as known-incompatible.
+#[allow(dead_code)]
 pub fn mark_incompatible(filename: &str) {
     let mut list = load_incompatible_list();
     if !list.contains(&filename.to_string()) {
@@ -148,17 +154,15 @@ fn timestamp_str() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    // Convert unix timestamp to YYYYMMDD_HHMMSS (UTC, approximate — avoids chrono dep)
     let s = secs;
     let sec = s % 60;
     let min = (s / 60) % 60;
     let hour = (s / 3600) % 24;
-    let days = s / 86400; // days since 1970-01-01
+    let days = s / 86400;
     let (year, month, day) = days_to_ymd(days);
     format!("{:04}{:02}{:02}_{:02}{:02}{:02}", year, month, day, hour, min, sec)
 }
 
-/// Very small Julian-calendar approximation to get Y/M/D from days-since-epoch.
 fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
     let mut year = 1970u32;
     loop {
@@ -184,9 +188,8 @@ fn is_leap(y: u32) -> bool {
     (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
-/// Turn `city_20240312_143052.json` into `"2024-03-12  14:30:52"`.
+#[allow(dead_code)]
 fn format_filename_as_time(filename: &str) -> String {
-    // Expected: city_YYYYMMDD_HHMMSS.json
     let stem = filename.trim_end_matches(".json");
     let parts: Vec<&str> = stem.splitn(3, '_').collect();
     if parts.len() == 3 {
@@ -203,7 +206,7 @@ fn format_filename_as_time(filename: &str) -> String {
     filename.to_string()
 }
 
-/// Read only the `game_version` field without deserialising the whole save.
+#[allow(dead_code)]
 fn read_version_field(path: &Path) -> String {
     #[derive(Deserialize)]
     struct VersionOnly {
@@ -217,11 +220,13 @@ fn read_version_field(path: &Path) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Default)]
 struct IncompatibleList {
     incompatible: Vec<String>,
 }
 
+#[allow(dead_code)]
 fn load_incompatible_list() -> Vec<String> {
     fs::read_to_string(INCOMPAT_FILE)
         .ok()
@@ -230,6 +235,7 @@ fn load_incompatible_list() -> Vec<String> {
         .unwrap_or_default()
 }
 
+#[allow(dead_code)]
 fn save_incompatible_list(list: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let data = IncompatibleList { incompatible: list.to_vec() };
     let _ = fs::create_dir_all(SAVES_DIR);
@@ -264,3 +270,43 @@ fn handle_save_load(
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn days_to_ymd_epoch() {
+        assert_eq!(days_to_ymd(0), (1970, 1, 1));
+    }
+
+    #[test]
+    fn days_to_ymd_known_date() {
+        // 2024-03-12: days since 1970-01-01
+        // 1970..2024 = 54 years; count leap years
+        // approximate: 54*365 + 13 leap days = 19723 (rough check)
+        let (year, month, _day) = days_to_ymd(19793);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 3);
+    }
+
+    #[test]
+    fn is_leap_year() {
+        assert!(is_leap(2000));
+        assert!(is_leap(2024));
+        assert!(!is_leap(1900));
+        assert!(!is_leap(2023));
+    }
+
+    #[test]
+    fn format_filename_well_formed() {
+        let s = format_filename_as_time("city_20240312_143052.json");
+        assert_eq!(s, "2024-03-12  14:30:52");
+    }
+
+    #[test]
+    fn format_filename_fallback_on_bad_input() {
+        let s = format_filename_as_time("not_a_timestamp.json");
+        assert_eq!(s, "not_a_timestamp.json");
+    }
+}
