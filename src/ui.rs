@@ -1,3 +1,4 @@
+use crate::economy::Economy;
 use crate::entities::*;
 use crate::hovered::HoveredEntity;
 use crate::roads::{ConstructionLog, ConstructionQueue, ProjectStatus, RoadNetwork};
@@ -116,6 +117,20 @@ pub struct RouteInfoPanel;
 #[derive(Component)]
 pub struct RouteInfoText;
 
+#[derive(Component)]
+pub struct EconomyPanel;
+
+#[derive(Component)]
+pub struct EconomyBalanceText;
+
+#[derive(Component)]
+pub struct EconomyFlowText;
+
+#[derive(Component)]
+pub struct FloorLabel {
+    pub building_id: String,
+}
+
 
 #[derive(Component, Clone, Debug)]
 pub enum BuildingPanelAction {
@@ -160,6 +175,13 @@ impl Plugin for UIPlugin {
                     sync_log_hover_state,
                     sync_log_highlight,
                     scroll_panels,
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    update_economy_ui.run_if(in_state(AppState::InGame)),
+                    update_floor_labels.run_if(in_state(AppState::InGame)),
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -462,6 +484,35 @@ fn setup_ui(mut commands: Commands) {
                 CitizenTooltipText,
             ));
         });
+
+    // Economy panel — bottom left
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(10.0),
+            bottom: Val::Px(10.0),
+            padding: UiRect::all(Val::Px(6.0)),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(2.0),
+            ..Default::default()
+        },
+        BackgroundColor(Color::srgba(0.05, 0.08, 0.12, 0.85)),
+        ZIndex(30),
+        EconomyPanel,
+    )).with_children(|p| {
+        p.spawn((
+            Text::new("Balance: $0"),
+            TextFont { font_size: 13.0, ..Default::default() },
+            TextColor(Color::srgb(0.8, 0.9, 0.6)),
+            EconomyBalanceText,
+        ));
+        p.spawn((
+            Text::new("+$0 / -$0 per day"),
+            TextFont { font_size: 11.0, ..Default::default() },
+            TextColor(Color::srgb(0.6, 0.7, 0.5)),
+            EconomyFlowText,
+        ));
+    });
 }
 
 fn toolbar_button(parent: &mut ChildSpawnerCommands, label: &str, action: ToolbarAction) {
@@ -634,6 +685,7 @@ fn handle_pending_quit(
     road_network: Res<RoadNetwork>,
     queue: Res<ConstructionQueue>,
     log: Res<ConstructionLog>,
+    economy: Res<Economy>,
     mut next_state: ResMut<NextState<AppState>>,
     mut quit_visible: ResMut<QuitDialogVisible>,
     citizen_query: Query<&Citizen>,
@@ -646,7 +698,7 @@ fn handle_pending_quit(
         let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
         sync_citizens_to_world(&mut world, &ecs_citizens);
 
-        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log) {
+        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy) {
             eprintln!("Failed to save before quit: {e}");
         }
     }
@@ -1394,5 +1446,60 @@ fn scroll_panels(
             // Positive delta = scroll up => decrease offset_y.
             scroll.0.y = (scroll.0.y - delta).max(0.0);
         }
+    }
+}
+
+fn update_economy_ui(
+    economy: Res<Economy>,
+    mut balance_query: Query<&mut Text, (With<EconomyBalanceText>, Without<EconomyFlowText>)>,
+    mut flow_query: Query<&mut Text, (With<EconomyFlowText>, Without<EconomyBalanceText>)>,
+) {
+    let Ok(mut balance_text) = balance_query.single_mut() else { return };
+    let Ok(mut flow_text) = flow_query.single_mut() else { return };
+
+    let balance = economy.balance;
+    let sign = if balance >= 0.0 { "" } else { "-" };
+    *balance_text = Text::new(format!("Balance: {}{}", sign, format_money(balance.abs())));
+
+    let net = economy.daily_net();
+    let net_sign = if net >= 0.0 { "+" } else { "" };
+    *flow_text = Text::new(format!(
+        "{}{}  /day (in {} out {})",
+        net_sign,
+        format_money(net),
+        format_money(economy.daily_income),
+        format_money(economy.daily_expenses),
+    ));
+}
+
+fn format_money(amount: f32) -> String {
+    let n = amount.abs() as u64;
+    if n >= 1_000_000 {
+        format!("${:.1}M", amount / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("${:.1}k", amount / 1_000.0)
+    } else {
+        format!("${}", n)
+    }
+}
+
+fn update_floor_labels(
+    world: Res<CityWorld>,
+    mut label_query: Query<(&FloorLabel, &mut Text, &mut TextColor)>,
+) {
+    for (label, mut text, mut color) in label_query.iter_mut() {
+        if let Some(building) = world.buildings.iter().find(|b| b.id == label.building_id) {
+            *text = Text::new(format!("F{}", building.floors));
+            color.0 = floor_label_color(building.floors);
+        }
+    }
+}
+
+fn floor_label_color(floors: u32) -> Color {
+    match floors {
+        1 => Color::srgb(0.6, 0.6, 0.6),
+        2 | 3 => Color::srgb(1.0, 0.9, 0.3),
+        4 | 5 => Color::srgb(1.0, 0.6, 0.1),
+        _ => Color::srgb(1.0, 0.2, 0.1),
     }
 }

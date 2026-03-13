@@ -4,6 +4,7 @@ use bevy::window::WindowResized;
 
 mod aging;
 mod ai;
+mod economy;
 mod entities;
 mod grid;
 mod hovered;
@@ -21,6 +22,7 @@ mod world;
 
 use aging::AgingPlugin;
 use ai::NeedsDecayPlugin;
+use economy::EconomyPlugin;
 use entities::*;
 use hovered::HoveredEntity;
 use housing::HousingPlugin;
@@ -94,6 +96,7 @@ fn main() {
         .init_state::<AppState>()
         .add_plugins(NeedsDecayPlugin)
         .add_plugins(MovementPlugin)
+        .add_plugins(EconomyPlugin)
         .add_plugins(GameTimePlugin)
         .add_plugins(AgingPlugin)
         .add_plugins(ReproductionPlugin)
@@ -140,6 +143,7 @@ fn cleanup_ingame(
     queue_highlights: Query<Entity, With<ui::QueueHighlightMarker>>,
     sel_highlights: Query<Entity, With<ui::SelectedBuildingHighlightMarker>>,
     log_highlights: Query<Entity, With<ui::LogHighlightMarker>>,
+    floor_labels: Query<Entity, With<ui::FloorLabel>>,
     mut road_entities: ResMut<RoadEntities>,
 ) {
     for entity in buildings.iter()
@@ -150,6 +154,7 @@ fn cleanup_ingame(
         .chain(queue_highlights.iter())
         .chain(sel_highlights.iter())
         .chain(log_highlights.iter())
+        .chain(floor_labels.iter())
     {
         commands.entity(entity).despawn();
     }
@@ -169,6 +174,7 @@ fn cleanup_ingame(
     commands.insert_resource(roads::ConstructionLog::default());
     commands.insert_resource(HoveredQueueItem::default());
     commands.insert_resource(HoveredLogItem::default());
+    commands.insert_resource(economy::Economy::new());
 }
 
 fn setup(
@@ -182,6 +188,7 @@ fn setup(
     mut pending_load: ResMut<save::PendingLoad>,
     mut queue: ResMut<roads::ConstructionQueue>,
     mut log: ResMut<roads::ConstructionLog>,
+    mut economy: ResMut<economy::Economy>,
 ) {
     // If the start screen queued a save to load, apply it before spawning entities.
     if let Some(path) = pending_load.0.take() {
@@ -193,6 +200,7 @@ fn setup(
                 *road_network          = save_data.road_network;
                 *queue                 = save_data.queue;
                 *log                   = save_data.log;
+                *economy               = save_data.economy;
 
                 // Reset citizen navigation state so stale waypoints/targets from
                 // the saved game don't cause pathfinding issues on re-entry.

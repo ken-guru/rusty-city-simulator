@@ -1,3 +1,4 @@
+use crate::economy::Economy;
 use crate::entities::*;
 use crate::grid::{cell_to_world, is_building_cell, world_to_cell, CELL_SIZE};
 use crate::roads::RoadNetwork;
@@ -21,9 +22,37 @@ impl Plugin for HousingPlugin {
     }
 }
 
+/// Returns true if the given building can gain one more floor without violating the 5-floor
+/// height difference rule relative to neighbours. Parks and roads are ignored.
+fn can_add_floor(building: &Building, all_buildings: &[Building]) -> bool {
+    let neighbour_radius = CELL_SIZE * 3.0;
+    let min_neighbour_floors = all_buildings
+        .iter()
+        .filter(|other| other.id != building.id)
+        .filter(|other| !matches!(other.building_type, BuildingType::Public))
+        .filter(|other| (other.position - building.position).length() <= neighbour_radius)
+        .map(|other| other.floors)
+        .min()
+        .unwrap_or(building.floors); // if alone, no constraint
+
+    building.floors + 1 <= min_neighbour_floors + 5
+}
+
+/// Adds one floor to the named building: increments floors, scales capacity, charges economy.
+fn add_floor_to_building(building_id: &str, world: &mut CityWorld, economy: &mut Economy) {
+    if let Some(b) = world.buildings.iter_mut().find(|b| b.id == building_id) {
+        let cost = 25_000.0 + b.floors as f32 * 8_000.0;
+        b.floors += 1;
+        b.capacity_residents = b.base_capacity_residents * b.floors as usize;
+        b.capacity_workers   = b.base_capacity_workers   * b.floors as usize;
+        economy.charge_construction(cost);
+    }
+}
+
 fn check_housing_pressure(
     mut world: ResMut<CityWorld>,
     mut building_events: MessageWriter<NewBuildingEvent>,
+    mut economy: ResMut<Economy>,
     time: Res<Time>,
     game_time: Res<GameTime>,
 ) {
@@ -45,11 +74,62 @@ fn check_housing_pressure(
 
     // Build a new home when occupancy > 80%.
     if total_residents as f32 / total_home_capacity.max(1) as f32 > 0.8 {
+        let mut rng = rand::rng();
+
+        // --- decide: add floor vs build new ---
+        let avg_distance = {
+            let mut total = 0.0f32;
+            let mut n = 0u32;
+            for b in &world.buildings {
+                if b.building_type == BuildingType::Home {
+                    total += b.position.length(); // rough distance from city centre
+                    n += 1;
+                }
+            }
+            if n > 0 { total / n as f32 } else { 0.0 }
+        };
+        let travel_penalty = avg_distance * 0.5 * 30.0;
+        let expand_cost = 50_000.0 + travel_penalty;
+
+        // Find cheapest eligible building to add a floor to
+        let all_buildings_snapshot = world.buildings.clone();
+        let best_floor_target: Option<String> = {
+            let candidates: Vec<_> = world.buildings.iter()
+                .filter(|b| b.building_type == BuildingType::Home)
+                .filter(|b| can_add_floor(b, &all_buildings_snapshot))
+                .collect();
+            candidates.iter()
+                .min_by_key(|b| (25_000.0 + b.floors as f32 * 8_000.0) as u32)
+                .map(|b| b.id.clone())
+        };
+
+        let (go_vertical, _chosen_id) = if let Some(ref target_id) = best_floor_target {
+            let floor_cost = world.buildings.iter()
+                .find(|b| &b.id == target_id)
+                .map(|b| 25_000.0 + b.floors as f32 * 8_000.0)
+                .unwrap_or(f32::MAX);
+            let noise_floor = 0.75 + rng.random::<f32>() * 0.5;
+            let noise_expand = 0.75 + rng.random::<f32>() * 0.5;
+            let noisy_floor = floor_cost * noise_floor;
+            let noisy_expand = expand_cost * noise_expand;
+            (noisy_floor < noisy_expand, Some(target_id.clone()))
+        } else {
+            (false, None)
+        };
+
+        if go_vertical {
+            if let Some(ref id) = best_floor_target {
+                add_floor_to_building(id, &mut world, &mut economy);
+                return;
+            }
+        }
+
         if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Home) {
             world.occupied_cells.insert(cell);
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
+            economy.charge_construction(50_000.0);
             building_events.write(NewBuildingEvent { building });
         }
     }
@@ -67,6 +147,7 @@ fn check_housing_pressure(
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
+            economy.charge_construction(50_000.0);
             building_events.write(NewBuildingEvent { building });
         }
     }
@@ -78,6 +159,7 @@ fn check_housing_pressure(
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
+            economy.charge_construction(50_000.0);
             building_events.write(NewBuildingEvent { building });
         }
     }
@@ -210,6 +292,15 @@ fn spawn_building(
             },
             Transform::from_xyz(b.position.x, b.position.y, 0.0),
             b.clone(),
+        ));
+
+        // Spawn floor label
+        commands.spawn((
+            Text2d::new("F1"),
+            TextFont { font_size: 18.0, ..Default::default() },
+            TextColor(Color::srgb(0.6, 0.6, 0.6)),
+            Transform::from_xyz(b.position.x, b.position.y, 1.0),
+            crate::ui::FloorLabel { building_id: b.id.clone() },
         ));
 
         // Connect to the road network via the building's entrance.

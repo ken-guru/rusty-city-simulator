@@ -134,6 +134,9 @@ pub struct Building {
     pub worker_ids: Vec<String>,
     pub capacity_residents: usize,
     pub capacity_workers: usize,
+    pub floors: u32,
+    pub base_capacity_residents: usize,
+    pub base_capacity_workers: usize,
     /// The one corridor cell this building connects to for road access.
     #[serde(default)]
     pub entrance_direction: Direction,
@@ -162,11 +165,16 @@ impl Building {
             worker_ids: Vec::new(),
             capacity_residents,
             capacity_workers,
+            floors: 1,
+            base_capacity_residents: capacity_residents,
+            base_capacity_workers: capacity_workers,
             entrance_direction: Direction::South,
             name: String::new(),
             founded_day: 0.0,
         }
     }
+
+    pub fn total_floors(&self) -> u32 { self.floors }
 
     /// World position of this building's entrance corridor cell.
     pub fn entrance_pos(&self) -> Vec2 {
