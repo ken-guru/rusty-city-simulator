@@ -179,43 +179,49 @@ fn setup_ui(mut commands: Commands) {
             ));
         });
 
-    // Construction queue panel (top left, below time display) — hidden when queue is empty.
-    // Children (interactive rows) are managed dynamically by rebuild_queue_panel.
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(10.0),
-            top: Val::Px(48.0),
-            padding: UiRect::all(Val::Px(8.0)),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(2.0),
-            display: Display::None,
-            ..Default::default()
-        },
-        BackgroundColor(Color::srgba(0.08, 0.12, 0.18, 0.88)),
-        BorderRadius::all(Val::Px(6.0)),
-        ZIndex(40),
-        QueuePanel,
-    ));
+    // Construction queue + log panels share a flex-column wrapper so they
+    // stack vertically and never overlap regardless of queue length.
+    // Each panel manages its own Display::Flex/None; the wrapper is always visible.
+    commands.spawn(Node {
+        position_type: PositionType::Absolute,
+        left: Val::Px(10.0),
+        top: Val::Px(48.0),
+        flex_direction: FlexDirection::Column,
+        row_gap: Val::Px(6.0),
+        ..Default::default()
+    }).with_children(|wrapper| {
+        // Construction queue panel — hidden when queue is empty.
+        // Children (interactive rows) managed dynamically by rebuild_queue_panel.
+        wrapper.spawn((
+            Node {
+                padding: UiRect::all(Val::Px(8.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                display: Display::None,
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgba(0.08, 0.12, 0.18, 0.88)),
+            BorderRadius::all(Val::Px(6.0)),
+            ZIndex(40),
+            QueuePanel,
+        ));
 
-    // Construction history log panel (top left, below queue panel) — hidden when empty.
-    // Children managed dynamically by rebuild_log_panel.
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(10.0),
-            top: Val::Px(160.0),
-            padding: UiRect::all(Val::Px(8.0)),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(2.0),
-            display: Display::None,
-            ..Default::default()
-        },
-        BackgroundColor(Color::srgba(0.06, 0.10, 0.08, 0.88)),
-        BorderRadius::all(Val::Px(6.0)),
-        ZIndex(39),
-        LogPanel,
-    ));
+        // Construction history log panel — hidden when empty.
+        // Children managed dynamically by rebuild_log_panel.
+        wrapper.spawn((
+            Node {
+                padding: UiRect::all(Val::Px(8.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                display: Display::None,
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgba(0.06, 0.10, 0.08, 0.88)),
+            BorderRadius::all(Val::Px(6.0)),
+            ZIndex(39),
+            LogPanel,
+        ));
+    });
 
     // Citizen info on hover (top right)
     commands
