@@ -26,7 +26,7 @@ pub use economy::DebugMode;
 use economy::EconomyPlugin;
 use entities::*;
 use hovered::HoveredEntity;
-use housing::HousingPlugin;
+use housing::{HousingPlugin, HousingCooldown};
 use movement::MovementPlugin;
 use reproduction::ReproductionPlugin;
 use roads::{RoadEntities, RoadsPlugin};
@@ -147,6 +147,7 @@ fn cleanup_ingame(
     log_highlights: Query<Entity, With<ui::LogHighlightMarker>>,
     floor_labels: Query<Entity, With<ui::FloorLabel>>,
     mut road_entities: ResMut<RoadEntities>,
+    mut debug: ResMut<DebugMode>,
 ) {
     for entity in buildings.iter()
         .chain(citizens.iter())
@@ -177,6 +178,9 @@ fn cleanup_ingame(
     commands.insert_resource(HoveredQueueItem::default());
     commands.insert_resource(HoveredLogItem::default());
     commands.insert_resource(economy::Economy::new());
+    commands.insert_resource(housing::HousingCooldown::default());
+    // Reset log header flag so a new session header is written if debug logging fires again.
+    debug.log_header_written = false;
 }
 
 fn setup(

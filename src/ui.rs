@@ -153,6 +153,8 @@ impl Plugin for UIPlugin {
             .init_resource::<HoveredQueueItem>()
             .init_resource::<HoveredLogItem>()
             .add_systems(Startup, setup_ui)
+            .add_systems(OnEnter(AppState::InGame), show_economy_panel)
+            .add_systems(OnExit(AppState::InGame), hide_economy_panel)
             .add_systems(
                 Update,
                 (
@@ -498,6 +500,7 @@ fn setup_ui(mut commands: Commands) {
         },
         BackgroundColor(Color::srgba(0.05, 0.08, 0.12, 0.85)),
         ZIndex(30),
+        Visibility::Hidden,
         EconomyPanel,
     )).with_children(|p| {
         p.spawn((
@@ -1470,6 +1473,18 @@ fn update_economy_ui(
         format_money(economy.daily_income),
         format_money(economy.daily_expenses),
     ));
+}
+
+fn show_economy_panel(mut query: Query<&mut Visibility, With<EconomyPanel>>) {
+    if let Ok(mut vis) = query.single_mut() {
+        *vis = Visibility::Visible;
+    }
+}
+
+fn hide_economy_panel(mut query: Query<&mut Visibility, With<EconomyPanel>>) {
+    if let Ok(mut vis) = query.single_mut() {
+        *vis = Visibility::Hidden;
+    }
 }
 
 fn format_money(amount: f32) -> String {

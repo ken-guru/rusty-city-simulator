@@ -15,9 +15,18 @@ pub struct NewBuildingEvent {
 
 pub struct HousingPlugin;
 
+/// Prevents construction from firing more than once per game-day per building category.
+#[derive(Resource, Default)]
+pub struct HousingCooldown {
+    pub last_home_day: f32,
+    pub last_office_day: f32,
+    pub last_shop_day: f32,
+}
+
 impl Plugin for HousingPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<NewBuildingEvent>()
+            .init_resource::<HousingCooldown>()
             .add_systems(Update, (check_housing_pressure, spawn_building).chain().run_if(in_state(crate::AppState::InGame)));
     }
 }
@@ -41,7 +50,7 @@ fn can_add_floor(building: &Building, all_buildings: &[Building]) -> bool {
 /// Adds one floor to the named building: increments floors, scales capacity, charges economy.
 fn add_floor_to_building(building_id: &str, world: &mut CityWorld, economy: &mut Economy, debug: &mut DebugMode) {
     if let Some(b) = world.buildings.iter_mut().find(|b| b.id == building_id) {
-        let cost = 25_000.0 + b.floors as f32 * 8_000.0;
+        let cost = 2_500.0 + b.floors as f32 * 800.0;
         b.floors += 1;
         b.capacity_residents = b.base_capacity_residents * b.floors as usize;
         b.capacity_workers   = b.base_capacity_workers   * b.floors as usize;
@@ -55,6 +64,7 @@ fn check_housing_pressure(
     mut building_events: MessageWriter<NewBuildingEvent>,
     mut economy: ResMut<Economy>,
     mut debug: ResMut<DebugMode>,
+    mut cooldown: ResMut<HousingCooldown>,
     time: Res<Time>,
     game_time: Res<GameTime>,
 ) {
@@ -62,6 +72,8 @@ fn check_housing_pressure(
     if !should_tick(delta, 0.1) {
         return;
     }
+
+    let current_day = game_time.current_day();
 
     let total_home_capacity: usize = world
         .buildings.iter()
@@ -74,8 +86,10 @@ fn check_housing_pressure(
         .map(|b| b.resident_ids.len())
         .sum();
 
-    // Build a new home when occupancy > 80%.
-    if total_residents as f32 / total_home_capacity.max(1) as f32 > 0.8 {
+    // Build a new home when occupancy > 80% — at most once per game-day.
+    if total_residents as f32 / total_home_capacity.max(1) as f32 > 0.8
+        && current_day - cooldown.last_home_day >= 1.0
+    {
         let mut rng = rand::rng();
 
         // --- decide: add floor vs build new ---
@@ -91,7 +105,7 @@ fn check_housing_pressure(
             if n > 0 { total / n as f32 } else { 0.0 }
         };
         let travel_penalty = avg_distance * 0.5 * 30.0;
-        let expand_cost = 50_000.0 + travel_penalty;
+        let expand_cost = 5_000.0 + travel_penalty;
 
         // Find cheapest eligible building to add a floor to
         let all_buildings_snapshot = world.buildings.clone();
@@ -101,14 +115,14 @@ fn check_housing_pressure(
                 .filter(|b| can_add_floor(b, &all_buildings_snapshot))
                 .collect();
             candidates.iter()
-                .min_by_key(|b| (25_000.0 + b.floors as f32 * 8_000.0) as u32)
+                .min_by_key(|b| (2_500.0 + b.floors as f32 * 800.0) as u32)
                 .map(|b| b.id.clone())
         };
 
         let (go_vertical, _chosen_id) = if let Some(ref target_id) = best_floor_target {
             let floor_cost = world.buildings.iter()
                 .find(|b| &b.id == target_id)
-                .map(|b| 25_000.0 + b.floors as f32 * 8_000.0)
+                .map(|b| 2_500.0 + b.floors as f32 * 800.0)
                 .unwrap_or(f32::MAX);
             let noise_floor = 0.75 + rng.random::<f32>() * 0.5;
             let noise_expand = 0.75 + rng.random::<f32>() * 0.5;
@@ -118,6 +132,8 @@ fn check_housing_pressure(
         } else {
             (false, None)
         };
+
+        cooldown.last_home_day = current_day;
 
         if go_vertical {
             if let Some(ref id) = best_floor_target {
@@ -129,10 +145,10 @@ fn check_housing_pressure(
         if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Home) {
             world.occupied_cells.insert(cell);
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
-            building.founded_day = game_time.current_day();
+            building.founded_day = current_day;
             world.buildings.push(building.clone());
-            log_construction(&mut debug, "new Home building", 50_000.0);
-            economy.charge_construction(50_000.0);
+            log_construction(&mut debug, "new Home building", 5_000.0);
+            economy.charge_construction(5_000.0);
             building_events.write(NewBuildingEvent { building });
         }
     }
@@ -143,28 +159,30 @@ fn check_housing_pressure(
     let office_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Office).count();
     let shop_count   = world.buildings.iter().filter(|b| b.building_type == BuildingType::Shop).count();
 
-    // 1 office per 5 citizens
-    if total_pop > office_count * 5 {
+    // 1 office per 5 citizens — at most once per game-day.
+    if total_pop > office_count * 5 && current_day - cooldown.last_office_day >= 1.0 {
         if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Office) {
             world.occupied_cells.insert(cell);
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
-            building.founded_day = game_time.current_day();
+            building.founded_day = current_day;
             world.buildings.push(building.clone());
-            log_construction(&mut debug, "new Office building", 50_000.0);
-            economy.charge_construction(50_000.0);
+            cooldown.last_office_day = current_day;
+            log_construction(&mut debug, "new Office building", 5_000.0);
+            economy.charge_construction(5_000.0);
             building_events.write(NewBuildingEvent { building });
         }
     }
 
-    // 1 shop per 7 citizens
-    if total_pop > shop_count * 7 {
+    // 1 shop per 7 citizens — at most once per game-day.
+    if total_pop > shop_count * 7 && current_day - cooldown.last_shop_day >= 1.0 {
         if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Shop) {
             world.occupied_cells.insert(cell);
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
-            building.founded_day = game_time.current_day();
+            building.founded_day = current_day;
             world.buildings.push(building.clone());
-            log_construction(&mut debug, "new Shop building", 50_000.0);
-            economy.charge_construction(50_000.0);
+            cooldown.last_shop_day = current_day;
+            log_construction(&mut debug, "new Shop building", 5_000.0);
+            economy.charge_construction(5_000.0);
             building_events.write(NewBuildingEvent { building });
         }
     }
