@@ -1525,7 +1525,7 @@ fn update_floor_labels(
 
 fn floor_label_color(floors: u32) -> Color {
     match floors {
-        1 => Color::srgb(0.6, 0.6, 0.6),
+        1 => Color::srgb(0.95, 0.95, 0.95),
         2 | 3 => Color::srgb(1.0, 0.9, 0.3),
         4 | 5 => Color::srgb(1.0, 0.6, 0.1),
         _ => Color::srgb(1.0, 0.2, 0.1),
