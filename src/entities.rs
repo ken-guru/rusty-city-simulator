@@ -174,6 +174,7 @@ impl Building {
         }
     }
 
+    #[allow(dead_code)]
     pub fn total_floors(&self) -> u32 { self.floors }
 
     /// World position of this building's entrance corridor cell.
