@@ -240,6 +240,24 @@ fn setup(
             Transform::from_xyz(building.position.x, building.position.y, 0.0),
             building.clone(),
         ));
+        // Spawn floor label (same logic as housing::spawn_building).
+        let label_entity = commands.spawn((
+            Sprite {
+                color: Color::srgba(0.0, 0.0, 0.0, 0.75),
+                custom_size: Some(Vec2::new(36.0, 20.0)),
+                ..default()
+            },
+            Transform::from_xyz(building.position.x, building.position.y + 50.0, 5.0),
+            ui::FloorLabel { building_id: building.id.clone() },
+        )).id();
+        commands.entity(label_entity).with_children(|p| {
+            p.spawn((
+                Text2d::new(format!("F{}", building.floors)),
+                TextFont { font_size: 13.0, ..default() },
+                TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                Transform::from_xyz(0.0, 0.0, 0.1),
+            ));
+        });
     }
 
     // Spawn any parks that were in a loaded save file.
