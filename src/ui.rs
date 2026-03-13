@@ -748,11 +748,11 @@ fn sync_route_info_panel(
 fn building_panel_interaction(
     mut building_button_query: Query<
         (&Interaction, &BuildingPanelAction, &mut BackgroundColor),
-        (Changed<Interaction>, With<Button>),
+        (Changed<Interaction>, With<Button>, Without<RoutePanelAction>),
     >,
     mut route_button_query: Query<
         (&Interaction, &RoutePanelAction, &mut BackgroundColor),
-        (Changed<Interaction>, With<Button>),
+        (Changed<Interaction>, With<Button>, Without<BuildingPanelAction>),
     >,
     mut selection: ResMut<BuildingSelection>,
     mut active_route: ResMut<ActiveRoute>,
