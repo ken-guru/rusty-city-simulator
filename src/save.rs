@@ -90,7 +90,7 @@ pub fn save_game(
         road_network: road_network.clone(),
     };
 
-    let json = serde_json::to_string_pretty(&save)?;
+    let json = serde_json::to_string(&save)?;
     fs::write(&path, json)?;
     println!("Game saved to {}", path.display());
     Ok(path)

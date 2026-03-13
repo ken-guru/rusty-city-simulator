@@ -16,8 +16,8 @@ A Rust-based city simulation where citizens autonomously live out their daily li
 - **Park Corridors**: When two parks are adjacent, the corridor cell between them becomes a walkable park path citizens can traverse
 - **Pixel Art Sprites**: Distinct sprites for homes, offices, shops, and parks
 - **Start Screen**: New game or load a saved game from a list
-- **Multiple Saves**: Timestamped save files with version compatibility tracking
-- **Auto-zoom**: Camera slowly zooms out as the city grows to keep all buildings visible
+- **Multiple Saves**: Timestamped save files with version compatibility tracking; compact JSON format (~50% smaller than pretty-printed)
+- **Auto-zoom**: Camera continuously zooms and pans to keep all buildings visible; adapts to window resize with speed proportional to correction needed
 - **Simulation Speed Controls**: Pause, slow motion, normal, or fast-forward
 - **Hover Info**: Hover over citizens to see detailed stats and current activity
 - **Toolbar UI**: All keyboard shortcuts accessible as on-screen buttons
@@ -84,9 +84,10 @@ Citizens travel exclusively along established roads. If no road connects two loc
 - Crossroad cells where multiple roads meet are protected from building placement
 
 ### Parks
-When a building cell is enclosed by 4 occupied building-cell neighbours, it becomes a park. Parks can never be built upon and offer citizens a place to rest and socialise.
+### Parks
+When a building cell is enclosed by 4 occupied building-cell neighbours (buildings OR other parks), it becomes a park. Parks can never be built upon and offer citizens a place to rest and socialise.
 
-When two adjacent parks share a corridor cell between them, that corridor cell becomes a **park corridor**: visually part of the park (grass with a stone path), and walkable so citizens can cut through.
+When two adjacent parks share a corridor cell between them, that corridor cell becomes a **park corridor**: visually part of the park (grass with a stone path), and walkable so citizens can cut through. If an existing road runs through that corridor, it has a 40% chance of being absorbed into the park path.
 
 ### Population Growth
 When the population grows, new buildings are placed on the grid and connected to the road network. The mix of homes, offices, and shops expands proportionally.

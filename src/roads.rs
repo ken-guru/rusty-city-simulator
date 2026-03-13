@@ -27,6 +27,8 @@ pub enum SegmentType {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RoadSegment {
+    /// Runtime-only ID for entity tracking. Not stored in saves; regenerated on load.
+    #[serde(skip_serializing, default = "new_segment_id")]
     pub id: String,
     pub start: Vec2,
     pub end: Vec2,
@@ -35,6 +37,10 @@ pub struct RoadSegment {
     pub usage: f32,
     /// Game-day when last traversed (used for degradation).
     pub last_used_day: f32,
+}
+
+fn new_segment_id() -> String {
+    Uuid::new_v4().to_string()
 }
 
 impl RoadSegment {
@@ -499,6 +505,29 @@ impl RoadNetwork {
             let east = cell_to_world(c + 1, r);
             self.connect(west, here, SegmentType::ParkPath, current_day);
             self.connect(here, east, SegmentType::ParkPath, current_day);
+        }
+    }
+
+    /// Returns true if any Road or Path (non-ParkPath) segment has an endpoint
+    /// at the world position of `cell`.
+    pub fn corridor_has_real_road(&self, cell: (i32, i32)) -> bool {
+        let pos = cell_to_world(cell.0, cell.1);
+        self.segments.iter().any(|s| {
+            matches!(s.seg_type, SegmentType::Road | SegmentType::Path)
+                && (nodes_close(s.start, pos) || nodes_close(s.end, pos))
+        })
+    }
+
+    /// Convert all Road/Path segments that pass through `cell` to `ParkPath`,
+    /// so that the road mesh is removed and replaced by the park corridor sprite.
+    pub fn convert_corridor_segments_to_park_path(&mut self, cell: (i32, i32)) {
+        let pos = cell_to_world(cell.0, cell.1);
+        for seg in &mut self.segments {
+            if matches!(seg.seg_type, SegmentType::Road | SegmentType::Path)
+                && (nodes_close(seg.start, pos) || nodes_close(seg.end, pos))
+            {
+                seg.seg_type = SegmentType::ParkPath;
+            }
         }
     }
 

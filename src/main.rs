@@ -1,5 +1,6 @@
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
+use bevy::window::WindowResized;
 
 mod aging;
 mod ai;
@@ -322,25 +323,38 @@ fn auto_zoom_camera(
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
     mut game_state: ResMut<GameState>,
     time: Res<Time>,
+    mut resize_events: EventReader<WindowResized>,
 ) {
     if world.buildings.is_empty() {
         return;
     }
+
+    let resized = resize_events.read().count() > 0;
 
     let (vw, vh) = windows
         .get_single()
         .map(|w| (w.width(), w.height()))
         .unwrap_or((1280.0, 720.0));
 
+    // Compute bounding box of all buildings.
+    let min_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MAX, f32::min);
+    let max_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MIN, f32::max);
+    let min_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MAX, f32::min);
+    let max_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MIN, f32::max);
+    let margin = 200.0;
+    let city_w = (max_x - min_x) + margin * 2.0;
+    let city_h = (max_y - min_y) + margin * 2.0;
+    let target_center = Vec2::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5);
+    let target_zoom = (vw / city_w).min(vh / city_h).clamp(0.2, 2.0);
+
+    // Check if any building is outside the current viewport (with a small margin).
+    let Ok(camera) = camera_query.get_single() else { return };
+    let cam_pos = camera.translation.xy();
     let scale = 1.0 / game_state.camera_zoom;
     let half_w = vw * scale * 0.5;
     let half_h = vh * scale * 0.5;
-    let Ok(camera) = camera_query.get_single() else { return };
-    let cam_pos = camera.translation.xy();
-
-    const EDGE_MARGIN: f32 = 140.0;
-
-    let near_edge = world.buildings.iter().any(|b| {
+    const EDGE_MARGIN: f32 = 100.0;
+    let any_outside = world.buildings.iter().any(|b| {
         let rel = b.position - cam_pos;
         rel.x < -(half_w - EDGE_MARGIN)
             || rel.x > (half_w - EDGE_MARGIN)
@@ -348,24 +362,24 @@ fn auto_zoom_camera(
             || rel.y > (half_h - EDGE_MARGIN)
     });
 
-    if !near_edge { return; }
+    if !any_outside && !resized {
+        return;
+    }
 
-    let min_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MAX, f32::min);
-    let max_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MIN, f32::max);
-    let min_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MAX, f32::min);
-    let max_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MIN, f32::max);
-    let margin = 180.0;
-    let city_w = (max_x - min_x) + margin * 2.0;
-    let city_h = (max_y - min_y) + margin * 2.0;
-    let target_zoom = (vw / city_w).min(vh / city_h).clamp(0.25, 1.5);
+    // Adaptive lerp speeds: faster when the correction needed is large.
+    let delta = time.delta_secs();
+    let zoom_diff = (target_zoom - game_state.camera_zoom).abs();
+    let pan_diff = (target_center - cam_pos).length();
+    let zoom_speed = ((0.8 + zoom_diff * 4.0).min(8.0) * delta).clamp(0.0, 1.0);
+    let pan_speed  = ((0.5 + pan_diff * 0.001).min(5.0) * delta).clamp(0.0, 1.0);
 
-    if target_zoom < game_state.camera_zoom {
-        let speed = 0.05;
-        game_state.camera_zoom +=
-            (target_zoom - game_state.camera_zoom) * speed * time.delta_secs();
-        if let Ok(mut cam) = camera_query.get_single_mut() {
-            cam.scale = Vec3::splat(1.0 / game_state.camera_zoom);
-        }
+    // Apply lerp to both zoom and camera position.
+    game_state.camera_zoom += (target_zoom - game_state.camera_zoom) * zoom_speed;
+    if let Ok(mut cam) = camera_query.get_single_mut() {
+        cam.scale = Vec3::splat(1.0 / game_state.camera_zoom);
+        let new_pos = cam.translation.xy().lerp(target_center, pan_speed);
+        cam.translation.x = new_pos.x;
+        cam.translation.y = new_pos.y;
     }
 }
 

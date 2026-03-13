@@ -59,13 +59,15 @@ pub struct Citizen {
 
     // State
     pub current_activity: ActivityType,
+    /// Cleared on load (reset to None); not persisted.
+    #[serde(skip, default)]
     pub target_position: Option<Vec2>,
     pub partner_id: Option<String>, // current romantic partner
 
-    // Road navigation
-    #[serde(default)]
-    pub waypoints: Vec<Vec2>, // remaining road waypoints (stored reversed; pop from end)
-    #[serde(default)]
+    // Road navigation — all transient; cleared on load
+    #[serde(skip, default)]
+    pub waypoints: Vec<Vec2>,
+    #[serde(skip, default)]
     pub last_road_node: Option<Vec2>,
     /// Time remaining (in game-seconds) to stay at a park.
     #[serde(default)]

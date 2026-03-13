@@ -5,6 +5,7 @@ use crate::sprites::SpriteAssets;
 use crate::world::{building_stats, CityWorld, ParkCorridorMarker, ParkMarker};
 use crate::time::GameTime;
 use bevy::prelude::*;
+use rand::Rng;
 
 #[derive(Event)]
 pub struct NewBuildingEvent {
@@ -254,7 +255,16 @@ fn spawn_building(
                 Transform::from_xyz(corridor_pos.x, corridor_pos.y, -0.3),
                 ParkCorridorMarker { cell: corridor_cell, is_ns },
             ));
-            road_network.add_park_path(corridor_cell, current_day);
+            // If a real road already runs through this corridor, absorb it into
+            // the park path with ~40% probability (road gradually becomes a park).
+            if road_network.corridor_has_real_road(corridor_cell)
+                && rand::thread_rng().gen_bool(0.40)
+            {
+                road_network.convert_corridor_segments_to_park_path(corridor_cell);
+                info!("Road absorbed into park corridor at {:?}", corridor_cell);
+            } else {
+                road_network.add_park_path(corridor_cell, current_day);
+            }
             info!("Park corridor at grid {:?} ({})", corridor_cell, if is_ns { "N-S" } else { "E-W" });
         }
 

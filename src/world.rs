@@ -154,9 +154,11 @@ impl CityWorld {
 
         for cell @ (col, row) in candidates {
             if self.cell_taken(col, row) { continue; }
-            // All 4 cardinal building-cell neighbors at distance 2 must be occupied.
+            // All 4 cardinal building-cell neighbors at distance 2 must be occupied
+            // by either buildings or parks.
             let enclosed = [(2i32,0i32),(-2,0),(0,2),(0,-2)].iter().all(|&(dc, dr)| {
-                self.occupied_cells.contains(&(col + dc, row + dr))
+                let n = (col + dc, row + dr);
+                self.occupied_cells.contains(&n) || self.park_cells.contains(&n)
             });
             if enclosed {
                 self.park_cells.insert(cell);
