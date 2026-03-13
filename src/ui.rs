@@ -42,6 +42,10 @@ pub struct SelectedBuildingHighlightMarker;
 #[derive(Resource, Default)]
 pub struct HoveredQueueItem(pub Option<usize>);
 
+/// Marks the game toolbar (bottom bar) so it can be hidden on the start screen.
+#[derive(Component)]
+struct ToolbarRoot;
+
 /// Marks the quit confirmation dialog root entity.
 #[derive(Component)]
 struct QuitDialogRoot;
@@ -120,6 +124,7 @@ impl Plugin for UIPlugin {
                     quit_dialog_interaction,
                     sync_quit_dialog_visibility,
                     sync_toolbar_button_states,
+                    sync_toolbar_visibility,
                     sync_building_info_panel,
                     sync_route_info_panel,
                     building_panel_interaction,
@@ -213,22 +218,25 @@ fn setup_ui(mut commands: Commands) {
             ));
         });
 
-    // Toolbar (bottom, full width)
+    // Toolbar (bottom, full width) — hidden on start screen
     commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(0.0),
-            right: Val::Px(0.0),
-            bottom: Val::Px(0.0),
-            height: Val::Px(56.0),
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            column_gap: Val::Px(8.0),
-            padding: UiRect::horizontal(Val::Px(12.0)),
-            ..Default::default()
-        })
-        .insert(BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.65)))
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                height: Val::Px(56.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::horizontal(Val::Px(12.0)),
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.65)),
+            ToolbarRoot,
+        ))
         .with_children(|parent| {
             toolbar_button(parent, "Pause",   ToolbarAction::TogglePause);
             toolbar_button(parent, "0.5x",    ToolbarAction::SetSpeed(0.5));
@@ -463,6 +471,20 @@ fn building_panel_button<A: Component + Clone>(parent: &mut ChildBuilder, label:
                 TextColor(Color::srgb(0.9, 0.9, 0.9)),
             ));
         });
+}
+
+/// Show the toolbar only when in the InGame state; hide it on the start screen.
+fn sync_toolbar_visibility(
+    state: Res<State<AppState>>,
+    mut toolbar_query: Query<&mut Node, With<ToolbarRoot>>,
+) {
+    if !state.is_changed() { return; }
+    let Ok(mut node) = toolbar_query.get_single_mut() else { return };
+    node.display = if *state.get() == AppState::InGame {
+        Display::Flex
+    } else {
+        Display::None
+    };
 }
 
 fn toolbar_interaction(

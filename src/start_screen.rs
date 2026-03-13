@@ -48,6 +48,7 @@ enum StartScreenAction {
     LoadGame,
     LoadSave(usize),
     Back,
+    Quit,
 }
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
@@ -135,6 +136,7 @@ fn rebuild_panel(
             StartScreenPanel::Main => {
                 spawn_menu_button(parent, "New Game",  StartScreenAction::NewGame);
                 spawn_menu_button(parent, "Load Game", StartScreenAction::LoadGame);
+                spawn_menu_button(parent, "Quit",      StartScreenAction::Quit);
             }
 
             StartScreenPanel::SaveList => {
@@ -232,6 +234,9 @@ fn handle_buttons(
             StartScreenAction::Back => {
                 state.panel = StartScreenPanel::Main;
                 state.dirty = true;
+            }
+            StartScreenAction::Quit => {
+                std::process::exit(0);
             }
         }
     }
