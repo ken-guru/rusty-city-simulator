@@ -1,10 +1,10 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
 
 use crate::entities::Building;
-use crate::grid::{are_grid_adjacent, are_two_cells_apart, world_to_cell};
+use crate::grid::{are_grid_adjacent, are_two_cells_apart, cell_to_world, world_to_cell};
 use crate::time::GameTime;
 use crate::world::CityWorld;
 
@@ -259,12 +259,102 @@ impl RoadNetwork {
         }
         best
     }
+
+    /// Record each adjacent cell-pair in `cells` as a desire-path edge.
+    /// Skips pairs already covered by a Road or Path segment.
+    pub fn record_grid_path(
+        &mut self,
+        cells: &[(i32, i32)],
+        current_day: f32,
+    ) {
+        for pair in cells.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            let wa = cell_to_world(a.0, a.1);
+            let wb = cell_to_world(b.0, b.1);
+
+            // Skip if already a proper road or path.
+            let covered = self.segments.iter().any(|s| {
+                matches!(s.seg_type, SegmentType::Road | SegmentType::Path)
+                    && ((nodes_close(s.start, wa) && nodes_close(s.end, wb))
+                        || (nodes_close(s.start, wb) && nodes_close(s.end, wa)))
+            });
+            if covered {
+                continue;
+            }
+
+            // Increment existing desire segment or create one.
+            let existing = self.segments.iter_mut().find(|s| {
+                matches!(s.seg_type, SegmentType::Desire)
+                    && ((nodes_close(s.start, wa) && nodes_close(s.end, wb))
+                        || (nodes_close(s.start, wb) && nodes_close(s.end, wa)))
+            });
+            if let Some(seg) = existing {
+                seg.usage += 1.0;
+                seg.last_used_day = current_day;
+            } else {
+                let mut seg = RoadSegment::new(wa, wb, SegmentType::Desire);
+                seg.usage = 1.0;
+                seg.last_used_day = current_day;
+                self.segments.push(seg);
+            }
+        }
+    }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 pub fn nodes_close(a: Vec2, b: Vec2) -> bool {
     (a - b).length() < NODE_MERGE_RADIUS
+}
+
+// ─── Grid pathfinding ────────────────────────────────────────────────────────
+
+/// BFS through grid cells (4-directional) from `from` to `to`, treating occupied
+/// building cells as walls. Returns a list of cells from `from` to `to` inclusive,
+/// or `None` if no path exists.
+pub fn find_grid_path(
+    from: (i32, i32),
+    to: (i32, i32),
+    world: &CityWorld,
+) -> Option<Vec<(i32, i32)>> {
+    if from == to {
+        return Some(vec![from]);
+    }
+
+    let dirs: [(i32, i32); 4] = [(0, 1), (0, -1), (1, 0), (-1, 0)];
+    let mut visited: HashSet<(i32, i32)> = HashSet::new();
+    // Queue holds (cell, path-so-far-reversed)
+    let mut queue: VecDeque<((i32, i32), Vec<(i32, i32)>)> = VecDeque::new();
+
+    visited.insert(from);
+    queue.push_back((from, vec![from]));
+
+    // Safety cap: don't search more than 200 cells to keep runtime bounded.
+    const MAX_VISITED: usize = 400;
+
+    while let Some((cell, path)) = queue.pop_front() {
+        if visited.len() > MAX_VISITED {
+            break;
+        }
+        for &(dx, dy) in &dirs {
+            let next = (cell.0 + dx, cell.1 + dy);
+            if visited.contains(&next) {
+                continue;
+            }
+            // Building cells are impassable.
+            if world.occupied_cells.contains(&next) {
+                continue;
+            }
+            let mut new_path = path.clone();
+            new_path.push(next);
+            if next == to {
+                return Some(new_path);
+            }
+            visited.insert(next);
+            queue.push_back((next, new_path));
+        }
+    }
+    None
 }
 
 /// Snap a world position to the centre of the nearest building.

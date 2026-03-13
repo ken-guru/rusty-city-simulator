@@ -46,6 +46,8 @@ pub struct Citizen {
     #[serde(default)]
     pub shortcut_from: Option<Vec2>,
     #[serde(default)]
+    pub shortcut_cells: Vec<(i32, i32)>, // grid-BFS cells for the current shortcut journey
+    #[serde(default)]
     pub last_road_node: Option<Vec2>,
     /// Time remaining (in game-seconds) to stay at a park.
     #[serde(default)]
@@ -84,6 +86,7 @@ impl Citizen {
             waypoints: Vec::new(),
             on_shortcut: false,
             shortcut_from: None,
+            shortcut_cells: Vec::new(),
             last_road_node: None,
             park_timer: 0.0,
         }

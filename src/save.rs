@@ -1,18 +1,38 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use crate::world::CityWorld;
-use crate::time::GameTime;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crate::roads::RoadNetwork;
+use crate::time::GameTime;
+use crate::version::GAME_VERSION;
+use crate::world::CityWorld;
+
+// ─── Save directory ──────────────────────────────────────────────────────────
+
+const SAVES_DIR: &str = "saves";
+const INCOMPAT_FILE: &str = "saves/.incompatible.json";
+
+// ─── Events ──────────────────────────────────────────────────────────────────
 
 #[derive(Event, Default)]
 pub struct SaveRequestEvent;
 
+// ─── On-disk format ──────────────────────────────────────────────────────────
+
 #[derive(Serialize, Deserialize)]
 pub struct GameSave {
+    /// Version of the game that created this save.
+    #[serde(default = "default_version")]
+    pub game_version: String,
     pub world: CityWorld,
     pub time: GameTimeSave,
     pub road_network: RoadNetwork,
+}
+
+fn default_version() -> String {
+    "0.0.0".to_string() // old saves without the field
 }
 
 #[derive(Serialize, Deserialize)]
@@ -21,8 +41,39 @@ pub struct GameTimeSave {
     pub time_scale: f32,
 }
 
-pub fn save_game(world: &CityWorld, game_time: &GameTime, road_network: &RoadNetwork) -> Result<(), Box<dyn std::error::Error>> {
+// ─── Save metadata (for the save list UI) ────────────────────────────────────
+
+#[derive(Clone, Debug)]
+pub struct SaveMeta {
+    /// Full path to the save file.
+    pub path: PathBuf,
+    /// Human-readable filename (no directory prefix).
+    pub filename: String,
+    /// Formatted timestamp string, e.g. "2024-03-12  14:30"
+    pub display_time: String,
+    /// Game version that created this save.
+    pub game_version: String,
+    /// True if game_version == GAME_VERSION.
+    pub is_current_version: bool,
+    /// True if this file has previously failed to load.
+    pub is_known_incompatible: bool,
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+/// Write a new timestamped save file into the `saves/` directory.
+pub fn save_game(
+    world: &CityWorld,
+    game_time: &GameTime,
+    road_network: &RoadNetwork,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    fs::create_dir_all(SAVES_DIR)?;
+
+    let filename = format!("city_{}.json", timestamp_str());
+    let path = PathBuf::from(SAVES_DIR).join(&filename);
+
     let save = GameSave {
+        game_version: GAME_VERSION.to_string(),
         world: world.clone(),
         time: GameTimeSave {
             elapsed_secs: game_time.elapsed_secs,
@@ -32,18 +83,161 @@ pub fn save_game(world: &CityWorld, game_time: &GameTime, road_network: &RoadNet
     };
 
     let json = serde_json::to_string_pretty(&save)?;
-    fs::write("save.json", json)?;
-    println!("Game saved!");
+    fs::write(&path, json)?;
+    println!("Game saved to {}", path.display());
+    Ok(path)
+}
+
+/// Deserialise a save file from `path`.
+pub fn load_save(path: &Path) -> Result<GameSave, Box<dyn std::error::Error>> {
+    let json = fs::read_to_string(path)?;
+    let save: GameSave = serde_json::from_str(&json)?;
+    Ok(save)
+}
+
+/// Return all save files in `saves/`, newest first.
+pub fn list_saves() -> Vec<SaveMeta> {
+    let incompatible = load_incompatible_list();
+
+    let Ok(entries) = fs::read_dir(SAVES_DIR) else {
+        return Vec::new();
+    };
+
+    let mut metas: Vec<SaveMeta> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let filename = path.file_name()?.to_string_lossy().to_string();
+            if !filename.ends_with(".json") || filename.starts_with('.') {
+                return None;
+            }
+            // Try to read just the version field cheaply.
+            let game_version = read_version_field(&path);
+            let display_time = format_filename_as_time(&filename);
+            let is_current_version = game_version == GAME_VERSION;
+            let is_known_incompatible = incompatible.contains(&filename);
+            Some(SaveMeta {
+                path,
+                filename,
+                display_time,
+                game_version,
+                is_current_version,
+                is_known_incompatible,
+            })
+        })
+        .collect();
+
+    // Sort newest first (lexicographic on filename = chronological for our timestamp format).
+    metas.sort_by(|a, b| b.filename.cmp(&a.filename));
+    metas
+}
+
+/// Record `filename` (just the base name, not the path) as known-incompatible.
+pub fn mark_incompatible(filename: &str) {
+    let mut list = load_incompatible_list();
+    if !list.contains(&filename.to_string()) {
+        list.push(filename.to_string());
+        let _ = save_incompatible_list(&list);
+    }
+}
+
+// ─── Internal helpers ────────────────────────────────────────────────────────
+
+fn timestamp_str() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Convert unix timestamp to YYYYMMDD_HHMMSS (UTC, approximate — avoids chrono dep)
+    let s = secs;
+    let sec = s % 60;
+    let min = (s / 60) % 60;
+    let hour = (s / 3600) % 24;
+    let days = s / 86400; // days since 1970-01-01
+    let (year, month, day) = days_to_ymd(days);
+    format!("{:04}{:02}{:02}_{:02}{:02}{:02}", year, month, day, hour, min, sec)
+}
+
+/// Very small Julian-calendar approximation to get Y/M/D from days-since-epoch.
+fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
+    let mut year = 1970u32;
+    loop {
+        let leap = is_leap(year);
+        let days_in_year = if leap { 366 } else { 365 };
+        if days < days_in_year {
+            break;
+        }
+        days -= days_in_year;
+        year += 1;
+    }
+    let month_days = [31u64, if is_leap(year) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 1u32;
+    for &md in &month_days {
+        if days < md { break; }
+        days -= md;
+        month += 1;
+    }
+    (year, month, days as u32 + 1)
+}
+
+fn is_leap(y: u32) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+/// Turn `city_20240312_143052.json` into `"2024-03-12  14:30:52"`.
+fn format_filename_as_time(filename: &str) -> String {
+    // Expected: city_YYYYMMDD_HHMMSS.json
+    let stem = filename.trim_end_matches(".json");
+    let parts: Vec<&str> = stem.splitn(3, '_').collect();
+    if parts.len() == 3 {
+        let date = parts[1];
+        let time = parts[2];
+        if date.len() == 8 && time.len() == 6 {
+            return format!(
+                "{}-{}-{}  {}:{}:{}",
+                &date[0..4], &date[4..6], &date[6..8],
+                &time[0..2], &time[2..4], &time[4..6]
+            );
+        }
+    }
+    filename.to_string()
+}
+
+/// Read only the `game_version` field without deserialising the whole save.
+fn read_version_field(path: &Path) -> String {
+    #[derive(Deserialize)]
+    struct VersionOnly {
+        #[serde(default = "default_version")]
+        game_version: String,
+    }
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<VersionOnly>(&s).ok())
+        .map(|v| v.game_version)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct IncompatibleList {
+    incompatible: Vec<String>,
+}
+
+fn load_incompatible_list() -> Vec<String> {
+    fs::read_to_string(INCOMPAT_FILE)
+        .ok()
+        .and_then(|s| serde_json::from_str::<IncompatibleList>(&s).ok())
+        .map(|l| l.incompatible)
+        .unwrap_or_default()
+}
+
+fn save_incompatible_list(list: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let data = IncompatibleList { incompatible: list.to_vec() };
+    let _ = fs::create_dir_all(SAVES_DIR);
+    fs::write(INCOMPAT_FILE, serde_json::to_string_pretty(&data)?)?;
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn load_game() -> Result<GameSave, Box<dyn std::error::Error>> {
-    let json = fs::read_to_string("save.json")?;
-    let save: GameSave = serde_json::from_str(&json)?;
-    println!("Game loaded!");
-    Ok(save)
-}
+// ─── Bevy Plugin ─────────────────────────────────────────────────────────────
 
 pub struct SaveLoadPlugin;
 
@@ -57,16 +251,16 @@ impl Plugin for SaveLoadPlugin {
 fn handle_save_load(
     input: Res<ButtonInput<KeyCode>>,
     mut save_events: EventReader<SaveRequestEvent>,
-    world: Res<crate::world::CityWorld>,
+    world: Res<CityWorld>,
     game_time: Res<GameTime>,
     road_network: Res<RoadNetwork>,
 ) {
-    // F5 to save (avoids all keyboard shortcut conflicts)
     let triggered_by_key = input.just_pressed(KeyCode::F5);
     let triggered_by_ui  = save_events.read().next().is_some();
     if triggered_by_key || triggered_by_ui {
         if let Err(e) = save_game(&world, &game_time, &road_network) {
-            eprintln!("Failed to save game: {}", e);
+            eprintln!("Failed to save game: {e}");
         }
     }
 }
+

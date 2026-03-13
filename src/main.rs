@@ -12,8 +12,10 @@ mod reproduction;
 mod roads;
 mod save;
 mod sprites;
+mod start_screen;
 mod time;
 mod ui;
+mod version;
 mod world;
 
 use aging::AgingPlugin;
@@ -26,15 +28,26 @@ use reproduction::ReproductionPlugin;
 use roads::RoadsPlugin;
 use save::SaveLoadPlugin;
 use sprites::{SpriteAssets, SpritesPlugin};
+use start_screen::StartScreenPlugin;
 use time::GameTimePlugin;
 use ui::UIPlugin;
 use world::*;
 
+/// Top-level application state.
+#[derive(States, Default, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum AppState {
+    /// Start screen (menu, save list).
+    #[default]
+    StartScreen,
+    /// Simulation running.
+    InGame,
+}
+
 #[derive(Resource)]
-struct GameState {
-    camera_zoom: f32,
+pub struct GameState {
+    pub camera_zoom: f32,
     /// True while right-mouse-button (or middle) is held for drag-panning.
-    is_dragging: bool,
+    pub is_dragging: bool,
 }
 
 impl Default for GameState {
@@ -47,12 +60,9 @@ impl Default for GameState {
 }
 
 fn main() {
-    // Build CityWorld up-front so it's available as a Resource before any
-    // Startup systems run (including RoadsPlugin::generate_initial_roads).
-    let city_world = CityWorld::new();
-
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
+        .init_state::<AppState>()
         .add_plugins(NeedsDecayPlugin)
         .add_plugins(MovementPlugin)
         .add_plugins(GameTimePlugin)
@@ -63,12 +73,25 @@ fn main() {
         .add_plugins(SpritesPlugin)
         .add_plugins(UIPlugin)
         .add_plugins(SaveLoadPlugin)
-        .insert_resource(city_world)
+        .add_plugins(StartScreenPlugin)
+        .insert_resource(CityWorld::new())
         .insert_resource(GameState::default())
         .insert_resource(HoveredEntity::default())
-        .add_systems(Startup, (sprites::setup_sprites, setup).chain())
-        .add_systems(Update, (camera_controls, auto_zoom_camera, update_hovered_entity))
+        // Camera is always present so UI renders on both StartScreen and InGame.
+        .add_systems(Startup, (spawn_camera, sprites::setup_sprites))
+        // Game world entities are spawned when entering InGame.
+        .add_systems(OnEnter(AppState::InGame), setup)
+        .add_systems(
+            Update,
+            (camera_controls, auto_zoom_camera, update_hovered_entity)
+                .run_if(in_state(AppState::InGame)),
+        )
         .run();
+}
+
+/// Spawn the shared camera (used by both start screen UI and in-game).
+fn spawn_camera(mut commands: Commands) {
+    commands.spawn(Camera2d::default());
 }
 
 fn setup(
@@ -78,11 +101,9 @@ fn setup(
     world: Res<CityWorld>,
     sprite_assets: Res<SpriteAssets>,
 ) {
-    commands.spawn(Camera2d::default());
-
     // Ground plane
     commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(4000.0, 4000.0))),
+        Mesh2d(meshes.add(Rectangle::new(8000.0, 8000.0))),
         MeshMaterial2d(materials.add(Color::srgb(0.08, 0.16, 0.08))),
         Transform::from_xyz(0.0, 0.0, -1.0),
     ));
@@ -131,7 +152,7 @@ fn setup(
 }
 
 /// Pick a sprite handle for a building, choosing a variant from the position hash.
-fn building_sprite(assets: &SpriteAssets, kind: BuildingType, pos: Vec2) -> Handle<Image> {
+pub fn building_sprite(assets: &SpriteAssets, kind: BuildingType, pos: Vec2) -> Handle<Image> {
     match kind {
         BuildingType::Home => {
             let v = SpriteAssets::variant_for(pos, assets.homes.len());
@@ -156,7 +177,7 @@ fn camera_controls(
     mut mouse_wheel_events: EventReader<MouseWheel>,
     mut mouse_motion_events: EventReader<MouseMotion>,
 ) {
-    let mut camera = camera_query.single_mut();
+    let Ok(mut camera) = camera_query.get_single_mut() else { return };
     let pan_speed = 8.0 / game_state.camera_zoom;
     let mut pan = Vec3::ZERO;
 
@@ -173,27 +194,18 @@ fn camera_controls(
 
     if game_state.is_dragging {
         for ev in mouse_motion_events.read() {
-            // Screen delta → world delta: invert Y (screen Y is down, world Y is up),
-            // divide by zoom so the pan keeps up with the cursor.
             camera.translation.x -= ev.delta.x / game_state.camera_zoom;
             camera.translation.y += ev.delta.y / game_state.camera_zoom;
         }
     } else {
-        // Consume events so they don't accumulate
         mouse_motion_events.clear();
     }
 
     // Zoom: scroll wheel (Line units) and trackpad (Pixel units).
     for ev in mouse_wheel_events.read() {
         let zoom_delta = match ev.unit {
-            bevy::input::mouse::MouseScrollUnit::Line => {
-                // Mouse wheel: each line click is a ~10% step.
-                ev.y * 0.1
-            }
-            bevy::input::mouse::MouseScrollUnit::Pixel => {
-                // Trackpad: pixels are much smaller — scale down.
-                ev.y * 0.003
-            }
+            bevy::input::mouse::MouseScrollUnit::Line  => ev.y * 0.1,
+            bevy::input::mouse::MouseScrollUnit::Pixel => ev.y * 0.003,
         };
         if zoom_delta != 0.0 {
             game_state.camera_zoom *= 1.0 + zoom_delta;
@@ -214,7 +226,7 @@ fn update_hovered_entity(
 
     let Some(window) = windows.iter().next() else { return };
     let Some(cursor_pos) = window.cursor_position() else { return };
-    let (camera, camera_transform) = camera_query.single();
+    let Ok((camera, camera_transform)) = camera_query.get_single() else { return };
     let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_pos) else { return };
     let world_pos = ray.origin.truncate();
 
@@ -227,7 +239,6 @@ fn update_hovered_entity(
 }
 
 /// Slowly zooms the camera out as the city grows, keeping all buildings visible.
-/// Never forces a zoom-in — only drifts toward a more zoomed-out target.
 fn auto_zoom_camera(
     world: Res<CityWorld>,
     windows: Query<&Window>,
@@ -244,13 +255,12 @@ fn auto_zoom_camera(
         .map(|w| (w.width(), w.height()))
         .unwrap_or((1280.0, 720.0));
 
-    // World-space half-extents of what the camera currently shows.
     let scale = 1.0 / game_state.camera_zoom;
     let half_w = vw * scale * 0.5;
     let half_h = vh * scale * 0.5;
-    let cam_pos = camera_query.single().translation.xy();
+    let Ok(camera) = camera_query.get_single() else { return };
+    let cam_pos = camera.translation.xy();
 
-    // How close to the viewport edge (in world px) before we zoom out.
     const EDGE_MARGIN: f32 = 140.0;
 
     let near_edge = world.buildings.iter().any(|b| {
@@ -261,11 +271,8 @@ fn auto_zoom_camera(
             || rel.y > (half_h - EDGE_MARGIN)
     });
 
-    if !near_edge {
-        return;
-    }
+    if !near_edge { return; }
 
-    // Compute the minimum zoom that fits all buildings with a margin.
     let min_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MAX, f32::min);
     let max_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MIN, f32::max);
     let min_y = world.buildings.iter().map(|b| b.position.y).fold(f32::MAX, f32::min);
@@ -275,12 +282,14 @@ fn auto_zoom_camera(
     let city_h = (max_y - min_y) + margin * 2.0;
     let target_zoom = (vw / city_w).min(vh / city_h).clamp(0.25, 1.5);
 
-    // Only drift outward (smaller zoom value) — never force a zoom-in.
     if target_zoom < game_state.camera_zoom {
         let speed = 0.05;
         game_state.camera_zoom +=
             (target_zoom - game_state.camera_zoom) * speed * time.delta_secs();
-        let mut camera = camera_query.single_mut();
-        camera.scale = Vec3::splat(1.0 / game_state.camera_zoom);
+        if let Ok(mut cam) = camera_query.get_single_mut() {
+            cam.scale = Vec3::splat(1.0 / game_state.camera_zoom);
+        }
     }
 }
+
+
