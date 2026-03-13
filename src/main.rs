@@ -26,7 +26,7 @@ pub use economy::DebugMode;
 use economy::EconomyPlugin;
 use entities::*;
 use hovered::HoveredEntity;
-use housing::{HousingPlugin, HousingCooldown};
+use housing::HousingPlugin;
 use movement::MovementPlugin;
 use reproduction::ReproductionPlugin;
 use roads::{RoadEntities, RoadsPlugin};
