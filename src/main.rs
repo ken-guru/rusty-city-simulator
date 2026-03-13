@@ -154,6 +154,7 @@ fn cleanup_ingame(
     commands.insert_resource(CityWorld::new());
     commands.insert_resource(roads::RoadNetwork::default());
     commands.insert_resource(roads::LastCrossConnectDay::default());
+    commands.insert_resource(roads::LastAutoSuggestDay::default());
     commands.insert_resource(time::GameTime::new());
     commands.insert_resource(BuildingSelection::default());
     commands.insert_resource(ActiveRoute::default());

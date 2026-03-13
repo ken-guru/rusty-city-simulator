@@ -23,6 +23,14 @@ struct CitizenTooltipPanel;
 #[derive(Component)]
 struct CitizenTooltipText;
 
+/// Marks the construction queue panel root node.
+#[derive(Component)]
+struct QueuePanel;
+
+/// Marks the text inside the construction queue panel.
+#[derive(Component)]
+struct QueuePanelText;
+
 /// Marks the quit confirmation dialog root entity.
 #[derive(Component)]
 struct QuitDialogRoot;
@@ -104,6 +112,7 @@ impl Plugin for UIPlugin {
                     sync_route_info_panel,
                     building_panel_interaction,
                     update_citizen_tooltip,
+                    sync_queue_panel,
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -127,6 +136,31 @@ fn setup_ui(mut commands: Commands) {
                 TextFont { font_size: 16.0, ..Default::default() },
                 TextColor(Color::srgb(1.0, 1.0, 1.0)),
                 TimeText,
+            ));
+        });
+
+    // Construction queue panel (top left, below time display) — hidden when queue is empty.
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(10.0),
+                top: Val::Px(48.0),
+                padding: UiRect::all(Val::Px(8.0)),
+                display: Display::None,
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgba(0.08, 0.12, 0.18, 0.88)),
+            BorderRadius::all(Val::Px(6.0)),
+            ZIndex(40),
+            QueuePanel,
+        ))
+        .with_children(|panel| {
+            panel.spawn((
+                Text::new(""),
+                TextFont { font_size: 12.0, ..Default::default() },
+                TextColor(Color::srgb(0.85, 0.92, 0.85)),
+                QueuePanelText,
             ));
         });
 
@@ -759,6 +793,7 @@ fn building_panel_interaction(
     mut selection: ResMut<BuildingSelection>,
     mut active_route: ResMut<ActiveRoute>,
     mut construction_queue: ResMut<ConstructionQueue>,
+    world: Res<CityWorld>,
 ) {
     for (interaction, action, mut bg) in &mut building_button_query {
         match interaction {
@@ -791,10 +826,19 @@ fn building_panel_interaction(
                     }
                     RoutePanelAction::SuggestOptimisation => {
                         if active_route.waypoints.len() >= 2 {
+                            let from_name = active_route.from_id.as_ref()
+                                .and_then(|id| world.buildings.iter().find(|b| &b.id == id))
+                                .map(|b| b.name.clone())
+                                .unwrap_or_else(|| "?".to_string());
+                            let to_name = active_route.to_id.as_ref()
+                                .and_then(|id| world.buildings.iter().find(|b| &b.id == id))
+                                .map(|b| b.name.clone())
+                                .unwrap_or_else(|| "?".to_string());
                             construction_queue.projects.push(crate::roads::ConstructionProject {
                                 waypoints: active_route.waypoints.clone(),
                                 built_count: 0,
                                 created_day: 0.0,
+                                label: format!("Player: {} -> {}", from_name, to_name),
                             });
                         }
                         active_route.clear_route();
@@ -856,4 +900,33 @@ fn update_citizen_tooltip(
     }
 
     panel_node.display = Display::None;
+}
+
+fn sync_queue_panel(
+    queue: Res<ConstructionQueue>,
+    mut panel_query: Query<&mut Node, With<QueuePanel>>,
+    mut text_query: Query<&mut Text, With<QueuePanelText>>,
+) {
+    let Ok(mut panel_node) = panel_query.get_single_mut() else { return };
+    let Ok(mut text) = text_query.get_single_mut() else { return };
+
+    if queue.projects.is_empty() {
+        panel_node.display = Display::None;
+        return;
+    }
+
+    panel_node.display = Display::Flex;
+
+    let header = format!("=== Construction Queue ({}) ===", queue.projects.len());
+    let rows: Vec<String> = queue.projects.iter().map(|p| {
+        let total = p.total_segments();
+        let progress = if total == 0 {
+            "done".to_string()
+        } else {
+            format!("{}/{} segments", p.built_count, total)
+        };
+        format!("  {} [{}]", p.label, progress)
+    }).collect();
+
+    text.0 = std::iter::once(header).chain(rows).collect::<Vec<_>>().join("\n");
 }

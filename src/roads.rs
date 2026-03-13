@@ -74,9 +74,17 @@ pub struct ConstructionProject {
     pub waypoints: Vec<Vec2>,
     pub built_count: usize,
     pub created_day: f32,
+    /// Human-readable description shown in the queue panel.
+    pub label: String,
 }
 
-/// Queue of player-suggested road construction projects.
+impl ConstructionProject {
+    pub fn total_segments(&self) -> usize {
+        self.waypoints.len().saturating_sub(1)
+    }
+}
+
+/// Queue of road construction projects (player-suggested or city-initiated).
 #[derive(Resource, Default)]
 pub struct ConstructionQueue {
     pub projects: Vec<ConstructionProject>,
@@ -704,6 +712,93 @@ fn bfs_between_nodes(start: (i32, i32), target: (i32, i32)) -> Option<Vec<(i32, 
 
 // ─── Plugin ─────────────────────────────────────────────────────────────────
 
+/// Periodically has the city suggest its own road improvement projects and adds
+/// them to the construction queue so players can see them being built over time.
+fn auto_suggest_construction(
+    road_network: Res<RoadNetwork>,
+    world: Res<CityWorld>,
+    game_time: Res<crate::time::GameTime>,
+    mut queue: ResMut<ConstructionQueue>,
+    mut last_suggest: ResMut<LastAutoSuggestDay>,
+) {
+    if game_time.time_scale == 0.0 {
+        return;
+    }
+    let now = game_time.current_day();
+    if now - last_suggest.0 < AUTO_SUGGEST_INTERVAL_DAYS {
+        return;
+    }
+    if queue.projects.len() >= MAX_QUEUE_SIZE {
+        return;
+    }
+    if world.buildings.len() < 4 {
+        return;
+    }
+
+    let mut rng = rand::thread_rng();
+
+    // Pick a random building as the "from" building; try several "to" candidates.
+    let buildings = &world.buildings;
+    let from_idx = rng.gen_range(0..buildings.len());
+    let from_b = &buildings[from_idx];
+
+    // Find the building whose road path is longest relative to its grid distance.
+    let mut best: Option<(usize, Vec<(i32, i32)>, usize)> = None; // (to_idx, cell_path, savings)
+
+    let (from_col, from_row) = world_to_cell(from_b.position);
+
+    for (to_idx, to_b) in buildings.iter().enumerate() {
+        if to_idx == from_idx { continue; }
+
+        let (to_col, to_row) = world_to_cell(to_b.position);
+
+        // Find the direct grid path between entrance corridor cells.
+        let (fc, fr) = {
+            let (dc, dr) = from_b.entrance_direction.cell_offset();
+            (from_col + dc, from_row + dr)
+        };
+        let (tc, tr) = {
+            let (dc, dr) = to_b.entrance_direction.cell_offset();
+            (to_col + dc, to_row + dr)
+        };
+
+        let Some(cell_path) = bfs_between_nodes((fc, fr), (tc, tr)) else { continue };
+        if cell_path.len() > DUAL_CONNECT_MAX_CELLS * 2 { continue; }
+
+        let bfs_hops = cell_path.len();
+        let savings = match road_network.road_path_hop_count(from_b.position, to_b.position) {
+            None => bfs_hops + AUTO_SUGGEST_MIN_SAVINGS + 1,
+            Some(road_hops) => {
+                if road_hops > bfs_hops { road_hops - bfs_hops } else { 0 }
+            }
+        };
+
+        if savings < AUTO_SUGGEST_MIN_SAVINGS { continue; }
+
+        let is_better = best.as_ref().map_or(true, |(_, _, s)| savings > *s);
+        if is_better {
+            best = Some((to_idx, cell_path, savings));
+        }
+    }
+
+    if let Some((to_idx, cell_path, _)) = best {
+        let to_b = &buildings[to_idx];
+        let waypoints: Vec<Vec2> = cell_path.iter().map(|&(c, r)| cell_to_world(c, r)).collect();
+        if waypoints.len() >= 2 {
+            let label = format!("City: {} -> {}", from_b.name, to_b.name);
+            queue.projects.push(ConstructionProject {
+                waypoints,
+                built_count: 0,
+                created_day: now,
+                label,
+            });
+            info!("Auto-suggest construction: {}", queue.projects.last().unwrap().label);
+        }
+    }
+
+    last_suggest.0 = now;
+}
+
 /// Tracks the ECS entity that renders each road segment (keyed by segment id).
 /// Stored alongside the segment type so we know when a type-change requires
 /// despawning and respawning the mesh with updated colour/width.
@@ -715,6 +810,18 @@ pub struct RoadEntities {
 /// Tracks the last game-day on which a periodic cross-connect was attempted.
 #[derive(Resource, Default)]
 pub struct LastCrossConnectDay(pub f32);
+
+/// Tracks the last game-day on which an automatic construction suggestion was made.
+#[derive(Resource, Default)]
+pub struct LastAutoSuggestDay(pub f32);
+
+/// How often (game-days) the city auto-suggests a new construction project.
+const AUTO_SUGGEST_INTERVAL_DAYS: f32 = 18.0;
+/// Max number of queued projects (player + auto combined) before auto-suggest pauses.
+const MAX_QUEUE_SIZE: usize = 4;
+/// Minimum road-path savings (hops) for an auto-suggestion to be worthwhile.
+const AUTO_SUGGEST_MIN_SAVINGS: usize = 4;
+
 
 fn advance_construction(
     mut queue: ResMut<ConstructionQueue>,
@@ -749,11 +856,12 @@ impl Plugin for RoadsPlugin {
         app.insert_resource(RoadNetwork::default())
             .insert_resource(RoadEntities::default())
             .insert_resource(LastCrossConnectDay::default())
+            .insert_resource(LastAutoSuggestDay::default())
             .init_resource::<ConstructionQueue>()
             .add_systems(OnEnter(AppState::InGame), generate_initial_roads)
             .add_systems(
                 Update,
-                (evolve_roads, periodic_cross_connect, sync_road_entities, advance_construction)
+                (evolve_roads, periodic_cross_connect, sync_road_entities, advance_construction, auto_suggest_construction)
                     .run_if(in_state(AppState::InGame)),
             );
     }
