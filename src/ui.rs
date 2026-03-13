@@ -5,6 +5,8 @@ use crate::save::{save_game, sync_citizens_to_world, SaveRequestEvent};
 use crate::time::GameTime;
 use crate::world::CityWorld;
 use crate::AppState;
+use crate::{ActiveRoute, BuildingSelection};
+use crate::roads::ConstructionQueue;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -12,6 +14,14 @@ pub struct TimeText;
 
 #[derive(Component)]
 pub struct InfoText;
+
+/// Marks the citizen tooltip panel root node.
+#[derive(Component)]
+struct CitizenTooltipPanel;
+
+/// Marks the text inside the citizen tooltip.
+#[derive(Component)]
+struct CitizenTooltipText;
 
 /// Marks the quit confirmation dialog root entity.
 #[derive(Component)]
@@ -49,6 +59,31 @@ struct PendingQuit {
     return_to_menu: bool,
 }
 
+#[derive(Component)]
+pub struct BuildingInfoPanel;
+
+#[derive(Component)]
+pub struct BuildingInfoText;
+
+#[derive(Component)]
+pub struct RouteInfoPanel;
+
+#[derive(Component)]
+pub struct RouteInfoText;
+
+
+#[derive(Component, Clone, Debug)]
+pub enum BuildingPanelAction {
+    Close,
+    GetDirections,
+}
+
+#[derive(Component, Clone, Debug)]
+pub enum RoutePanelAction {
+    Close,
+    SuggestOptimisation,
+}
+
 pub struct UIPlugin;
 
 impl Plugin for UIPlugin {
@@ -65,6 +100,10 @@ impl Plugin for UIPlugin {
                     quit_dialog_interaction,
                     sync_quit_dialog_visibility,
                     sync_toolbar_button_states,
+                    sync_building_info_panel,
+                    sync_route_info_panel,
+                    building_panel_interaction,
+                    update_citizen_tooltip,
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -215,6 +254,103 @@ fn setup_ui(mut commands: Commands) {
                         });
                 });
         });
+
+    // Building info panel (bottom-right, above toolbar)
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(10.0),
+                bottom: Val::Px(70.0),
+                width: Val::Px(280.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(8.0),
+                padding: UiRect::all(Val::Px(14.0)),
+                display: Display::None,
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgba(0.10, 0.13, 0.18, 0.93)),
+            BorderRadius::all(Val::Px(8.0)),
+            ZIndex(50),
+            BuildingInfoPanel,
+        ))
+        .with_children(|panel| {
+            panel.spawn((
+                Text::new(""),
+                TextFont { font_size: 13.0, ..Default::default() },
+                TextColor(Color::srgb(0.92, 0.92, 0.92)),
+                BuildingInfoText,
+            ));
+            panel.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(8.0),
+                ..Default::default()
+            }).with_children(|row| {
+                building_panel_button(row, "Close",          BuildingPanelAction::Close);
+                building_panel_button(row, "Get Directions", BuildingPanelAction::GetDirections);
+            });
+        });
+
+    // Route info panel (bottom-right, above building panel)
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(10.0),
+                bottom: Val::Px(240.0),
+                width: Val::Px(280.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(8.0),
+                padding: UiRect::all(Val::Px(14.0)),
+                display: Display::None,
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgba(0.10, 0.14, 0.20, 0.93)),
+            BorderRadius::all(Val::Px(8.0)),
+            ZIndex(50),
+            RouteInfoPanel,
+        ))
+        .with_children(|panel| {
+            panel.spawn((
+                Text::new(""),
+                TextFont { font_size: 13.0, ..Default::default() },
+                TextColor(Color::srgb(0.92, 0.92, 0.92)),
+                RouteInfoText,
+            ));
+            panel.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(8.0),
+                ..Default::default()
+            }).with_children(|row| {
+                building_panel_button(row, "Close",                RoutePanelAction::Close);
+                building_panel_button(row, "Suggest Optimisation", RoutePanelAction::SuggestOptimisation);
+            });
+        });
+
+    // Citizen tooltip: small floating panel near cursor, hidden by default.
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+                display: Display::None,
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgba(0.08, 0.10, 0.15, 0.90)),
+            BorderRadius::all(Val::Px(5.0)),
+            ZIndex(80),
+            CitizenTooltipPanel,
+        ))
+        .with_children(|panel| {
+            panel.spawn((
+                Text::new(""),
+                TextFont { font_size: 12.0, ..Default::default() },
+                TextColor(Color::srgb(0.95, 0.95, 0.95)),
+                CitizenTooltipText,
+            ));
+        });
 }
 
 fn toolbar_button(parent: &mut ChildBuilder, label: &str, action: ToolbarAction) {
@@ -259,6 +395,29 @@ fn dialog_button(parent: &mut ChildBuilder, label: &str, action: QuitDialogActio
                 Text::new(label),
                 TextFont { font_size: 14.0, ..Default::default() },
                 TextColor(Color::srgb(0.95, 0.95, 0.95)),
+            ));
+        });
+}
+
+fn building_panel_button<A: Component + Clone>(parent: &mut ChildBuilder, label: &str, action: A) {
+    parent
+        .spawn((
+            Button,
+            Node {
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..Default::default()
+            },
+            BorderRadius::all(Val::Px(5.0)),
+            BackgroundColor(Color::srgba(0.20, 0.25, 0.35, 0.9)),
+            action,
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(label),
+                TextFont { font_size: 13.0, ..Default::default() },
+                TextColor(Color::srgb(0.9, 0.9, 0.9)),
             ));
         });
 }
@@ -482,4 +641,217 @@ fn update_hovered_info(
         }
     }
     text.0 = "Hover over a citizen for info".into();
+}
+
+fn sync_building_info_panel(
+    selection: Res<BuildingSelection>,
+    world: Res<CityWorld>,
+    mut panel_query: Query<&mut Node, With<BuildingInfoPanel>>,
+    mut text_query: Query<&mut Text, With<BuildingInfoText>>,
+) {
+    let visible = selection.selected_id.is_some();
+    for mut node in &mut panel_query {
+        node.display = if visible { Display::Flex } else { Display::None };
+    }
+    let Ok(mut text) = text_query.get_single_mut() else { return };
+    if let Some(ref id) = selection.selected_id {
+        if let Some(b) = world.buildings.iter().find(|b| &b.id == id) {
+            let type_label = match b.building_type {
+                BuildingType::Home   => "Residence",
+                BuildingType::Office => "Office",
+                BuildingType::Shop   => "Shop",
+                BuildingType::Public => "Public",
+            };
+            let residents = if !b.resident_ids.is_empty() {
+                format!("Residents: {}/{}\n", b.resident_ids.len(), b.capacity_residents)
+            } else {
+                String::new()
+            };
+            let workers = if !b.worker_ids.is_empty() {
+                format!("Workers: {}/{}\n", b.worker_ids.len(), b.capacity_workers)
+            } else {
+                String::new()
+            };
+            let status = if selection.awaiting_direction_pick {
+                "\n[Click starting building...]".to_string()
+            } else {
+                String::new()
+            };
+            text.0 = format!(
+                "{}\nType: {}\nFounded: Day {:.0}\n{}{}{}",
+                b.name, type_label, b.founded_day, residents, workers, status,
+            );
+        }
+    } else {
+        text.0.clear();
+    }
+}
+
+fn sync_route_info_panel(
+    active_route: Res<ActiveRoute>,
+    world: Res<CityWorld>,
+    mut panel_query: Query<&mut Node, With<RouteInfoPanel>>,
+    mut text_query: Query<&mut Text, With<RouteInfoText>>,
+) {
+    let visible = !active_route.waypoints.is_empty();
+    for mut node in &mut panel_query {
+        node.display = if visible { Display::Flex } else { Display::None };
+    }
+    if !visible {
+        return;
+    }
+    let Ok(mut text) = text_query.get_single_mut() else { return };
+
+    let from_name = active_route.from_id.as_deref()
+        .and_then(|id| world.buildings.iter().find(|b| b.id == id))
+        .map(|b| b.name.as_str())
+        .unwrap_or("?");
+    let to_name = active_route.to_id.as_deref()
+        .and_then(|id| world.buildings.iter().find(|b| b.id == id))
+        .map(|b| b.name.as_str())
+        .unwrap_or("?");
+
+    let distance_px: f32 = active_route.waypoints.windows(2)
+        .map(|w| (w[1] - w[0]).length())
+        .sum();
+    let cell_size = crate::grid::CELL_SIZE;
+    let distance_units = distance_px / cell_size;
+    let travel_secs = distance_px / 60.0;
+    let travel_mins = travel_secs / 60.0;
+
+    let notable: Vec<&str> = world.buildings.iter()
+        .filter(|b| {
+            active_route.from_id.as_deref() != Some(b.id.as_str())
+                && active_route.to_id.as_deref() != Some(b.id.as_str())
+        })
+        .filter(|b| {
+            active_route.waypoints.iter().any(|&wp| {
+                (b.position - wp).length() < cell_size * 0.75
+            })
+        })
+        .map(|b| b.name.as_str())
+        .take(3)
+        .collect();
+
+    let landmarks = if notable.is_empty() {
+        "None".to_string()
+    } else {
+        notable.join(", ")
+    };
+
+    text.0 = format!(
+        "Route: {} -> {}\nDist: {:.1} blocks  Time: {:.1} min\nNear: {}",
+        from_name, to_name, distance_units, travel_mins, landmarks
+    );
+}
+
+fn building_panel_interaction(
+    mut building_button_query: Query<
+        (&Interaction, &BuildingPanelAction, &mut BackgroundColor),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut route_button_query: Query<
+        (&Interaction, &RoutePanelAction, &mut BackgroundColor),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut selection: ResMut<BuildingSelection>,
+    mut active_route: ResMut<ActiveRoute>,
+    mut construction_queue: ResMut<ConstructionQueue>,
+) {
+    for (interaction, action, mut bg) in &mut building_button_query {
+        match interaction {
+            Interaction::Pressed => {
+                *bg = BackgroundColor(Color::srgba(0.35, 0.45, 0.60, 0.95));
+                match action {
+                    BuildingPanelAction::Close => {
+                        selection.selected_id = None;
+                        selection.awaiting_direction_pick = false;
+                        selection.route_from_id = None;
+                        active_route.clear_route();
+                    }
+                    BuildingPanelAction::GetDirections => {
+                        selection.awaiting_direction_pick = true;
+                    }
+                }
+            }
+            Interaction::Hovered => *bg = BackgroundColor(Color::srgba(0.28, 0.35, 0.48, 0.95)),
+            Interaction::None    => *bg = BackgroundColor(Color::srgba(0.20, 0.25, 0.35, 0.9)),
+        }
+    }
+
+    for (interaction, action, mut bg) in &mut route_button_query {
+        match interaction {
+            Interaction::Pressed => {
+                *bg = BackgroundColor(Color::srgba(0.35, 0.45, 0.60, 0.95));
+                match action {
+                    RoutePanelAction::Close => {
+                        active_route.clear_route();
+                    }
+                    RoutePanelAction::SuggestOptimisation => {
+                        if active_route.waypoints.len() >= 2 {
+                            construction_queue.projects.push(crate::roads::ConstructionProject {
+                                waypoints: active_route.waypoints.clone(),
+                                built_count: 0,
+                                created_day: 0.0,
+                            });
+                        }
+                        active_route.clear_route();
+                    }
+                }
+            }
+            Interaction::Hovered => *bg = BackgroundColor(Color::srgba(0.28, 0.35, 0.48, 0.95)),
+            Interaction::None    => *bg = BackgroundColor(Color::srgba(0.20, 0.25, 0.35, 0.9)),
+        }
+    }
+}
+
+fn update_citizen_tooltip(
+    hovered: Res<HoveredEntity>,
+    citizens: Query<&Citizen>,
+    world: Res<CityWorld>,
+    windows: Query<&Window>,
+    mut panel_query: Query<&mut Node, With<CitizenTooltipPanel>>,
+    mut text_query: Query<&mut Text, With<CitizenTooltipText>>,
+) {
+    let Ok(mut panel_node) = panel_query.get_single_mut() else { return };
+    let Ok(mut text) = text_query.get_single_mut() else { return };
+    let Some(window) = windows.iter().next() else { return };
+
+    if let Some(entity) = hovered.0 {
+        if let Ok(c) = citizens.get(entity) {
+            // Position tooltip near cursor.
+            if let Some(cursor) = window.cursor_position() {
+                // Offset so the tooltip doesn't overlap the cursor.
+                let x = (cursor.x + 20.0).min(window.width() - 200.0);
+                let y = (cursor.y - 40.0).max(0.0);
+                panel_node.left = Val::Px(x);
+                panel_node.top  = Val::Px(y);
+            }
+            panel_node.display = Display::Flex;
+
+            // Role label from assigned buildings.
+            let role = if let Some(ref home_id) = c.home_building_id {
+                if world.buildings.iter().any(|b| &b.id == home_id) {
+                    "Resident"
+                } else { "Unhoused" }
+            } else { "Unhoused" };
+
+            let job = if let Some(ref work_id) = c.workplace_building_id {
+                world.buildings.iter()
+                    .find(|b| &b.id == work_id)
+                    .map(|b| match b.building_type {
+                        BuildingType::Office => "office worker",
+                        BuildingType::Shop   => "shop worker",
+                        _                    => "employed",
+                    })
+                    .unwrap_or("unemployed")
+            } else { "unemployed" };
+
+            let gender_icon = match c.gender { Gender::Male => "M", Gender::Female => "F" };
+            text.0 = format!("{} ({gender_icon})\n{role}, {job}", c.name);
+            return;
+        }
+    }
+
+    panel_node.display = Display::None;
 }

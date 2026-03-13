@@ -49,6 +49,7 @@ pub struct GameState {
     pub camera_zoom: f32,
     /// True while right-mouse-button (or middle) is held for drag-panning.
     pub is_dragging: bool,
+    pub min_zoom: f32,
 }
 
 impl Default for GameState {
@@ -56,7 +57,34 @@ impl Default for GameState {
         Self {
             camera_zoom: 1.0,
             is_dragging: false,
+            min_zoom: 0.05,
         }
+    }
+}
+
+/// Tracks which building (if any) the player has selected, and whether
+/// we are in "pick direction origin" mode (waiting for a second click).
+#[derive(Resource, Default)]
+pub struct BuildingSelection {
+    pub selected_id: Option<String>,
+    pub awaiting_direction_pick: bool,
+    pub route_from_id: Option<String>,
+}
+
+/// Stores the currently displayed travel route between two buildings.
+#[derive(Resource, Default)]
+pub struct ActiveRoute {
+    pub from_id: Option<String>,
+    pub to_id:   Option<String>,
+    pub waypoints: Vec<Vec2>,
+    pub viz_entities: Vec<Entity>,
+}
+
+impl ActiveRoute {
+    pub fn clear_route(&mut self) {
+        self.from_id = None;
+        self.to_id   = None;
+        self.waypoints.clear();
     }
 }
 
@@ -77,6 +105,8 @@ fn main() {
         .add_plugins(StartScreenPlugin)
         .insert_resource(CityWorld::new())
         .insert_resource(GameState::default())
+        .insert_resource(BuildingSelection::default())
+        .insert_resource(ActiveRoute::default())
         .insert_resource(HoveredEntity::default())
         // Camera is always present so UI renders on both StartScreen and InGame.
         .add_systems(Startup, (spawn_camera, sprites::setup_sprites))
@@ -86,7 +116,7 @@ fn main() {
         .add_systems(OnExit(AppState::InGame), cleanup_ingame)
         .add_systems(
             Update,
-            (camera_controls, auto_zoom_camera, update_hovered_entity)
+            (camera_controls, auto_zoom_camera, update_hovered_entity, handle_building_click, spawn_route_viz, despawn_route_viz)
                 .run_if(in_state(AppState::InGame)),
         )
         .run();
@@ -105,12 +135,14 @@ fn cleanup_ingame(
     citizens: Query<Entity, With<Citizen>>,
     parks: Query<Entity, With<ParkMarker>>,
     park_corridors: Query<Entity, With<ParkCorridorMarker>>,
+    route_viz: Query<Entity, With<RouteVisualizationMarker>>,
     mut road_entities: ResMut<RoadEntities>,
 ) {
     for entity in buildings.iter()
         .chain(citizens.iter())
         .chain(parks.iter())
         .chain(park_corridors.iter())
+        .chain(route_viz.iter())
     {
         commands.entity(entity).despawn_recursive();
     }
@@ -123,6 +155,9 @@ fn cleanup_ingame(
     commands.insert_resource(roads::RoadNetwork::default());
     commands.insert_resource(roads::LastCrossConnectDay::default());
     commands.insert_resource(time::GameTime::new());
+    commands.insert_resource(BuildingSelection::default());
+    commands.insert_resource(ActiveRoute::default());
+    commands.insert_resource(roads::ConstructionQueue::default());
 }
 
 fn setup(
@@ -216,12 +251,9 @@ fn setup(
 
     // Spawn citizens
     for citizen in &world.citizens {
-        let color = match citizen.gender {
-            Gender::Male   => Color::srgb(0.2, 0.5, 0.8),
-            Gender::Female => Color::srgb(0.8, 0.2, 0.5),
-        };
+        let color = citizen_color(citizen);
         commands.spawn((
-            Mesh2d(meshes.add(Circle::new(8.0))),
+            Mesh2d(meshes.add(Circle::new(14.0))),
             MeshMaterial2d(materials.add(color)),
             Transform::from_xyz(citizen.position.x, citizen.position.y, 1.0),
             citizen.clone(),
@@ -246,6 +278,120 @@ pub fn building_sprite(assets: &SpriteAssets, kind: BuildingType, pos: Vec2) -> 
         }
     }
 }
+
+/// Choose a high-contrast citizen colour based on gender and age group.
+pub fn citizen_color(citizen: &Citizen) -> Color {
+    match (citizen.gender, citizen.get_age_group()) {
+        (Gender::Male,   "elder") => Color::srgb(0.60, 0.85, 1.00),
+        (Gender::Male,   _)      => Color::srgb(0.25, 0.65, 1.00),
+        (Gender::Female, "elder") => Color::srgb(1.00, 0.70, 0.85),
+        (Gender::Female, _)      => Color::srgb(1.00, 0.35, 0.75),
+    }
+}
+
+fn handle_building_click(
+    mouse_input: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    building_query: Query<&Building>,
+    mut selection: ResMut<BuildingSelection>,
+    mut active_route: ResMut<ActiveRoute>,
+    road_network: Res<roads::RoadNetwork>,
+    world: Res<CityWorld>,
+) {
+    if !mouse_input.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    let Some(window) = windows.iter().next() else { return };
+    let Some(cursor_pos) = window.cursor_position() else { return };
+    let Ok((camera, camera_transform)) = camera_query.get_single() else { return };
+    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_pos) else { return };
+    let world_pos = ray.origin.truncate();
+
+    let hit = building_query.iter().find(|b| {
+        let half = b.size * 0.5;
+        let rel = world_pos - b.position;
+        rel.x.abs() <= half.x && rel.y.abs() <= half.y
+    });
+
+    if let Some(building) = hit {
+        if selection.awaiting_direction_pick {
+            selection.route_from_id = Some(building.id.clone());
+            selection.awaiting_direction_pick = false;
+            if let (Some(from_id), Some(to_id)) = (selection.route_from_id.clone(), selection.selected_id.clone()) {
+                let from_building = world.buildings.iter().find(|b| b.id == from_id);
+                let to_building   = world.buildings.iter().find(|b| b.id == to_id);
+                if let (Some(from_b), Some(to_b)) = (from_building, to_building) {
+                    active_route.waypoints = road_network
+                        .find_road_path(from_b.position, to_b.position)
+                        .unwrap_or_default();
+                    active_route.from_id = Some(from_id);
+                    active_route.to_id   = Some(to_id);
+                }
+            }
+        } else {
+            selection.selected_id  = Some(building.id.clone());
+            selection.awaiting_direction_pick = false;
+            selection.route_from_id = None;
+            active_route.clear_route();
+        }
+    } else {
+        selection.selected_id  = None;
+        selection.awaiting_direction_pick = false;
+        selection.route_from_id = None;
+        active_route.clear_route();
+    }
+}
+
+fn despawn_route_viz(
+    mut commands: Commands,
+    mut active_route: ResMut<ActiveRoute>,
+) {
+    if active_route.waypoints.is_empty() && !active_route.viz_entities.is_empty() {
+        for entity in active_route.viz_entities.drain(..) {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn spawn_route_viz(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut active_route: ResMut<ActiveRoute>,
+) {
+    if active_route.viz_entities.is_empty() && !active_route.waypoints.is_empty() {
+        let color = Color::srgba(1.0, 0.82, 0.1, 0.85);
+        let mat = materials.add(color);
+
+        let waypoints = active_route.waypoints.clone();
+        for window in waypoints.windows(2) {
+            let (a, b) = (window[0], window[1]);
+            let diff = b - a;
+            let length = diff.length();
+            if length < 1.0 {
+                continue;
+            }
+            let angle = diff.y.atan2(diff.x);
+            let midpoint = (a + b) * 0.5;
+            let entity = commands.spawn((
+                Mesh2d(meshes.add(Rectangle::new(length, 3.0))),
+                MeshMaterial2d(mat.clone()),
+                Transform {
+                    translation: Vec3::new(midpoint.x, midpoint.y, 2.0),
+                    rotation: Quat::from_rotation_z(angle),
+                    ..Default::default()
+                },
+                RouteVisualizationMarker,
+            )).id();
+            active_route.viz_entities.push(entity);
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct RouteVisualizationMarker;
 
 fn camera_controls(
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
@@ -287,7 +433,7 @@ fn camera_controls(
         };
         if zoom_delta != 0.0 {
             game_state.camera_zoom *= 1.0 + zoom_delta;
-            game_state.camera_zoom = game_state.camera_zoom.clamp(0.2, 8.0);
+            game_state.camera_zoom = game_state.camera_zoom.clamp(game_state.min_zoom, 8.0);
         }
     }
 
@@ -309,7 +455,7 @@ fn update_hovered_entity(
     let world_pos = ray.origin.truncate();
 
     for (entity, transform) in citizen_query.iter() {
-        if (transform.translation.truncate() - world_pos).length() < 12.0 {
+        if (transform.translation.truncate() - world_pos).length() < 18.0 {
             hovered.0 = Some(entity);
             break;
         }
@@ -345,7 +491,8 @@ fn auto_zoom_camera(
     let city_w = (max_x - min_x) + margin * 2.0;
     let city_h = (max_y - min_y) + margin * 2.0;
     let target_center = Vec2::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5);
-    let target_zoom = (vw / city_w).min(vh / city_h).clamp(0.2, 2.0);
+    let target_zoom = (vw / city_w).min(vh / city_h).clamp(0.05, 2.0);
+    game_state.min_zoom = (target_zoom * 0.6).max(0.02);
 
     // Check if any building is outside the current viewport (with a small margin).
     let Ok(camera) = camera_query.get_single() else { return };

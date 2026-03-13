@@ -45,8 +45,10 @@ fn check_housing_pressure(
 
     // Build a new home when occupancy > 80%.
     if total_residents as f32 / total_home_capacity.max(1) as f32 > 0.8 {
-        if let Some((building, cell)) = place_new_building(&world, BuildingType::Home) {
+        if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Home) {
             world.occupied_cells.insert(cell);
+            building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
+            building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
             building_events.send(NewBuildingEvent { building });
         }
@@ -60,8 +62,10 @@ fn check_housing_pressure(
 
     // 1 office per 5 citizens
     if total_pop > office_count * 5 {
-        if let Some((building, cell)) = place_new_building(&world, BuildingType::Office) {
+        if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Office) {
             world.occupied_cells.insert(cell);
+            building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
+            building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
             building_events.send(NewBuildingEvent { building });
         }
@@ -69,8 +73,10 @@ fn check_housing_pressure(
 
     // 1 shop per 7 citizens
     if total_pop > shop_count * 7 {
-        if let Some((building, cell)) = place_new_building(&world, BuildingType::Shop) {
+        if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Shop) {
             world.occupied_cells.insert(cell);
+            building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
+            building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
             building_events.send(NewBuildingEvent { building });
         }

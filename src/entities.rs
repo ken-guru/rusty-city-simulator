@@ -137,6 +137,12 @@ pub struct Building {
     /// The one corridor cell this building connects to for road access.
     #[serde(default)]
     pub entrance_direction: Direction,
+    /// Human-readable name (generated on creation, not changed afterwards).
+    #[serde(default)]
+    pub name: String,
+    /// Game day on which this building was constructed.
+    #[serde(default)]
+    pub founded_day: f32,
 }
 
 impl Building {
@@ -157,6 +163,8 @@ impl Building {
             capacity_residents,
             capacity_workers,
             entrance_direction: Direction::South,
+            name: String::new(),
+            founded_day: 0.0,
         }
     }
 
@@ -187,5 +195,16 @@ impl Building {
     #[allow(dead_code)]
     pub fn entrance_distance() -> f32 {
         CELL_SIZE
+    }
+}
+
+const SHOP_NAMES: &[&str] = &["Market", "Bakery", "Emporium", "Corner Shop", "General Store", "Provisions"];
+
+pub fn generate_building_name(building_type: BuildingType, index: usize) -> String {
+    match building_type {
+        BuildingType::Home   => format!("Residence #{}", index + 1),
+        BuildingType::Office => format!("Office Block {}", index + 1),
+        BuildingType::Shop   => SHOP_NAMES[index % SHOP_NAMES.len()].to_string(),
+        BuildingType::Public => "Public Building".to_string(),
     }
 }

@@ -15,10 +15,11 @@ const MOVEMENT_SPEED: f32 = 60.0;
 
 /// Moves citizens along their waypoint queue toward their target, respecting time_scale.
 pub fn simple_movement(
-    mut citizens: Query<&mut Citizen>,
+    mut citizens: Query<(Entity, &mut Citizen)>,
     time: Res<Time>,
     game_time: Res<GameTime>,
     mut road_network: ResMut<RoadNetwork>,
+    hovered: Res<crate::hovered::HoveredEntity>,
 ) {
     if game_time.time_scale == 0.0 {
         return; // paused
@@ -26,7 +27,8 @@ pub fn simple_movement(
     let delta = time.delta_secs() * game_time.time_scale;
     let now = game_time.current_day();
 
-    for mut citizen in citizens.iter_mut() {
+    for (entity, mut citizen) in citizens.iter_mut() {
+        if hovered.0 == Some(entity) { continue; }
         // Advance to next waypoint when idle.
         if citizen.target_position.is_none() {
             if let Some(next_wp) = citizen.waypoints.pop() {

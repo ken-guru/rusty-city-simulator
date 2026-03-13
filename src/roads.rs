@@ -23,6 +23,8 @@ pub enum SegmentType {
     /// Walkable path through a park corridor — passable by citizens but
     /// not rendered as a road mesh (the park corridor sprite handles visuals).
     ParkPath,
+    /// Road segment created from player suggestion — rendered in teal.
+    PlayerSuggested,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,6 +67,20 @@ pub struct RoadNetwork {
 
 /// Two positions are considered the same road node if they're within this distance.
 pub const NODE_MERGE_RADIUS: f32 = 25.0;
+
+/// A player-suggested road construction project.
+#[derive(Clone, Debug, Default)]
+pub struct ConstructionProject {
+    pub waypoints: Vec<Vec2>,
+    pub built_count: usize,
+    pub created_day: f32,
+}
+
+/// Queue of player-suggested road construction projects.
+#[derive(Resource, Default)]
+pub struct ConstructionQueue {
+    pub projects: Vec<ConstructionProject>,
+}
 
 // Evolution thresholds (usage counts)
 const PATH_THRESHOLD: f32 = 25.0; // desire → path
@@ -115,7 +131,7 @@ impl RoadNetwork {
         let passable: Vec<&RoadSegment> = self
             .segments
             .iter()
-            .filter(|s| matches!(s.seg_type, SegmentType::Road | SegmentType::Path | SegmentType::ParkPath))
+            .filter(|s| matches!(s.seg_type, SegmentType::Road | SegmentType::Path | SegmentType::ParkPath | SegmentType::PlayerSuggested))
             .collect();
 
         if passable.is_empty() {
@@ -700,6 +716,32 @@ pub struct RoadEntities {
 #[derive(Resource, Default)]
 pub struct LastCrossConnectDay(pub f32);
 
+fn advance_construction(
+    mut queue: ResMut<ConstructionQueue>,
+    mut road_network: ResMut<RoadNetwork>,
+    game_time: Res<crate::time::GameTime>,
+) {
+    if game_time.time_scale == 0.0 {
+        return;
+    }
+    let now = game_time.current_day();
+
+    queue.projects.retain_mut(|project| {
+        if now - project.created_day < 1.0 {
+            return true;
+        }
+        if project.built_count >= project.waypoints.len().saturating_sub(1) {
+            return false;
+        }
+        let i = project.built_count;
+        let (a, b) = (project.waypoints[i], project.waypoints[i + 1]);
+        road_network.connect(a, b, SegmentType::PlayerSuggested, now);
+        project.built_count += 1;
+        project.created_day = now;
+        project.built_count < project.waypoints.len().saturating_sub(1)
+    });
+}
+
 pub struct RoadsPlugin;
 
 impl Plugin for RoadsPlugin {
@@ -707,10 +749,11 @@ impl Plugin for RoadsPlugin {
         app.insert_resource(RoadNetwork::default())
             .insert_resource(RoadEntities::default())
             .insert_resource(LastCrossConnectDay::default())
+            .init_resource::<ConstructionQueue>()
             .add_systems(OnEnter(AppState::InGame), generate_initial_roads)
             .add_systems(
                 Update,
-                (evolve_roads, periodic_cross_connect, sync_road_entities)
+                (evolve_roads, periodic_cross_connect, sync_road_entities, advance_construction)
                     .run_if(in_state(AppState::InGame)),
             );
     }
@@ -816,6 +859,9 @@ fn evolve_roads(
                 seg.seg_type = SegmentType::Road;
                 info!("A path has been paved into a road!");
             }
+            SegmentType::PlayerSuggested if seg.usage >= 5.0 => {
+                seg.seg_type = SegmentType::Path;
+            }
             _ => {}
         }
 
@@ -902,6 +948,7 @@ fn sync_road_entities(
             SegmentType::Road => (20.0_f32, Color::srgb(0.62, 0.59, 0.50)),
             SegmentType::Path => (12.0_f32, Color::srgb(0.50, 0.36, 0.18)),
             SegmentType::Desire => (6.0_f32, Color::srgba(0.45, 0.32, 0.16, 0.35)),
+            SegmentType::PlayerSuggested => (20.0_f32, Color::srgb(0.1, 0.8, 0.65)),
             SegmentType::ParkPath => continue, // visuals handled by ParkCorridorMarker sprite
         };
 
