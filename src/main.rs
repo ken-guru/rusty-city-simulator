@@ -151,11 +151,11 @@ fn cleanup_ingame(
         .chain(sel_highlights.iter())
         .chain(log_highlights.iter())
     {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     // Despawn road mesh entities tracked by RoadEntities.
     for (_id, (entity, _stype)) in road_entities.map.drain() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     // Reset simulation resources to defaults so setup() starts fresh.
     commands.insert_resource(CityWorld::new());
@@ -327,9 +327,8 @@ fn handle_building_click(
 
     let Some(window) = windows.iter().next() else { return };
     let Some(cursor_pos) = window.cursor_position() else { return };
-    let Ok((camera, camera_transform)) = camera_query.get_single() else { return };
-    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_pos) else { return };
-    let world_pos = ray.origin.truncate();
+    let Ok((camera, camera_transform)) = camera_query.single() else { return };
+    let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) else { return };
 
     let hit = building_query.iter().find(|b| {
         let half = b.size * 0.5;
@@ -372,7 +371,7 @@ fn despawn_route_viz(
 ) {
     if active_route.waypoints.is_empty() && !active_route.viz_entities.is_empty() {
         for entity in active_route.viz_entities.drain(..) {
-            commands.entity(entity).despawn_recursive();
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -420,10 +419,10 @@ fn camera_controls(
     key_input: Res<ButtonInput<KeyCode>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
     mut game_state: ResMut<GameState>,
-    mut mouse_wheel_events: EventReader<MouseWheel>,
-    mut mouse_motion_events: EventReader<MouseMotion>,
+    mut mouse_wheel_events: MessageReader<MouseWheel>,
+    mut mouse_motion_events: MessageReader<MouseMotion>,
 ) {
-    let Ok(mut camera) = camera_query.get_single_mut() else { return };
+    let Ok(mut camera) = camera_query.single_mut() else { return };
     let pan_speed = 8.0 / game_state.camera_zoom;
     let mut pan = Vec3::ZERO;
 
@@ -470,9 +469,8 @@ fn update_hovered_entity(
 ) {
     let Some(window) = windows.iter().next() else { hovered.0 = None; return };
     let Some(cursor_pos) = window.cursor_position() else { hovered.0 = None; return };
-    let Ok((camera, camera_transform)) = camera_query.get_single() else { return };
-    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_pos) else { return };
-    let world_pos = ray.origin.truncate();
+    let Ok((camera, camera_transform)) = camera_query.single() else { return };
+    let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) else { return };
 
     // Once a citizen is hovered, keep them hovered until the cursor drifts well
     // beyond their position — prevents passing-by citizens from stealing the hover.
@@ -503,7 +501,7 @@ fn auto_zoom_camera(
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
     mut game_state: ResMut<GameState>,
     time: Res<Time>,
-    mut resize_events: EventReader<WindowResized>,
+    mut resize_events: MessageReader<WindowResized>,
 ) {
     if world.buildings.is_empty() {
         return;
@@ -512,7 +510,7 @@ fn auto_zoom_camera(
     let resized = resize_events.read().count() > 0;
 
     let (vw, vh) = windows
-        .get_single()
+        .single()
         .map(|w| (w.width(), w.height()))
         .unwrap_or((1280.0, 720.0));
 
@@ -529,7 +527,7 @@ fn auto_zoom_camera(
     game_state.min_zoom = (target_zoom * 0.6).max(0.02);
 
     // Check if any building is outside the current viewport (with a small margin).
-    let Ok(camera) = camera_query.get_single() else { return };
+    let Ok(camera) = camera_query.single() else { return };
     let cam_pos = camera.translation.xy();
     let scale = 1.0 / game_state.camera_zoom;
     let half_w = vw * scale * 0.5;
@@ -556,7 +554,7 @@ fn auto_zoom_camera(
 
     // Apply lerp to both zoom and camera position.
     game_state.camera_zoom += (target_zoom - game_state.camera_zoom) * zoom_speed;
-    if let Ok(mut cam) = camera_query.get_single_mut() {
+    if let Ok(mut cam) = camera_query.single_mut() {
         cam.scale = Vec3::splat(1.0 / game_state.camera_zoom);
         let new_pos = cam.translation.xy().lerp(target_center, pan_speed);
         cam.translation.x = new_pos.x;

@@ -97,7 +97,7 @@ fn cleanup_start_screen(
     query: Query<Entity, With<StartScreenRoot>>,
 ) {
     for entity in &query {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
@@ -109,10 +109,10 @@ fn rebuild_panel(
     if !state.dirty { return; }
     state.dirty = false;
 
-    let Ok(root) = root_query.get_single() else { return };
+    let Ok(root) = root_query.single() else { return };
 
     // Clear previous children and rebuild.
-    commands.entity(root).despawn_descendants();
+    commands.entity(root).despawn_children();
 
     let panel = state.panel.clone();
     let saves = state.saves.clone();
@@ -259,7 +259,7 @@ fn button_hover(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn spawn_menu_button(parent: &mut ChildBuilder, label: &str, action: StartScreenAction) {
+fn spawn_menu_button(parent: &mut ChildSpawnerCommands, label: &str, action: StartScreenAction) {
     parent
         .spawn((
             Button,
@@ -269,9 +269,9 @@ fn spawn_menu_button(parent: &mut ChildBuilder, label: &str, action: StartScreen
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 margin: UiRect::bottom(Val::Px(16.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
-            BorderRadius::all(Val::Px(8.0)),
             BackgroundColor(BTN_COLOR),
             action,
         ))
@@ -285,7 +285,7 @@ fn spawn_menu_button(parent: &mut ChildBuilder, label: &str, action: StartScreen
 }
 
 fn spawn_save_button(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     label: &str,
     index: usize,
     text_color: Color,
@@ -300,9 +300,9 @@ fn spawn_save_button(
                 align_items: AlignItems::Center,
                 padding: UiRect::horizontal(Val::Px(16.0)),
                 margin: UiRect::bottom(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BorderRadius::all(Val::Px(6.0)),
             BackgroundColor(BTN_COLOR),
             StartScreenAction::LoadSave(index),
         ))

@@ -18,7 +18,7 @@ const INCOMPAT_FILE: &str = "saves/.incompatible.json";
 
 // ─── Events ──────────────────────────────────────────────────────────────────
 
-#[derive(Event, Default)]
+#[derive(Message, Default)]
 pub struct SaveRequestEvent;
 
 // ─── Pending load (set by start screen, applied by setup) ────────────────────
@@ -281,7 +281,7 @@ pub struct SaveLoadPlugin;
 
 impl Plugin for SaveLoadPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<SaveRequestEvent>()
+        app.add_message::<SaveRequestEvent>()
             .init_resource::<PendingLoad>()
             .add_systems(Update, handle_save_load.run_if(in_state(AppState::InGame)));
     }
@@ -289,7 +289,7 @@ impl Plugin for SaveLoadPlugin {
 
 fn handle_save_load(
     input: Res<ButtonInput<KeyCode>>,
-    mut save_events: EventReader<SaveRequestEvent>,
+    mut save_events: MessageReader<SaveRequestEvent>,
     mut world: ResMut<CityWorld>,
     game_time: Res<GameTime>,
     road_network: Res<RoadNetwork>,

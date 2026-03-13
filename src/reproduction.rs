@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use rand::RngExt;
 use uuid::Uuid;
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct BirthEvent {
     pub position: Vec2,
     pub gender: Gender,
@@ -16,7 +16,7 @@ pub struct ReproductionPlugin;
 
 impl Plugin for ReproductionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<BirthEvent>()
+        app.add_message::<BirthEvent>()
             .add_systems(Update, (check_reproduction, spawn_newborn).chain().run_if(in_state(crate::AppState::InGame)));
     }
 }
@@ -28,7 +28,7 @@ const LAST_NAMES:         [&str; 8]  = ["Smith","Johnson","Williams","Brown","Jo
 fn check_reproduction(
     citizens: Query<&Citizen>,
     mut world: ResMut<CityWorld>,
-    mut birth_events: EventWriter<BirthEvent>,
+    mut birth_events: MessageWriter<BirthEvent>,
     time: Res<Time>,
     game_time: Res<crate::time::GameTime>,
 ) {
@@ -98,7 +98,7 @@ fn check_reproduction(
             (None, female.position)
         };
 
-        birth_events.send(BirthEvent { position: birth_pos, gender, name, home_building_id: home_id });
+        birth_events.write(BirthEvent { position: birth_pos, gender, name, home_building_id: home_id });
     }
 }
 
@@ -106,7 +106,7 @@ fn spawn_newborn(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    mut birth_events: EventReader<BirthEvent>,
+    mut birth_events: MessageReader<BirthEvent>,
     mut world: ResMut<CityWorld>,
 ) {
     for event in birth_events.read() {

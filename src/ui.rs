@@ -207,10 +207,10 @@ fn setup_ui(mut commands: Commands) {
                 max_height: Val::Px(220.0),
                 overflow: Overflow::scroll_y(),
                 display: Display::None,
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..Default::default()
             },
             BackgroundColor(Color::srgba(0.08, 0.12, 0.18, 0.88)),
-            BorderRadius::all(Val::Px(6.0)),
             ZIndex(40),
             ScrollPosition::default(),
             PanelScrollable,
@@ -227,10 +227,10 @@ fn setup_ui(mut commands: Commands) {
                 max_height: Val::Px(220.0),
                 overflow: Overflow::scroll_y(),
                 display: Display::None,
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..Default::default()
             },
             BackgroundColor(Color::srgba(0.06, 0.10, 0.08, 0.88)),
-            BorderRadius::all(Val::Px(6.0)),
             ZIndex(39),
             ScrollPosition::default(),
             PanelScrollable,
@@ -334,10 +334,10 @@ fn setup_ui(mut commands: Commands) {
                         justify_content: JustifyContent::Center,
                         row_gap: Val::Px(16.0),
                         padding: UiRect::all(Val::Px(32.0)),
+                        border_radius: BorderRadius::all(Val::Px(10.0)),
                         ..Default::default()
                     },
                     BackgroundColor(Color::srgba(0.12, 0.15, 0.20, 0.97)),
-                    BorderRadius::all(Val::Px(10.0)),
                 ))
                 .with_children(|dialog| {
                     dialog.spawn((
@@ -378,10 +378,10 @@ fn setup_ui(mut commands: Commands) {
                 row_gap: Val::Px(8.0),
                 padding: UiRect::all(Val::Px(14.0)),
                 display: Display::None,
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..Default::default()
             },
             BackgroundColor(Color::srgba(0.10, 0.13, 0.18, 0.93)),
-            BorderRadius::all(Val::Px(8.0)),
             ZIndex(50),
             BuildingInfoPanel,
         ))
@@ -414,10 +414,10 @@ fn setup_ui(mut commands: Commands) {
                 row_gap: Val::Px(8.0),
                 padding: UiRect::all(Val::Px(14.0)),
                 display: Display::None,
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..Default::default()
             },
             BackgroundColor(Color::srgba(0.10, 0.14, 0.20, 0.93)),
-            BorderRadius::all(Val::Px(8.0)),
             ZIndex(50),
             RouteInfoPanel,
         ))
@@ -447,10 +447,10 @@ fn setup_ui(mut commands: Commands) {
                 top: Val::Px(0.0),
                 padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
                 display: Display::None,
+                border_radius: BorderRadius::all(Val::Px(5.0)),
                 ..Default::default()
             },
             BackgroundColor(Color::srgba(0.08, 0.10, 0.15, 0.90)),
-            BorderRadius::all(Val::Px(5.0)),
             ZIndex(80),
             CitizenTooltipPanel,
         ))
@@ -464,7 +464,7 @@ fn setup_ui(mut commands: Commands) {
         });
 }
 
-fn toolbar_button(parent: &mut ChildBuilder, label: &str, action: ToolbarAction) {
+fn toolbar_button(parent: &mut ChildSpawnerCommands, label: &str, action: ToolbarAction) {
     parent
         .spawn((
             Button,
@@ -472,9 +472,9 @@ fn toolbar_button(parent: &mut ChildBuilder, label: &str, action: ToolbarAction)
                 padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..Default::default()
             },
-            BorderRadius::all(Val::Px(6.0)),
             BackgroundColor(Color::srgba(0.18, 0.22, 0.28, 0.9)),
             action,
         ))
@@ -487,7 +487,7 @@ fn toolbar_button(parent: &mut ChildBuilder, label: &str, action: ToolbarAction)
         });
 }
 
-fn dialog_button(parent: &mut ChildBuilder, label: &str, action: QuitDialogAction, bg: Color) {
+fn dialog_button(parent: &mut ChildSpawnerCommands, label: &str, action: QuitDialogAction, bg: Color) {
     parent
         .spawn((
             Button,
@@ -495,9 +495,9 @@ fn dialog_button(parent: &mut ChildBuilder, label: &str, action: QuitDialogActio
                 padding: UiRect::axes(Val::Px(18.0), Val::Px(10.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..Default::default()
             },
-            BorderRadius::all(Val::Px(6.0)),
             BackgroundColor(bg),
             action,
         ))
@@ -510,7 +510,7 @@ fn dialog_button(parent: &mut ChildBuilder, label: &str, action: QuitDialogActio
         });
 }
 
-fn building_panel_button<A: Component + Clone>(parent: &mut ChildBuilder, label: &str, action: A) {
+fn building_panel_button<A: Component + Clone>(parent: &mut ChildSpawnerCommands, label: &str, action: A) {
     parent
         .spawn((
             Button,
@@ -518,9 +518,9 @@ fn building_panel_button<A: Component + Clone>(parent: &mut ChildBuilder, label:
                 padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(5.0)),
                 ..Default::default()
             },
-            BorderRadius::all(Val::Px(5.0)),
             BackgroundColor(Color::srgba(0.20, 0.25, 0.35, 0.9)),
             action,
         ))
@@ -539,7 +539,7 @@ fn sync_toolbar_visibility(
     mut toolbar_query: Query<&mut Node, With<ToolbarRoot>>,
 ) {
     if !state.is_changed() { return; }
-    let Ok(mut node) = toolbar_query.get_single_mut() else { return };
+    let Ok(mut node) = toolbar_query.single_mut() else { return };
     node.display = if *state.get() == AppState::InGame {
         Display::Flex
     } else {
@@ -553,7 +553,7 @@ fn toolbar_interaction(
         (Changed<Interaction>, With<Button>),
     >,
     mut game_time: ResMut<GameTime>,
-    mut save_events: EventWriter<SaveRequestEvent>,
+    mut save_events: MessageWriter<SaveRequestEvent>,
     mut quit_visible: ResMut<QuitDialogVisible>,
 ) {
     for (interaction, action, mut bg) in &mut interaction_query {
@@ -572,7 +572,7 @@ fn toolbar_interaction(
                         game_time.time_scale = *s;
                     }
                     ToolbarAction::Save => {
-                        save_events.send(SaveRequestEvent);
+                        save_events.write(SaveRequestEvent);
                     }
                     ToolbarAction::Quit => {
                         quit_visible.0 = true;
@@ -709,7 +709,7 @@ fn update_time_ui(
     game_time: Res<GameTime>,
     world: Res<CityWorld>,
 ) {
-    let Ok(mut text) = text_query.get_single_mut() else { return };
+    let Ok(mut text) = text_query.single_mut() else { return };
 
     let day = game_time.current_day() as u32;
     let hour = game_time.current_hour();
@@ -732,7 +732,7 @@ fn update_hovered_info(
     hovered: Res<HoveredEntity>,
     citizens: Query<&Citizen>,
 ) {
-    let Ok(mut text) = text_query.get_single_mut() else { return };
+    let Ok(mut text) = text_query.single_mut() else { return };
 
     if let Some(entity) = hovered.0 {
         if let Ok(c) = citizens.get(entity) {
@@ -782,7 +782,7 @@ fn sync_building_info_panel(
     for mut node in &mut panel_query {
         node.display = if visible { Display::Flex } else { Display::None };
     }
-    let Ok(mut text) = text_query.get_single_mut() else { return };
+    let Ok(mut text) = text_query.single_mut() else { return };
     if let Some(ref id) = selection.selected_id {
         if let Some(b) = world.buildings.iter().find(|b| &b.id == id) {
             let type_label = match b.building_type {
@@ -829,7 +829,7 @@ fn sync_route_info_panel(
     if !visible {
         return;
     }
-    let Ok(mut text) = text_query.get_single_mut() else { return };
+    let Ok(mut text) = text_query.single_mut() else { return };
 
     let from_name = active_route.from_id.as_deref()
         .and_then(|id| world.buildings.iter().find(|b| b.id == id))
@@ -955,8 +955,8 @@ fn update_citizen_tooltip(
     mut panel_query: Query<&mut Node, With<CitizenTooltipPanel>>,
     mut text_query: Query<&mut Text, With<CitizenTooltipText>>,
 ) {
-    let Ok(mut panel_node) = panel_query.get_single_mut() else { return };
-    let Ok(mut text) = text_query.get_single_mut() else { return };
+    let Ok(mut panel_node) = panel_query.single_mut() else { return };
+    let Ok(mut text) = text_query.single_mut() else { return };
     let Some(window) = windows.iter().next() else { return };
 
     if let Some(entity) = hovered.0 {
@@ -1008,10 +1008,10 @@ fn rebuild_queue_panel(
     mut commands: Commands,
 ) {
     if !queue.is_changed() { return; }
-    let Ok(panel_entity) = panel_query.get_single() else { return };
-    let Ok(mut panel_node) = panel_node_query.get_single_mut() else { return };
+    let Ok(panel_entity) = panel_query.single() else { return };
+    let Ok(mut panel_node) = panel_node_query.single_mut() else { return };
 
-    commands.entity(panel_entity).despawn_descendants();
+    commands.entity(panel_entity).despawn_children();
 
     if queue.projects.is_empty() {
         panel_node.display = Display::None;
@@ -1019,8 +1019,8 @@ fn rebuild_queue_panel(
     }
 
     panel_node.display = Display::Flex;
-    if let Ok(mut scroll) = scroll_query.get_single_mut() {
-        scroll.offset_y = 0.0;
+    if let Ok(mut scroll) = scroll_query.single_mut() {
+        scroll.0.y = 0.0;
     }
 
     commands.entity(panel_entity).with_children(|panel| {
@@ -1043,11 +1043,11 @@ fn rebuild_queue_panel(
             panel.spawn((
                 Node {
                     padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
                     ..Default::default()
                 },
                 Button,
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
-                BorderRadius::all(Val::Px(3.0)),
                 Interaction::default(),
                 QueueItemRow(i),
             )).with_children(|row| {
@@ -1218,10 +1218,10 @@ fn rebuild_log_panel(
     mut commands: Commands,
 ) {
     if !log.is_changed() { return; }
-    let Ok(panel_entity) = panel_query.get_single() else { return };
-    let Ok(mut panel_node) = panel_node_query.get_single_mut() else { return };
+    let Ok(panel_entity) = panel_query.single() else { return };
+    let Ok(mut panel_node) = panel_node_query.single_mut() else { return };
 
-    commands.entity(panel_entity).despawn_descendants();
+    commands.entity(panel_entity).despawn_children();
 
     if log.entries.is_empty() {
         panel_node.display = Display::None;
@@ -1230,8 +1230,8 @@ fn rebuild_log_panel(
 
     panel_node.display = Display::Flex;
     // Scroll to top whenever content changes so newest entry is visible.
-    if let Ok(mut scroll) = scroll_query.get_single_mut() {
-        scroll.offset_y = 0.0;
+    if let Ok(mut scroll) = scroll_query.single_mut() {
+        scroll.0.y = 0.0;
     }
 
     commands.entity(panel_entity).with_children(|panel| {
@@ -1258,11 +1258,11 @@ fn rebuild_log_panel(
                     padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
                     flex_direction: FlexDirection::Column,
                     row_gap: Val::Px(1.0),
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
                     ..Default::default()
                 },
                 Button,
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
-                BorderRadius::all(Val::Px(3.0)),
                 Interaction::default(),
                 LogItemRow(i),
             )).with_children(|row| {
@@ -1360,11 +1360,11 @@ fn sync_log_highlight(
 /// Scrolls the queue and log panels when the mouse wheel moves over them.
 /// Uses ComputedNode size + GlobalTransform to hit-test cursor against each panel.
 fn scroll_panels(
-    mut mouse_wheel: EventReader<MouseWheel>,
+    mut mouse_wheel: MessageReader<MouseWheel>,
     windows: Query<&Window>,
     mut panels: Query<(&ComputedNode, &GlobalTransform, &mut ScrollPosition), With<PanelScrollable>>,
 ) {
-    let Ok(window) = windows.get_single() else { return };
+    let Ok(window) = windows.single() else { return };
     let Some(cursor_pos): Option<Vec2> = window.cursor_position() else { return };
     let scale = window.scale_factor();
 
@@ -1392,7 +1392,7 @@ fn scroll_panels(
             && cursor_pos.y <= -center.y + half.y
         {
             // Positive delta = scroll up => decrease offset_y.
-            scroll.offset_y = (scroll.offset_y - delta).max(0.0);
+            scroll.0.y = (scroll.0.y - delta).max(0.0);
         }
     }
 }

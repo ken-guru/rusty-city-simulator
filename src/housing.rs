@@ -7,7 +7,7 @@ use crate::time::GameTime;
 use bevy::prelude::*;
 use rand::RngExt;
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct NewBuildingEvent {
     pub building: Building,
 }
@@ -16,14 +16,14 @@ pub struct HousingPlugin;
 
 impl Plugin for HousingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<NewBuildingEvent>()
+        app.add_message::<NewBuildingEvent>()
             .add_systems(Update, (check_housing_pressure, spawn_building).chain().run_if(in_state(crate::AppState::InGame)));
     }
 }
 
 fn check_housing_pressure(
     mut world: ResMut<CityWorld>,
-    mut building_events: EventWriter<NewBuildingEvent>,
+    mut building_events: MessageWriter<NewBuildingEvent>,
     time: Res<Time>,
     game_time: Res<GameTime>,
 ) {
@@ -50,7 +50,7 @@ fn check_housing_pressure(
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
-            building_events.send(NewBuildingEvent { building });
+            building_events.write(NewBuildingEvent { building });
         }
     }
 
@@ -67,7 +67,7 @@ fn check_housing_pressure(
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
-            building_events.send(NewBuildingEvent { building });
+            building_events.write(NewBuildingEvent { building });
         }
     }
 
@@ -78,7 +78,7 @@ fn check_housing_pressure(
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
-            building_events.send(NewBuildingEvent { building });
+            building_events.write(NewBuildingEvent { building });
         }
     }
 }
@@ -186,7 +186,7 @@ fn best_entrance_direction(world: &CityWorld, col: i32, row: i32) -> Direction {
 
 fn spawn_building(
     mut commands: Commands,
-    mut building_events: EventReader<NewBuildingEvent>,
+    mut building_events: MessageReader<NewBuildingEvent>,
     mut road_network: ResMut<RoadNetwork>,
     mut world: ResMut<CityWorld>,
     sprite_assets: Res<SpriteAssets>,
