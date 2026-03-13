@@ -1,7 +1,6 @@
 use crate::entities::*;
 use crate::roads::RoadNetwork;
 use crate::time::GameTime;
-use crate::world::CityWorld;
 use bevy::prelude::*;
 
 pub struct MovementPlugin;
@@ -20,7 +19,6 @@ pub fn simple_movement(
     time: Res<Time>,
     game_time: Res<GameTime>,
     mut road_network: ResMut<RoadNetwork>,
-    _world: Res<CityWorld>,
 ) {
     if game_time.time_scale == 0.0 {
         return; // paused
@@ -49,19 +47,9 @@ pub fn simple_movement(
                 citizen.position = target;
                 citizen.target_position = None;
 
-                if citizen.on_shortcut && citizen.waypoints.is_empty() {
-                    // Grid-BFS shortcut completed — record each traversed edge as a desire path.
-                    let cells = std::mem::take(&mut citizen.shortcut_cells);
-                    if cells.len() >= 2 {
-                        road_network.record_grid_path(&cells, now);
-                    }
-                    citizen.on_shortcut = false;
-                    citizen.shortcut_from = None;
-                } else if !citizen.on_shortcut {
-                    // Road segment completed — record usage.
-                    if let Some(from) = citizen.last_road_node.take() {
-                        road_network.record_road_use(from, citizen.position, now);
-                    }
+                // Record road segment usage for degradation/upgrade tracking.
+                if let Some(from) = citizen.last_road_node.take() {
+                    road_network.record_road_use(from, citizen.position, now);
                 }
             }
         }

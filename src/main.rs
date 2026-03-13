@@ -25,7 +25,7 @@ use hovered::HoveredEntity;
 use housing::HousingPlugin;
 use movement::MovementPlugin;
 use reproduction::ReproductionPlugin;
-use roads::RoadsPlugin;
+use roads::{RoadEntities, RoadsPlugin};
 use save::SaveLoadPlugin;
 use sprites::{SpriteAssets, SpritesPlugin};
 use start_screen::StartScreenPlugin;
@@ -81,6 +81,8 @@ fn main() {
         .add_systems(Startup, (spawn_camera, sprites::setup_sprites))
         // Game world entities are spawned when entering InGame.
         .add_systems(OnEnter(AppState::InGame), setup)
+        // Cleanup all in-game entities when leaving InGame (e.g. "Return to Menu").
+        .add_systems(OnExit(AppState::InGame), cleanup_ingame)
         .add_systems(
             Update,
             (camera_controls, auto_zoom_camera, update_hovered_entity)
@@ -92,6 +94,28 @@ fn main() {
 /// Spawn the shared camera (used by both start screen UI and in-game).
 fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
+}
+
+/// Despawn all in-game entities and reset simulation resources so the start
+/// screen can cleanly start a new or different game afterwards.
+fn cleanup_ingame(
+    mut commands: Commands,
+    buildings: Query<Entity, With<Building>>,
+    citizens: Query<Entity, With<Citizen>>,
+    parks: Query<Entity, With<ParkMarker>>,
+    mut road_entities: ResMut<RoadEntities>,
+) {
+    for entity in buildings.iter().chain(citizens.iter()).chain(parks.iter()) {
+        commands.entity(entity).despawn_recursive();
+    }
+    // Despawn road mesh entities tracked by RoadEntities.
+    for (_id, (entity, _stype)) in road_entities.map.drain() {
+        commands.entity(entity).despawn_recursive();
+    }
+    // Reset simulation resources to defaults so setup() starts fresh.
+    commands.insert_resource(CityWorld::new());
+    commands.insert_resource(roads::RoadNetwork::default());
+    commands.insert_resource(time::GameTime::new());
 }
 
 fn setup(

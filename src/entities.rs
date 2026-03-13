@@ -66,12 +66,6 @@ pub struct Citizen {
     #[serde(default)]
     pub waypoints: Vec<Vec2>, // remaining road waypoints (stored reversed; pop from end)
     #[serde(default)]
-    pub on_shortcut: bool,
-    #[serde(default)]
-    pub shortcut_from: Option<Vec2>,
-    #[serde(default)]
-    pub shortcut_cells: Vec<(i32, i32)>, // grid-BFS cells for the current shortcut journey
-    #[serde(default)]
     pub last_road_node: Option<Vec2>,
     /// Time remaining (in game-seconds) to stay at a park.
     #[serde(default)]
@@ -108,9 +102,6 @@ impl Citizen {
             target_position: None,
             partner_id: None,
             waypoints: Vec::new(),
-            on_shortcut: false,
-            shortcut_from: None,
-            shortcut_cells: Vec::new(),
             last_road_node: None,
             park_timer: 0.0,
         }
@@ -183,6 +174,7 @@ impl Building {
     }
 
     /// Grid cell coordinates of this building's entrance corridor.
+    #[allow(dead_code)]
     pub fn entrance_cell(&self) -> (i32, i32) {
         let (col, row) = world_to_cell(self.position);
         let (dc, dr) = self.entrance_direction.cell_offset();
@@ -190,6 +182,7 @@ impl Building {
     }
 
     /// How far from the building center to the entrance corridor center.
+    #[allow(dead_code)]
     pub fn entrance_distance() -> f32 {
         CELL_SIZE
     }

@@ -1,6 +1,6 @@
 use crate::entities::*;
-use crate::grid::{world_to_cell, CELL_SIZE};
-use crate::roads::{find_grid_path, RoadNetwork};
+use crate::grid::CELL_SIZE;
+use crate::roads::RoadNetwork;
 use crate::time::GameTime;
 use crate::world::{park_positions, CityWorld};
 use bevy::prelude::*;
@@ -72,59 +72,34 @@ fn run_citizen_ai(
         };
 
         if let Some(pos) = target_pos {
-            let offset = match activity {
-                ActivityType::VisitingPark => Vec2::ZERO, // go exactly to park center
-                _ => Vec2::new(rng.gen_range(-20.0..20.0), rng.gen_range(-20.0..20.0)),
-            };
-            let destination = pos + offset;
+            // Route to the exact building/park position (no random offset).
+            let destination = pos;
 
-            // For parks: route to nearest road node adjacent to the park first.
+            // For parks: route to nearest road node adjacent to the park first,
+            // then set park as the final target after reaching that node.
             let road_dest = if matches!(activity, ActivityType::VisitingPark) {
                 road_network.nearest_node_to(pos, CELL_SIZE * 2.0).unwrap_or(destination)
             } else {
                 destination
             };
 
-            // Always try the road network first. A grid-BFS shortcut is only
-            // justified when no road connection exists — prevents shortcuts
-            // across already-connected city blocks.
-            if let Some(mut waypoints) =
-                road_network.find_road_path(citizen.position, road_dest)
-            {
+            if let Some(mut waypoints) = road_network.find_road_path(citizen.position, road_dest) {
                 // Route via road network. Stored reversed so `pop()` yields the first node.
                 waypoints.reverse();
                 citizen.waypoints = waypoints;
-                citizen.on_shortcut = false;
-                citizen.shortcut_from = None;
-                citizen.shortcut_cells.clear();
-                citizen.target_position = Some(destination); // walk to park from last node
-            } else {
-                // No road route — find a grid-aligned BFS path through empty cells.
-                let from_cell = world_to_cell(citizen.position);
-                let to_cell   = world_to_cell(destination);
-                if let Some(cells) = find_grid_path(from_cell, to_cell, &world) {
-                    // Convert cells to world-space waypoints and store reversed.
-                    let mut waypoints: Vec<Vec2> = cells
-                        .iter()
-                        .map(|&(col, row)| crate::grid::cell_to_world(col, row))
-                        .collect();
-                    waypoints.reverse();
-                    citizen.waypoints = waypoints;
-                    citizen.on_shortcut = true;
-                    citizen.shortcut_from = Some(citizen.position);
-                    citizen.shortcut_cells = cells;
-                    citizen.target_position = None; // final dest set via waypoints
+                // For park visits the final target_position is set after the road waypoints.
+                if matches!(activity, ActivityType::VisitingPark) {
+                    citizen.target_position = Some(destination);
                 } else {
-                    // No path available; citizen stays idle until next AI tick.
                     citizen.target_position = None;
-                    citizen.on_shortcut = false;
-                    citizen.shortcut_from = None;
-                    citizen.shortcut_cells.clear();
-                    citizen.waypoints.clear();
                 }
+            } else {
+                // No road connection yet — wait for the city to build roads.
+                citizen.target_position = None;
+                citizen.waypoints.clear();
             }
         } else {
-            // Wander randomly when no building found — stay on grid (horizontal or vertical).
+            // Wander randomly when no building found — move along one axis only.
             let axis_horiz: bool = rng.gen();
             let dist = rng.gen_range(1..=3) as f32 * crate::grid::CELL_SIZE;
             let wander = if axis_horiz {
@@ -134,9 +109,6 @@ fn run_citizen_ai(
             };
             citizen.target_position = Some(wander);
             citizen.current_activity = ActivityType::Walking;
-            citizen.on_shortcut = false;
-            citizen.shortcut_from = None;
-            citizen.shortcut_cells.clear();
             citizen.waypoints.clear();
         }
     }

@@ -1,0 +1,2423 @@
+{
+  "game_version": "0.1.0",
+  "world": {
+    "citizens": [
+      {
+        "id": "3d88926c-d9db-4aef-ba3b-dc6470b86cdc",
+        "name": "Robert Williams",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -498.72906,
+          256.26187
+        ],
+        "home_building_id": "e7cee243-0f1b-4677-9bd9-cde92684c917",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "4cd1748c-a387-4cb7-8da4-4bf9f4a14061",
+        "name": "David Johnson",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -492.625,
+          258.51385
+        ],
+        "home_building_id": "e7cee243-0f1b-4677-9bd9-cde92684c917",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "12566dd7-e93d-47a4-af86-d65e189eb908",
+        "name": "David Smith",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -462.92154,
+          254.36028
+        ],
+        "home_building_id": "e7cee243-0f1b-4677-9bd9-cde92684c917",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "13a63c58-31f8-47fb-a34a-579e3543dc94",
+        "name": "James Jones",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -230.0003,
+          241.19601
+        ],
+        "home_building_id": "90b45e8a-8284-408d-a869-14ba3ca7f633",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "d3cae4a7-78b5-4c93-b46f-b668a465096f",
+        "name": "David Jones",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -258.99506,
+          237.21466
+        ],
+        "home_building_id": "90b45e8a-8284-408d-a869-14ba3ca7f633",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "e6b646fe-6ae6-4eb8-bae8-24e77e7f56aa",
+        "name": "John Jones",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -250.91522,
+          248.46593
+        ],
+        "home_building_id": "90b45e8a-8284-408d-a869-14ba3ca7f633",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "e6e71e78-e02d-494e-a49d-cf79ede02f24",
+        "name": "Mary Johnson",
+        "gender": "Female",
+        "age": 20.0,
+        "position": [
+          -486.02408,
+          13.496651
+        ],
+        "home_building_id": "d040841e-b2cb-46f7-b41f-343b8d0348e4",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "2c8a05c5-2aa8-4bae-bccd-5d4fe7491b87",
+        "name": "Robert Johnson",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -492.56427,
+          -19.99033
+        ],
+        "home_building_id": "d040841e-b2cb-46f7-b41f-343b8d0348e4",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "8fc8dfec-04ca-44de-a2d4-dcaa46912519",
+        "name": "Michael Smith",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -471.56967,
+          8.881445
+        ],
+        "home_building_id": "d040841e-b2cb-46f7-b41f-343b8d0348e4",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "02ac0a3d-7607-4f16-a40e-0c7fb77d1727",
+        "name": "John Williams",
+        "gender": "Male",
+        "age": 20.0,
+        "position": [
+          -228.86751,
+          -1.8666267
+        ],
+        "home_building_id": "96ca62bb-718f-4c7c-85df-fe20da0ecfb3",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "b8bf51fe-2fea-4c22-a8be-81673a948e77",
+        "name": "Elijah Davis",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -486.80707,
+          231.92758
+        ],
+        "home_building_id": "e7cee243-0f1b-4677-9bd9-cde92684c917",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "ffeb9db3-60a3-46f2-89f4-23802dbc87e2",
+        "name": "Liam Garcia",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -252.97296,
+          251.06914
+        ],
+        "home_building_id": "90b45e8a-8284-408d-a869-14ba3ca7f633",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "086ef08a-7ea2-41ea-a392-a4c9cc05ce30",
+        "name": "Liam Brown",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -469.01648,
+          13.234566
+        ],
+        "home_building_id": "d040841e-b2cb-46f7-b41f-343b8d0348e4",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "a3374fec-1e51-4a3d-8af4-7904b1474eaf",
+        "name": "Aiden Smith",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -230.70004,
+          5.7696247
+        ],
+        "home_building_id": "96ca62bb-718f-4c7c-85df-fe20da0ecfb3",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "b3bd78d2-cf8f-40b5-8347-57253fb8637b",
+        "name": "Evelyn Williams",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -238.97499,
+          -8.762434
+        ],
+        "home_building_id": "96ca62bb-718f-4c7c-85df-fe20da0ecfb3",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "035bb4a3-1bc4-4f13-8b9e-d79931529e78",
+        "name": "Oliver Brown",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -254.12216,
+          7.186653
+        ],
+        "home_building_id": "96ca62bb-718f-4c7c-85df-fe20da0ecfb3",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "5312680e-cb95-4034-93ea-05f2f1c33c47",
+        "name": "Isabella Johnson",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          12.956457,
+          732.8271
+        ],
+        "home_building_id": "420ac07b-3b16-432e-af20-1222cd6c099b",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "9edb8f95-f32a-4106-9f11-2ad1279247b1",
+        "name": "James Smith",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -10.157061,
+          718.473
+        ],
+        "home_building_id": "420ac07b-3b16-432e-af20-1222cd6c099b",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "c85c2dd8-6f85-44bd-8e93-f51bd959e9c2",
+        "name": "James Garcia",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          13.929054,
+          722.6085
+        ],
+        "home_building_id": "420ac07b-3b16-432e-af20-1222cd6c099b",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "846d5728-1446-430d-beb2-e489386f2195",
+        "name": "Noah Williams",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -5.2267637,
+          724.09155
+        ],
+        "home_building_id": "420ac07b-3b16-432e-af20-1222cd6c099b",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "c8d7a791-a86c-4255-8549-e3a6577a5bb7",
+        "name": "Harper Williams",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -470.11246,
+          469.16513
+        ],
+        "home_building_id": "72c2b3f6-307c-4993-aacf-4229d5d3d080",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "1d9f1caf-c4b0-4bc5-a82f-f90d3a76286f",
+        "name": "Emma Williams",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -487.49982,
+          471.2234
+        ],
+        "home_building_id": "72c2b3f6-307c-4993-aacf-4229d5d3d080",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "abbaf033-3229-4415-a2ca-1a8abd964ea3",
+        "name": "Henry Garcia",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -488.99234,
+          484.84512
+        ],
+        "home_building_id": "72c2b3f6-307c-4993-aacf-4229d5d3d080",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "7e2dee2a-68c2-40ee-af11-4f9cf9296c7c",
+        "name": "Amelia Smith",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -468.1557,
+          488.62708
+        ],
+        "home_building_id": "72c2b3f6-307c-4993-aacf-4229d5d3d080",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "98904c60-b3a1-478d-b21d-7025e5de09eb",
+        "name": "Aiden Johnson",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -240.32448,
+          -232.34378
+        ],
+        "home_building_id": "854f7a01-7cb0-4994-ad5d-61c4409911fd",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "b40c2a19-010c-4d0a-b887-841b04e1ad5a",
+        "name": "Evelyn Smith",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -247.47556,
+          -229.94583
+        ],
+        "home_building_id": "854f7a01-7cb0-4994-ad5d-61c4409911fd",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "de73829e-1b48-4f73-a033-dc717a175801",
+        "name": "Charlotte Smith",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -244.77301,
+          -251.07167
+        ],
+        "home_building_id": "854f7a01-7cb0-4994-ad5d-61c4409911fd",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "f4dbe2e6-b875-4070-bced-a71ef98f18e9",
+        "name": "Emma Johnson",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -252.814,
+          -248.02007
+        ],
+        "home_building_id": "854f7a01-7cb0-4994-ad5d-61c4409911fd",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "73685b00-649e-4a7d-86eb-99b17b15ed24",
+        "name": "Liam Jones",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -724.5396,
+          243.09972
+        ],
+        "home_building_id": "be3ff2f7-004d-4b8a-add6-fb6b8ea8a61d",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "b96698a0-171a-4d63-966d-b6955d12a045",
+        "name": "Liam Davis",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -716.5541,
+          228.83434
+        ],
+        "home_building_id": "be3ff2f7-004d-4b8a-add6-fb6b8ea8a61d",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "254cc176-4dba-4e5e-8adb-aabcc3614d00",
+        "name": "Mason Garcia",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -708.8115,
+          251.65614
+        ],
+        "home_building_id": "be3ff2f7-004d-4b8a-add6-fb6b8ea8a61d",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "8ea3afe1-a61b-4c97-bedc-f59af14a933c",
+        "name": "Mason Brown",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -720.40247,
+          252.5153
+        ],
+        "home_building_id": "be3ff2f7-004d-4b8a-add6-fb6b8ea8a61d",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "71bf9a8d-2d9f-4c37-9288-b47ad7a9383d",
+        "name": "Oliver Davis",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -475.65677,
+          -484.64233
+        ],
+        "home_building_id": "692f6a4c-fb55-4395-bc68-bc2a62f86563",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "b6dc9e59-3dc9-415e-b7a4-9e3fe180ee45",
+        "name": "Oliver Miller",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -494.28247,
+          -466.7094
+        ],
+        "home_building_id": "692f6a4c-fb55-4395-bc68-bc2a62f86563",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "8a4a47bb-2b48-46b3-8114-c7553f7491f7",
+        "name": "Mia Johnson",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -477.77588,
+          -469.35397
+        ],
+        "home_building_id": "692f6a4c-fb55-4395-bc68-bc2a62f86563",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "35f69c3a-e588-4a72-956a-472dbb3a6ad4",
+        "name": "Elijah Miller",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -470.55362,
+          -479.1
+        ],
+        "home_building_id": "692f6a4c-fb55-4395-bc68-bc2a62f86563",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "1c7d0503-9bea-4d3d-b031-4a63684d64cd",
+        "name": "Noah Smith",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          484.2976,
+          228.06715
+        ],
+        "home_building_id": "feddfe75-d3f9-477a-830a-227470b5da44",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "1860df59-5ea5-4100-8b30-d1977a375c86",
+        "name": "Mason Garcia",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          471.95328,
+          235.48875
+        ],
+        "home_building_id": "feddfe75-d3f9-477a-830a-227470b5da44",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "04960caa-01f6-4ebc-987c-1f15f1633a9a",
+        "name": "Elijah Miller",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          471.34647,
+          240.58136
+        ],
+        "home_building_id": "feddfe75-d3f9-477a-830a-227470b5da44",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "71aee2fc-7aef-4b9a-8bc6-804b1c8488a2",
+        "name": "Evelyn Davis",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          476.84418,
+          242.35828
+        ],
+        "home_building_id": "feddfe75-d3f9-477a-830a-227470b5da44",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "34b24f46-578a-4b48-bed5-fa2090ae9337",
+        "name": "Sophia Johnson",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -228.01149,
+          725.68384
+        ],
+        "home_building_id": "f8df1b7d-ac37-4746-adca-b4646b0c1aea",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "566ccd51-79a7-4b4e-8823-9c8ed1ece756",
+        "name": "Oliver Brown",
+        "gender": "Male",
+        "age": 0.0,
+        "position": [
+          -237.125,
+          727.0554
+        ],
+        "home_building_id": "f8df1b7d-ac37-4746-adca-b4646b0c1aea",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "739a5515-44e1-44ce-8710-16918d651491",
+        "name": "Isabella Smith",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -249.59886,
+          724.9638
+        ],
+        "home_building_id": "f8df1b7d-ac37-4746-adca-b4646b0c1aea",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "8cd8c6f2-2035-430e-ad54-dff49b5199f6",
+        "name": "Charlotte Davis",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          -242.88518,
+          714.99536
+        ],
+        "home_building_id": "f8df1b7d-ac37-4746-adca-b4646b0c1aea",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      },
+      {
+        "id": "1d9d4905-ef67-4b61-8d93-f1a71d78f028",
+        "name": "Harper Davis",
+        "gender": "Female",
+        "age": 0.0,
+        "position": [
+          6.9624214,
+          966.9498
+        ],
+        "home_building_id": "beb7c727-64db-4438-bd26-b1cdc62982ff",
+        "workplace_building_id": null,
+        "hunger": 0.5,
+        "energy": 0.7,
+        "social": 0.5,
+        "hygiene": 0.8,
+        "reproduction_urge": 0.0,
+        "current_activity": "Idle",
+        "target_position": null,
+        "partner_id": null,
+        "waypoints": [],
+        "on_shortcut": false,
+        "shortcut_from": null,
+        "shortcut_cells": [],
+        "last_road_node": null,
+        "park_timer": 0.0
+      }
+    ],
+    "buildings": [
+      {
+        "id": "e7cee243-0f1b-4677-9bd9-cde92684c917",
+        "building_type": "Home",
+        "position": [
+          -480.0,
+          240.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "3d88926c-d9db-4aef-ba3b-dc6470b86cdc",
+          "4cd1748c-a387-4cb7-8da4-4bf9f4a14061",
+          "12566dd7-e93d-47a4-af86-d65e189eb908",
+          "b8bf51fe-2fea-4c22-a8be-81673a948e77"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "90b45e8a-8284-408d-a869-14ba3ca7f633",
+        "building_type": "Home",
+        "position": [
+          -240.0,
+          240.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "13a63c58-31f8-47fb-a34a-579e3543dc94",
+          "d3cae4a7-78b5-4c93-b46f-b668a465096f",
+          "e6b646fe-6ae6-4eb8-bae8-24e77e7f56aa",
+          "ffeb9db3-60a3-46f2-89f4-23802dbc87e2"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "2faefcd0-f21e-4261-aa29-288d296d6f30",
+        "building_type": "Office",
+        "position": [
+          0.0,
+          240.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "31edc872-8e10-4247-89fe-41a0cd60ff40",
+        "building_type": "Office",
+        "position": [
+          240.0,
+          240.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "d040841e-b2cb-46f7-b41f-343b8d0348e4",
+        "building_type": "Home",
+        "position": [
+          -480.0,
+          0.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "e6e71e78-e02d-494e-a49d-cf79ede02f24",
+          "2c8a05c5-2aa8-4bae-bccd-5d4fe7491b87",
+          "8fc8dfec-04ca-44de-a2d4-dcaa46912519",
+          "086ef08a-7ea2-41ea-a392-a4c9cc05ce30"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "96ca62bb-718f-4c7c-85df-fe20da0ecfb3",
+        "building_type": "Home",
+        "position": [
+          -240.0,
+          0.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "02ac0a3d-7607-4f16-a40e-0c7fb77d1727",
+          "a3374fec-1e51-4a3d-8af4-7904b1474eaf",
+          "b3bd78d2-cf8f-40b5-8347-57253fb8637b",
+          "035bb4a3-1bc4-4f13-8b9e-d79931529e78"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "e2ee3ce3-57f3-491a-bf5a-4490ee32146a",
+        "building_type": "Shop",
+        "position": [
+          0.0,
+          0.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 5,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "33f744b2-a4b4-4172-a74f-d79b884bcef7",
+        "building_type": "Shop",
+        "position": [
+          240.0,
+          0.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 5,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "85fef2af-359f-4cfd-8732-3cab18ac8c93",
+        "building_type": "Office",
+        "position": [
+          0.0,
+          480.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "420ac07b-3b16-432e-af20-1222cd6c099b",
+        "building_type": "Home",
+        "position": [
+          0.0,
+          720.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "5312680e-cb95-4034-93ea-05f2f1c33c47",
+          "9edb8f95-f32a-4106-9f11-2ad1279247b1",
+          "c85c2dd8-6f85-44bd-8e93-f51bd959e9c2",
+          "846d5728-1446-430d-beb2-e489386f2195"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "2b727b12-95e4-4518-a996-d2c3a1de912c",
+        "building_type": "Shop",
+        "position": [
+          -480.0,
+          -240.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 5,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "91ca8de1-95ad-440a-9a87-b6e3580ed6d1",
+        "building_type": "Office",
+        "position": [
+          240.0,
+          480.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "72c2b3f6-307c-4993-aacf-4229d5d3d080",
+        "building_type": "Home",
+        "position": [
+          -480.0,
+          480.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "c8d7a791-a86c-4255-8549-e3a6577a5bb7",
+          "1d9f1caf-c4b0-4bc5-a82f-f90d3a76286f",
+          "abbaf033-3229-4415-a2ca-1a8abd964ea3",
+          "7e2dee2a-68c2-40ee-af11-4f9cf9296c7c"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "854f7a01-7cb0-4994-ad5d-61c4409911fd",
+        "building_type": "Home",
+        "position": [
+          -240.0,
+          -240.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "98904c60-b3a1-478d-b21d-7025e5de09eb",
+          "b40c2a19-010c-4d0a-b887-841b04e1ad5a",
+          "de73829e-1b48-4f73-a033-dc717a175801",
+          "f4dbe2e6-b875-4070-bced-a71ef98f18e9"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "1502ceb7-d525-4c7c-9b20-f07e46983e10",
+        "building_type": "Office",
+        "position": [
+          -720.0,
+          480.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "East"
+      },
+      {
+        "id": "775390e6-afba-464a-8811-cf0ec03771a7",
+        "building_type": "Shop",
+        "position": [
+          -240.0,
+          480.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 5,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "be3ff2f7-004d-4b8a-add6-fb6b8ea8a61d",
+        "building_type": "Home",
+        "position": [
+          -720.0,
+          240.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "73685b00-649e-4a7d-86eb-99b17b15ed24",
+          "b96698a0-171a-4d63-966d-b6955d12a045",
+          "254cc176-4dba-4e5e-8adb-aabcc3614d00",
+          "8ea3afe1-a61b-4c97-bedc-f59af14a933c"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "692f6a4c-fb55-4395-bc68-bc2a62f86563",
+        "building_type": "Home",
+        "position": [
+          -480.0,
+          -480.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "71bf9a8d-2d9f-4c37-9288-b47ad7a9383d",
+          "b6dc9e59-3dc9-415e-b7a4-9e3fe180ee45",
+          "8a4a47bb-2b48-46b3-8114-c7553f7491f7",
+          "35f69c3a-e588-4a72-956a-472dbb3a6ad4"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "5bb30225-4e94-4f36-85b3-1bc2cf3d328f",
+        "building_type": "Office",
+        "position": [
+          -480.0,
+          -720.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "North"
+      },
+      {
+        "id": "feddfe75-d3f9-477a-830a-227470b5da44",
+        "building_type": "Home",
+        "position": [
+          480.0,
+          240.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "1c7d0503-9bea-4d3d-b031-4a63684d64cd",
+          "1860df59-5ea5-4100-8b30-d1977a375c86",
+          "04960caa-01f6-4ebc-987c-1f15f1633a9a",
+          "71aee2fc-7aef-4b9a-8bc6-804b1c8488a2"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "West"
+      },
+      {
+        "id": "20e6ba59-dd6c-4084-a0c6-cb0c6fca8158",
+        "building_type": "Shop",
+        "position": [
+          -240.0,
+          -720.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 5,
+        "entrance_direction": "West"
+      },
+      {
+        "id": "687e5448-9489-477a-96cf-e5160b0a26c6",
+        "building_type": "Office",
+        "position": [
+          0.0,
+          -240.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "f8df1b7d-ac37-4746-adca-b4646b0c1aea",
+        "building_type": "Home",
+        "position": [
+          -240.0,
+          720.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "34b24f46-578a-4b48-bed5-fa2090ae9337",
+          "566ccd51-79a7-4b4e-8823-9c8ed1ece756",
+          "739a5515-44e1-44ce-8710-16918d651491",
+          "8cd8c6f2-2035-430e-ad54-dff49b5199f6"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "beb7c727-64db-4438-bd26-b1cdc62982ff",
+        "building_type": "Home",
+        "position": [
+          0.0,
+          960.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [
+          "1d9d4905-ef67-4b61-8d93-f1a71d78f028"
+        ],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "1190fb10-8bf9-491a-85aa-b894aae41b5a",
+        "building_type": "Office",
+        "position": [
+          -960.0,
+          240.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "East"
+      },
+      {
+        "id": "c50d3180-5207-46d8-8ad7-eaae64586d1d",
+        "building_type": "Shop",
+        "position": [
+          -960.0,
+          720.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 5,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "a278cdbf-2474-4883-b85a-47d73213dc8d",
+        "building_type": "Home",
+        "position": [
+          720.0,
+          480.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "9559eea0-134a-411a-b23b-a5e3dcfc4bfa",
+        "building_type": "Office",
+        "position": [
+          0.0,
+          -720.0
+        ],
+        "size": [
+          100.0,
+          100.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 10,
+        "entrance_direction": "West"
+      },
+      {
+        "id": "24d0070d-cb23-46ae-85ed-91044633aba0",
+        "building_type": "Home",
+        "position": [
+          0.0,
+          -480.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      },
+      {
+        "id": "518d983e-6155-4928-b09d-643253b518d5",
+        "building_type": "Shop",
+        "position": [
+          -720.0,
+          -240.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 0,
+        "capacity_workers": 5,
+        "entrance_direction": "East"
+      },
+      {
+        "id": "f5e3ba65-56a2-41a4-bd2a-91bdd35002fe",
+        "building_type": "Home",
+        "position": [
+          -240.0,
+          1200.0
+        ],
+        "size": [
+          90.0,
+          90.0
+        ],
+        "resident_ids": [],
+        "worker_ids": [],
+        "capacity_residents": 4,
+        "capacity_workers": 0,
+        "entrance_direction": "South"
+      }
+    ],
+    "simulation_time": 0.0,
+    "occupied_cells": [
+      [
+        -4,
+        -2
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        4
+      ],
+      [
+        -2,
+        6
+      ],
+      [
+        -8,
+        6
+      ],
+      [
+        -4,
+        -6
+      ],
+      [
+        0,
+        8
+      ],
+      [
+        -6,
+        4
+      ],
+      [
+        4,
+        2
+      ],
+      [
+        -2,
+        4
+      ],
+      [
+        -8,
+        2
+      ],
+      [
+        -4,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        6
+      ],
+      [
+        0,
+        -2
+      ],
+      [
+        -6,
+        -2
+      ],
+      [
+        6,
+        4
+      ],
+      [
+        -4,
+        2
+      ],
+      [
+        -4,
+        4
+      ],
+      [
+        -6,
+        2
+      ],
+      [
+        -2,
+        -2
+      ],
+      [
+        -2,
+        10
+      ],
+      [
+        2,
+        2
+      ],
+      [
+        -2,
+        2
+      ],
+      [
+        2,
+        4
+      ],
+      [
+        -4,
+        -4
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        -2,
+        -6
+      ],
+      [
+        0,
+        -4
+      ],
+      [
+        0,
+        -6
+      ],
+      [
+        -2,
+        0
+      ]
+    ],
+    "crossroad_cells": [],
+    "park_cells": [
+      [
+        -2,
+        -4
+      ]
+    ]
+  },
+  "time": {
+    "elapsed_secs": 2197.4014,
+    "time_scale": 4.0
+  },
+  "road_network": {
+    "segments": [
+      {
+        "id": "d7cd8ab0-0cb1-4b5a-a44e-130d9d46afdb",
+        "start": [
+          -480.0,
+          240.0
+        ],
+        "end": [
+          -480.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 50.0,
+        "last_used_day": 4.385036
+      },
+      {
+        "id": "edf7f9b8-8d95-4d52-aabd-71715d9e3713",
+        "start": [
+          -240.0,
+          240.0
+        ],
+        "end": [
+          -240.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 138.0,
+        "last_used_day": 7.7350326
+      },
+      {
+        "id": "3bf0e1a4-1b0f-4c80-8022-d430ccafd86d",
+        "start": [
+          0.0,
+          240.0
+        ],
+        "end": [
+          0.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 14.0,
+        "last_used_day": 12.524072
+      },
+      {
+        "id": "27b1d3bc-51dc-4cfc-8c5c-bf0c2cafc5f9",
+        "start": [
+          240.0,
+          240.0
+        ],
+        "end": [
+          240.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 0.0
+      },
+      {
+        "id": "f0d5d7be-257b-4d32-9e41-d1ad5f390799",
+        "start": [
+          -480.0,
+          0.0
+        ],
+        "end": [
+          -480.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 50.0,
+        "last_used_day": 4.256126
+      },
+      {
+        "id": "9ded6395-3579-4fe3-bf6b-4f8d7c6c19db",
+        "start": [
+          -240.0,
+          0.0
+        ],
+        "end": [
+          -240.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 333.0,
+        "last_used_day": 18.19991
+      },
+      {
+        "id": "579d1062-8fdc-4d72-b494-aa9f39bb9a80",
+        "start": [
+          0.0,
+          0.0
+        ],
+        "end": [
+          0.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 575.0,
+        "last_used_day": 18.282127
+      },
+      {
+        "id": "6813d31d-4a30-4023-805b-73f73fe3f678",
+        "start": [
+          240.0,
+          0.0
+        ],
+        "end": [
+          240.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 0.0
+      },
+      {
+        "id": "e5a4df5a-2b13-43d8-b830-38aac9d824df",
+        "start": [
+          -480.0,
+          120.0
+        ],
+        "end": [
+          -360.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 100.0,
+        "last_used_day": 4.368708
+      },
+      {
+        "id": "4623785b-b9b5-4ac3-94a6-4cf5200666f2",
+        "start": [
+          -360.0,
+          120.0
+        ],
+        "end": [
+          -240.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 100.0,
+        "last_used_day": 4.351243
+      },
+      {
+        "id": "dff6020e-fd87-4f8c-8d38-8bc02cb4ad91",
+        "start": [
+          -240.0,
+          120.0
+        ],
+        "end": [
+          -120.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 572.0,
+        "last_used_day": 18.311047
+      },
+      {
+        "id": "bbf57202-2cb7-4d05-875d-be5977fd6f8d",
+        "start": [
+          -120.0,
+          120.0
+        ],
+        "end": [
+          0.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 573.0,
+        "last_used_day": 18.298841
+      },
+      {
+        "id": "3b9929f4-cf0e-4a43-8b28-9e3275079a87",
+        "start": [
+          0.0,
+          120.0
+        ],
+        "end": [
+          120.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 0.0
+      },
+      {
+        "id": "90c9c8dd-4481-4224-89c5-89508d6b888b",
+        "start": [
+          120.0,
+          120.0
+        ],
+        "end": [
+          240.0,
+          120.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 0.0
+      },
+      {
+        "id": "fafaaaf5-b747-4a10-80a0-c376b57cbc4e",
+        "start": [
+          0.0,
+          480.0
+        ],
+        "end": [
+          0.0,
+          360.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 1.5993878
+      },
+      {
+        "id": "dc294e90-d6c2-4d2a-b797-aae8296da1e2",
+        "start": [
+          0.0,
+          720.0
+        ],
+        "end": [
+          0.0,
+          600.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 2.2756133
+      },
+      {
+        "id": "96a3248e-3099-4dcf-a65b-742d3546b783",
+        "start": [
+          -480.0,
+          -240.0
+        ],
+        "end": [
+          -480.0,
+          -120.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 3.8839877
+      },
+      {
+        "id": "13d98b81-2cc2-4838-9167-331f2d52b070",
+        "start": [
+          240.0,
+          480.0
+        ],
+        "end": [
+          240.0,
+          360.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 4.0991406
+      },
+      {
+        "id": "81e76ae1-118b-4a4f-893a-7cba8b029427",
+        "start": [
+          -480.0,
+          480.0
+        ],
+        "end": [
+          -480.0,
+          360.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 4.6629634
+      },
+      {
+        "id": "64b10f22-265a-4ab9-8c64-e03c12ba6ee6",
+        "start": [
+          -240.0,
+          -240.0
+        ],
+        "end": [
+          -240.0,
+          -120.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 6.4846835
+      },
+      {
+        "id": "b005ea3e-4b8b-4a80-9767-ea3d5e3516ee",
+        "start": [
+          -720.0,
+          480.0
+        ],
+        "end": [
+          -600.0,
+          480.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 7.176376
+      },
+      {
+        "id": "d862539f-e2bf-489d-b2bf-ec31dd6e08a6",
+        "start": [
+          -240.0,
+          480.0
+        ],
+        "end": [
+          -240.0,
+          360.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 7.524461
+      },
+      {
+        "id": "95ce5788-d982-4ee4-914f-52e58b5ea6cc",
+        "start": [
+          -720.0,
+          240.0
+        ],
+        "end": [
+          -720.0,
+          360.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 7.845984
+      },
+      {
+        "id": "e9c0b55f-2840-4980-a9a2-3ab355a7e326",
+        "start": [
+          -480.0,
+          -480.0
+        ],
+        "end": [
+          -480.0,
+          -360.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 8.795425
+      },
+      {
+        "id": "13a38366-1a76-4c1d-b669-a5c6899c76f0",
+        "start": [
+          -480.0,
+          -720.0
+        ],
+        "end": [
+          -480.0,
+          -600.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 8.795425
+      },
+      {
+        "id": "fedccd84-c8cb-46d2-a7e8-c26ccdeabd9b",
+        "start": [
+          480.0,
+          240.0
+        ],
+        "end": [
+          360.0,
+          240.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 10.922177
+      },
+      {
+        "id": "be028fec-ce15-483f-be7c-471ffe663e93",
+        "start": [
+          -240.0,
+          -720.0
+        ],
+        "end": [
+          -360.0,
+          -720.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 10.922177
+      },
+      {
+        "id": "cb60e8ab-216e-4aec-89a3-b04b7d625267",
+        "start": [
+          0.0,
+          -240.0
+        ],
+        "end": [
+          0.0,
+          -360.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 11.1651325
+      },
+      {
+        "id": "b3f5351c-7fe8-42ee-bf30-c748fa87b689",
+        "start": [
+          -240.0,
+          720.0
+        ],
+        "end": [
+          -240.0,
+          600.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 12.317198
+      },
+      {
+        "id": "4c1aade2-b0a7-4fd7-84f1-9aec3c1085d0",
+        "start": [
+          0.0,
+          960.0
+        ],
+        "end": [
+          0.0,
+          840.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 12.882133
+      },
+      {
+        "id": "f38b5adb-7ece-4596-bdcd-28ad8554c708",
+        "start": [
+          -960.0,
+          240.0
+        ],
+        "end": [
+          -840.0,
+          240.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 12.882133
+      },
+      {
+        "id": "f9120dcc-7846-46f6-b89e-ce01e7a379c0",
+        "start": [
+          -960.0,
+          720.0
+        ],
+        "end": [
+          -960.0,
+          600.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 12.882133
+      },
+      {
+        "id": "9cc91a80-344b-4539-9ba7-f055e4b34adb",
+        "start": [
+          720.0,
+          480.0
+        ],
+        "end": [
+          720.0,
+          360.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 14.368237
+      },
+      {
+        "id": "e1b366c5-0f39-4104-b8b0-f95747ba3dc2",
+        "start": [
+          0.0,
+          -720.0
+        ],
+        "end": [
+          -120.0,
+          -720.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 15.633608
+      },
+      {
+        "id": "54c916d9-1a14-409b-be2b-544d4f5fe307",
+        "start": [
+          0.0,
+          -480.0
+        ],
+        "end": [
+          0.0,
+          -600.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 15.977393
+      },
+      {
+        "id": "24a26ea6-1bfe-4d93-81dd-9cc7fca8775f",
+        "start": [
+          -720.0,
+          -240.0
+        ],
+        "end": [
+          -600.0,
+          -240.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 16.798725
+      },
+      {
+        "id": "2107c537-bc4d-4b4c-bfb8-95a1aa508cae",
+        "start": [
+          -240.0,
+          1200.0
+        ],
+        "end": [
+          -240.0,
+          1080.0
+        ],
+        "seg_type": "Road",
+        "usage": 0.0,
+        "last_used_day": 18.104193
+      }
+    ]
+  }
+}

@@ -155,11 +155,9 @@ impl RoadNetwork {
     ///
     /// Connect a new building to the road network using the corridor model.
     ///
-    /// Each building connects to the road via exactly ONE entrance corridor cell.
-    /// This method:
-    /// 1. Adds a segment from `building.entrance_pos()` along the corridor cell.
-    /// 2. Connects the entrance corridor cell to any adjacent corridor cells that
-    ///    already have road nodes (extending the street to reach the new building).
+    /// Adds an entry segment from the building centre to its entrance corridor cell,
+    /// then uses BFS through corridor cells to find the shortest path to any
+    /// existing road node, laying new road segments along the way.
     pub fn connect_new_building(
         &mut self,
         building: &Building,
@@ -168,32 +166,32 @@ impl RoadNetwork {
         _crossroad_cells: &mut HashSet<(i32, i32)>,
     ) {
         let entrance = building.entrance_pos();
+
+        // Snapshot all existing road nodes BEFORE adding the entry segment.
+        // The BFS must find a pre-existing network node, not one we are about to create.
+        let existing_nodes: Vec<Vec2> = self
+            .segments
+            .iter()
+            .flat_map(|s| [s.start, s.end])
+            .collect();
+
         // Entry segment: building centre → entrance corridor cell centre.
         self.connect(building.position, entrance, SegmentType::Road, current_day);
 
-        // Extend along corridor cells from the entrance to reach the existing network.
-        // Walk in the perpendicular directions (along the corridor row/column).
-        let (ec, er) = world_to_cell(entrance);
-        let corridor_dirs = corridor_walk_dirs(ec, er);
-        for (dc, dr) in corridor_dirs {
-            let mut cc = ec + dc;
-            let mut cr = er + dr;
-            let mut prev = entrance;
-            // Walk up to 10 corridor steps to find an existing road node.
-            for _ in 0..10 {
+        // BFS from the entrance cell through corridor cells to the nearest
+        // existing road node. Lay road segments along every cell in the path.
+        let entrance_cell = world_to_cell(entrance);
+        if let Some(path) = bfs_to_road_node(&existing_nodes, entrance_cell) {
+            let mut prev_pos = entrance;
+            for &(cc, cr) in path.iter().skip(1) { // skip entrance_cell itself
                 let here = cell_to_world(cc, cr);
-                // Stop if we hit a building cell (can't pass through).
-                if is_building_cell(cc, cr) { break; }
-                // If this corridor node is already in the road network, connect and stop.
-                if self.has_node_near(here) {
-                    self.connect(prev, here, SegmentType::Road, current_day);
+                self.connect(prev_pos, here, SegmentType::Road, current_day);
+                prev_pos = here;
+                // Stop once we've reached an existing node.
+                let reached = existing_nodes.iter().any(|&n| nodes_close(n, here));
+                if reached {
                     break;
                 }
-                // Otherwise extend the road one more step.
-                self.connect(prev, here, SegmentType::Road, current_day);
-                prev = here;
-                cc += dc;
-                cr += dr;
             }
         }
     }
@@ -214,109 +212,12 @@ impl RoadNetwork {
         best
     }
 
-    /// True if any road node is within 5 px of `pos`.
-    pub fn has_node_near(&self, pos: Vec2) -> bool {
-        self.segments.iter().any(|s| {
-            nodes_close(s.start, pos) || nodes_close(s.end, pos)
-        })
-    }
-
-    /// Record each adjacent cell-pair in `cells` as a desire-path edge.
-    /// Skips pairs already covered by a Road or Path segment.
-    pub fn record_grid_path(
-        &mut self,
-        cells: &[(i32, i32)],
-        current_day: f32,
-    ) {
-        for pair in cells.windows(2) {
-            let (a, b) = (pair[0], pair[1]);
-            let wa = cell_to_world(a.0, a.1);
-            let wb = cell_to_world(b.0, b.1);
-
-            // Skip if already a proper road or path.
-            let covered = self.segments.iter().any(|s| {
-                matches!(s.seg_type, SegmentType::Road | SegmentType::Path)
-                    && ((nodes_close(s.start, wa) && nodes_close(s.end, wb))
-                        || (nodes_close(s.start, wb) && nodes_close(s.end, wa)))
-            });
-            if covered {
-                continue;
-            }
-
-            // Increment existing desire segment or create one.
-            let existing = self.segments.iter_mut().find(|s| {
-                matches!(s.seg_type, SegmentType::Desire)
-                    && ((nodes_close(s.start, wa) && nodes_close(s.end, wb))
-                        || (nodes_close(s.start, wb) && nodes_close(s.end, wa)))
-            });
-            if let Some(seg) = existing {
-                seg.usage += 1.0;
-                seg.last_used_day = current_day;
-            } else {
-                let mut seg = RoadSegment::new(wa, wb, SegmentType::Desire);
-                seg.usage = 1.0;
-                seg.last_used_day = current_day;
-                self.segments.push(seg);
-            }
-        }
-    }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 pub fn nodes_close(a: Vec2, b: Vec2) -> bool {
     (a - b).length() < NODE_MERGE_RADIUS
-}
-
-// ─── Grid pathfinding ────────────────────────────────────────────────────────
-
-/// BFS through grid cells (4-directional) from `from` to `to`, treating occupied
-/// building cells as walls. Returns a list of cells from `from` to `to` inclusive,
-/// or `None` if no path exists.
-pub fn find_grid_path(
-    from: (i32, i32),
-    to: (i32, i32),
-    world: &CityWorld,
-) -> Option<Vec<(i32, i32)>> {
-    if from == to {
-        return Some(vec![from]);
-    }
-
-    let dirs: [(i32, i32); 4] = [(0, 1), (0, -1), (1, 0), (-1, 0)];
-    let mut visited: HashSet<(i32, i32)> = HashSet::new();
-    // Queue holds (cell, path-so-far-reversed)
-    let mut queue: VecDeque<((i32, i32), Vec<(i32, i32)>)> = VecDeque::new();
-
-    visited.insert(from);
-    queue.push_back((from, vec![from]));
-
-    // Safety cap: don't search more than 200 cells to keep runtime bounded.
-    const MAX_VISITED: usize = 400;
-
-    while let Some((cell, path)) = queue.pop_front() {
-        if visited.len() > MAX_VISITED {
-            break;
-        }
-        for &(dx, dy) in &dirs {
-            let next = (cell.0 + dx, cell.1 + dy);
-            if visited.contains(&next) {
-                continue;
-            }
-            // Building cells (even col AND even row) are always impassable for desire paths —
-            // even if they are not yet occupied.  Roads must stay in corridor cells.
-            if world.occupied_cells.contains(&next) || is_building_cell(next.0, next.1) {
-                continue;
-            }
-            let mut new_path = path.clone();
-            new_path.push(next);
-            if next == to {
-                return Some(new_path);
-            }
-            visited.insert(next);
-            queue.push_back((next, new_path));
-        }
-    }
-    None
 }
 
 fn nearest_node(segments: &[&RoadSegment], pos: Vec2, max_dist: f32) -> Option<Vec2> {
@@ -334,17 +235,66 @@ fn nearest_node(segments: &[&RoadSegment], pos: Vec2, max_dist: f32) -> Option<V
     closest
 }
 
-/// Return the two perpendicular walk directions along a corridor cell.
-/// Corridor cells come in two flavours:
-///  - odd col, even row → horizontal corridor → walk East/West (±col)
-///  - even col, odd row → vertical corridor   → walk North/South (±row)
-///  - odd col, odd row  → intersection        → walk all four directions
-fn corridor_walk_dirs(col: i32, row: i32) -> Vec<(i32, i32)> {
-    match (col % 2 != 0, row % 2 != 0) {
-        (true,  false) => vec![(1, 0), (-1, 0)],
-        (false, true)  => vec![(0, 1), (0, -1)],
-        _              => vec![(1, 0), (-1, 0), (0, 1), (0, -1)],
+/// BFS from `start_cell` through corridor cells (non-building cells) to find the
+/// shortest cell path that ends at any cell whose world position is within
+/// NODE_MERGE_RADIUS of one of `existing_nodes`.
+///
+/// Returns the path (inclusive of start) if found, or None if no connection found
+/// within the search budget (≤ 200 cells).
+fn bfs_to_road_node(
+    existing_nodes: &[Vec2],
+    start: (i32, i32),
+) -> Option<Vec<(i32, i32)>> {
+    if existing_nodes.is_empty() {
+        return None;
     }
+    let mut came_from: HashMap<(i32, i32), Option<(i32, i32)>> = HashMap::new();
+    let mut queue: VecDeque<(i32, i32)> = VecDeque::new();
+    came_from.insert(start, None);
+    queue.push_back(start);
+
+    const MAX_CELLS: usize = 200;
+
+    while let Some(cell) = queue.pop_front() {
+        let world_pos = cell_to_world(cell.0, cell.1);
+        // Check if this cell is already an existing road node (skip the very first cell
+        // since that is the building entrance we just added).
+        if cell != start {
+            let is_existing = existing_nodes.iter().any(|&n| nodes_close(n, world_pos));
+            if is_existing {
+                // Reconstruct path from start to this cell.
+                let mut path = Vec::new();
+                let mut cur = cell;
+                loop {
+                    path.push(cur);
+                    match came_from.get(&cur) {
+                        Some(Some(prev)) => cur = *prev,
+                        _ => break,
+                    }
+                }
+                path.reverse();
+                return Some(path);
+            }
+        }
+
+        if came_from.len() > MAX_CELLS {
+            break;
+        }
+
+        for (dc, dr) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+            let next = (cell.0 + dc, cell.1 + dr);
+            if came_from.contains_key(&next) {
+                continue;
+            }
+            // Building cells are impassable — roads must stay in corridor cells.
+            if is_building_cell(next.0, next.1) {
+                continue;
+            }
+            came_from.insert(next, Some(cell));
+            queue.push_back(next);
+        }
+    }
+    None
 }
 
 // ─── Plugin ─────────────────────────────────────────────────────────────────
@@ -354,7 +304,7 @@ fn corridor_walk_dirs(col: i32, row: i32) -> Vec<(i32, i32)> {
 /// despawning and respawning the mesh with updated colour/width.
 #[derive(Resource, Default)]
 pub struct RoadEntities {
-    map: HashMap<String, (Entity, SegmentType)>,
+    pub map: HashMap<String, (Entity, SegmentType)>,
 }
 
 pub struct RoadsPlugin;
@@ -594,83 +544,61 @@ fn edge_to_edge(a: Vec2, b: Vec2, buildings: &[Building]) -> (Vec2, Vec2) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::CityWorld;
-    use std::collections::HashSet;
 
-    /// Create a CityWorld with no initial buildings — only the explicitly listed cells occupied.
-    fn empty_world() -> CityWorld {
-        let mut w = CityWorld::new();
-        w.occupied_cells = HashSet::new();
-        w.buildings.clear();
-        w.citizens.clear();
-        w
+    fn nodes_at(world_positions: &[(f32, f32)]) -> Vec<Vec2> {
+        world_positions.iter().map(|&(x, y)| Vec2::new(x, y)).collect()
     }
 
-    fn world_with_buildings_at(cells: &[(i32, i32)]) -> CityWorld {
-        let mut world = empty_world();
-        for &(col, row) in cells {
-            world.occupied_cells.insert((col, row));
+    #[test]
+    fn bfs_finds_adjacent_node() {
+        // Entrance at corridor cell (1, 1) → world (120, 120).
+        // Existing node at corridor cell (3, 1) → world (360, 120).
+        // Path must go around building cells: (1,1) → (2,1) → (3,1).
+        // (2,1): col=2 even, row=1 odd → not a building cell ✓
+        let existing = nodes_at(&[(360.0, 120.0)]);
+        let path = bfs_to_road_node(&existing, (1, 1)).expect("should find path");
+        assert_eq!(path.first(), Some(&(1, 1)));
+        let &(lc, lr) = path.last().unwrap();
+        let last_world = crate::grid::cell_to_world(lc, lr);
+        assert!(nodes_close(last_world, Vec2::new(360.0, 120.0)),
+            "expected last near (360,120), got ({:.0},{:.0})", last_world.x, last_world.y);
+    }
+
+    #[test]
+    fn bfs_finds_node_around_building_cell() {
+        // Entrance at (0, 1) world (0, 120).
+        // (0, 2) is a building cell — blocked.
+        // (0, 0) is a building cell — blocked.
+        // Must go E/W: (1, 1) → (2, 1) → existing node at world (240, 120).
+        let existing = nodes_at(&[(240.0, 120.0)]);
+        let path = bfs_to_road_node(&existing, (0, 1)).expect("should find path");
+        // Path must not include building cells.
+        for &(c, r) in &path {
+            assert!(!is_building_cell(c, r), "path goes through building cell ({c},{r})");
         }
-        world
+        assert_eq!(path.first(), Some(&(0, 1)));
+        // Last cell must be adjacent to the existing node.
+        let &(lc, lr) = path.last().unwrap();
+        let last_world = crate::grid::cell_to_world(lc, lr);
+        assert!(nodes_close(last_world, Vec2::new(240.0, 120.0)));
     }
 
     #[test]
-    fn grid_path_same_cell() {
-        let world = empty_world();
-        // Use corridor cells (odd col or odd row).
-        let path = find_grid_path((1, 0), (1, 0), &world);
-        assert_eq!(path, Some(vec![(1, 0)]));
+    fn bfs_returns_none_when_no_nodes() {
+        let path = bfs_to_road_node(&[], (1, 0));
+        assert!(path.is_none());
     }
 
     #[test]
-    fn grid_path_straight_horizontal() {
-        let world = empty_world();
-        // Corridor cells along row 1 (odd row): (0,1),(1,1),(2,1),(3,1)
-        let path = find_grid_path((0, 1), (3, 1), &world).expect("path expected");
-        // Should be length 4: (0,1),(1,1),(2,1),(3,1)
-        assert_eq!(path.len(), 4);
-        assert_eq!(*path.first().unwrap(), (0, 1));
-        assert_eq!(*path.last().unwrap(), (3, 1));
-        // Every step must be horizontal or vertical (no diagonals).
-        for pair in path.windows(2) {
-            let dx = (pair[1].0 - pair[0].0).abs();
-            let dy = (pair[1].1 - pair[0].1).abs();
-            assert!(dx + dy == 1, "step must be exactly 1 cell: {:?}", pair);
-        }
-    }
-
-    #[test]
-    fn grid_path_avoids_building() {
-        // Block occupied corridor (1,1), forcing path to go around.
-        let world = world_with_buildings_at(&[(1, 1)]);
-        // Route from corridor (-1,1) to corridor (3,1) avoiding blocked (1,1).
-        let path = find_grid_path((-1, 1), (3, 1), &world).expect("path expected");
-        assert!(!path.contains(&(1, 1)), "path must not traverse a blocked cell");
-        // Verify each step is cardinal.
-        for pair in path.windows(2) {
-            let dx = (pair[1].0 - pair[0].0).abs();
-            let dy = (pair[1].1 - pair[0].1).abs();
-            assert_eq!(dx + dy, 1);
-        }
-    }
-
-    #[test]
-    fn grid_path_no_path_when_fully_blocked() {
-        // Surround corridor cell (1,0) on all four sides with occupied cells.
-        let world = world_with_buildings_at(&[(2,0),(0,0),(1,1),(1,-1)]);
-        let path = find_grid_path((1, 0), (5, 1), &world);
-        assert!(path.is_none(), "should be None when surrounded");
-    }
-
-    #[test]
-    fn grid_path_no_diagonals() {
-        let world = empty_world();
-        // Use corridor cells: (1,0) to (1,3)
-        let path = find_grid_path((1, 0), (1, 3), &world).expect("path expected");
-        for pair in path.windows(2) {
-            let dx = (pair[1].0 - pair[0].0).abs();
-            let dy = (pair[1].1 - pair[0].1).abs();
-            assert_eq!(dx + dy, 1, "diagonal step detected: {:?}", pair);
+    fn bfs_finds_node_vertically() {
+        // Entrance at (1, 0) world (120, 0).
+        // Existing node at (1, 2) — but (1, 2): col=1 odd, row=2 even → not building cell.
+        // However (0, 2) and (2, 2) ARE building cells, but (1, 2) is not.
+        let existing = nodes_at(&[(120.0, 240.0)]);
+        let path = bfs_to_road_node(&existing, (1, 0)).expect("should find path");
+        assert_eq!(path.first(), Some(&(1, 0)));
+        for &(c, r) in &path {
+            assert!(!is_building_cell(c, r));
         }
     }
 }

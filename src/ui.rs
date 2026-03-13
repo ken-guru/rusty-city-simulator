@@ -4,6 +4,7 @@ use crate::roads::RoadNetwork;
 use crate::save::{save_game, SaveRequestEvent};
 use crate::time::GameTime;
 use crate::world::CityWorld;
+use crate::AppState;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -30,6 +31,7 @@ pub enum ToolbarAction {
 enum QuitDialogAction {
     SaveAndQuit,
     QuitNoSave,
+    ReturnToMenu,
     Cancel,
 }
 
@@ -39,10 +41,12 @@ struct QuitDialogVisible(bool);
 
 /// Pending quit: set to trigger a clean exit at end of frame.
 /// `save_first` = true means save synchronously before exiting.
+/// `return_to_menu` = true means transition to StartScreen instead of process::exit.
 #[derive(Resource, Default)]
 struct PendingQuit {
     active: bool,
     save_first: bool,
+    return_to_menu: bool,
 }
 
 pub struct UIPlugin;
@@ -204,9 +208,10 @@ fn setup_ui(mut commands: Commands) {
                             ..Default::default()
                         })
                         .with_children(|row| {
-                            dialog_button(row, "Save & Quit",       QuitDialogAction::SaveAndQuit, Color::srgba(0.15, 0.40, 0.20, 0.95));
-                            dialog_button(row, "Quit Without Saving", QuitDialogAction::QuitNoSave, Color::srgba(0.40, 0.15, 0.15, 0.95));
-                            dialog_button(row, "Cancel",             QuitDialogAction::Cancel,     Color::srgba(0.20, 0.22, 0.28, 0.95));
+                            dialog_button(row, "Save & Quit",       QuitDialogAction::SaveAndQuit,   Color::srgba(0.15, 0.40, 0.20, 0.95));
+                            dialog_button(row, "Quit Without Saving", QuitDialogAction::QuitNoSave,  Color::srgba(0.40, 0.15, 0.15, 0.95));
+                            dialog_button(row, "Return to Menu",    QuitDialogAction::ReturnToMenu,  Color::srgba(0.20, 0.30, 0.45, 0.95));
+                            dialog_button(row, "Cancel",            QuitDialogAction::Cancel,        Color::srgba(0.20, 0.22, 0.28, 0.95));
                         });
                 });
         });
@@ -314,10 +319,17 @@ fn quit_dialog_interaction(
                 QuitDialogAction::SaveAndQuit => {
                     pending_quit.active = true;
                     pending_quit.save_first = true;
+                    pending_quit.return_to_menu = false;
                 }
                 QuitDialogAction::QuitNoSave => {
                     pending_quit.active = true;
                     pending_quit.save_first = false;
+                    pending_quit.return_to_menu = false;
+                }
+                QuitDialogAction::ReturnToMenu => {
+                    pending_quit.active = true;
+                    pending_quit.save_first = false;
+                    pending_quit.return_to_menu = true;
                 }
                 QuitDialogAction::Cancel => {
                     quit_visible.0 = false;
@@ -328,13 +340,16 @@ fn quit_dialog_interaction(
 }
 
 /// Performs the actual quit at the end of the frame.
-/// Saves synchronously (if requested) then calls process::exit — this is
-/// reliable on macOS where Bevy's AppExit event can deadlock the Metal renderer.
+/// Saves synchronously (if requested) then either transitions to StartScreen
+/// or calls process::exit — the latter is reliable on macOS where Bevy's
+/// AppExit event can deadlock the Metal renderer.
 fn handle_pending_quit(
-    pending: Res<PendingQuit>,
+    mut pending: ResMut<PendingQuit>,
     world: Res<CityWorld>,
     game_time: Res<GameTime>,
     road_network: Res<RoadNetwork>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut quit_visible: ResMut<QuitDialogVisible>,
 ) {
     if !pending.active {
         return;
@@ -344,7 +359,16 @@ fn handle_pending_quit(
             eprintln!("Failed to save before quit: {e}");
         }
     }
-    std::process::exit(0);
+    if pending.return_to_menu {
+        // Reset pending state before transitioning so it doesn't fire again.
+        pending.active = false;
+        pending.save_first = false;
+        pending.return_to_menu = false;
+        quit_visible.0 = false;
+        next_state.set(AppState::StartScreen);
+    } else {
+        std::process::exit(0);
+    }
 }
 
 /// Highlight the active speed / pause button each frame.
