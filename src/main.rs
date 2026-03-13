@@ -31,7 +31,7 @@ use save::SaveLoadPlugin;
 use sprites::{SpriteAssets, SpritesPlugin};
 use start_screen::StartScreenPlugin;
 use time::GameTimePlugin;
-use ui::UIPlugin;
+use ui::{HoveredQueueItem, UIPlugin};
 use world::*;
 
 /// Top-level application state.
@@ -108,6 +108,7 @@ fn main() {
         .insert_resource(BuildingSelection::default())
         .insert_resource(ActiveRoute::default())
         .insert_resource(HoveredEntity::default())
+        .insert_resource(HoveredQueueItem::default())
         // Camera is always present so UI renders on both StartScreen and InGame.
         .add_systems(Startup, (spawn_camera, sprites::setup_sprites))
         // Game world entities are spawned when entering InGame.
@@ -136,6 +137,8 @@ fn cleanup_ingame(
     parks: Query<Entity, With<ParkMarker>>,
     park_corridors: Query<Entity, With<ParkCorridorMarker>>,
     route_viz: Query<Entity, With<RouteVisualizationMarker>>,
+    queue_highlights: Query<Entity, With<ui::QueueHighlightMarker>>,
+    sel_highlights: Query<Entity, With<ui::SelectedBuildingHighlightMarker>>,
     mut road_entities: ResMut<RoadEntities>,
 ) {
     for entity in buildings.iter()
@@ -143,6 +146,8 @@ fn cleanup_ingame(
         .chain(parks.iter())
         .chain(park_corridors.iter())
         .chain(route_viz.iter())
+        .chain(queue_highlights.iter())
+        .chain(sel_highlights.iter())
     {
         commands.entity(entity).despawn_recursive();
     }
@@ -159,6 +164,7 @@ fn cleanup_ingame(
     commands.insert_resource(BuildingSelection::default());
     commands.insert_resource(ActiveRoute::default());
     commands.insert_resource(roads::ConstructionQueue::default());
+    commands.insert_resource(HoveredQueueItem::default());
 }
 
 fn setup(

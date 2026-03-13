@@ -13,7 +13,9 @@ A Rust-based city simulation where citizens autonomously live out their daily li
 - **Grid-based Road Network**: Roads form organically between buildings in corridor cells between them
 - **Organic Cross-Connections**: Periodic road cross-links and dual-building connections break long travel detours; connections prioritised by travel savings
 - **Road Evolution**: Lightly used roads degrade; new roads extend to connect new buildings
-- **Player-Suggested Roads**: Players can suggest route optimisations; a construction queue builds new road segments progressively in teal, which gradually blend into normal roads with use
+- **Player-Suggested Roads**: Players can suggest route optimisations; a construction queue builds new road segments progressively in teal (~0.1 game-days per segment), blending into normal roads with use
+- **Construction Queue Panel**: Visible top-left whenever projects are queued; hover any row to highlight the two buildings involved, the current road path (yellow), and the planned new route (teal)
+- **Building Selection Highlight**: The selected building is outlined in orange while its info panel is open
 - **Parks**: Enclosed spaces surrounded by buildings automatically become parks; adjacent parks merge across corridor cells with walkable paths
 - **Park Corridors**: Walkable grass+path corridor cells between adjacent parks, visually distinct with wide stone path
 - **Pixel Art Sprites**: Distinct sprites for homes, offices, shops, and parks; citizen circles scale for visibility
@@ -92,7 +94,8 @@ Citizens travel exclusively along established roads. If no road connects two loc
 - Roads exist in the *corridor* cells between buildings — they never pass through buildings
 - New buildings are automatically connected to the nearest road via BFS path-finding
 - **Cross-connections**: ~60% of new buildings gain a second road link; periodic cross-links fire every 4 game-days, prioritising connections that save the most travel
-- **Player suggestions**: Selecting a route and clicking "Suggest Optimisation" adds it to the construction queue; segments are built one per game-day in teal, upgrading to normal paths with use
+- **Player suggestions**: Selecting a route and clicking "Suggest Optimisation" adds it to the construction queue; segments are built progressively (~0.1 game-days each) in teal, upgrading to normal paths with use
+- **City auto-suggestions**: Every 18 game-days the city automatically queues a cross-connection between buildings with the highest road-path savings (max 4 projects queued)
 - Lightly-used road segments degrade from Road → Path → removed over time
 
 ### Parks

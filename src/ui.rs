@@ -1,12 +1,11 @@
 use crate::entities::*;
 use crate::hovered::HoveredEntity;
-use crate::roads::RoadNetwork;
+use crate::roads::{ConstructionQueue, RoadNetwork};
 use crate::save::{save_game, sync_citizens_to_world, SaveRequestEvent};
 use crate::time::GameTime;
 use crate::world::CityWorld;
 use crate::AppState;
 use crate::{ActiveRoute, BuildingSelection};
-use crate::roads::ConstructionQueue;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -27,9 +26,21 @@ struct CitizenTooltipText;
 #[derive(Component)]
 struct QueuePanel;
 
-/// Marks the text inside the construction queue panel.
+/// Marks a single interactive row inside the queue panel.
 #[derive(Component)]
-struct QueuePanelText;
+struct QueueItemRow(pub usize);
+
+/// Tags any entity spawned for construction-queue hover highlights (building outlines + path lines).
+#[derive(Component)]
+pub struct QueueHighlightMarker;
+
+/// Tags the persistent outline entity shown around the currently selected building.
+#[derive(Component)]
+pub struct SelectedBuildingHighlightMarker;
+
+/// Which queue row is currently hovered (if any).
+#[derive(Resource, Default)]
+pub struct HoveredQueueItem(pub Option<usize>);
 
 /// Marks the quit confirmation dialog root entity.
 #[derive(Component)]
@@ -98,6 +109,7 @@ impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<QuitDialogVisible>()
             .init_resource::<PendingQuit>()
+            .init_resource::<HoveredQueueItem>()
             .add_systems(Startup, setup_ui)
             .add_systems(
                 Update,
@@ -112,7 +124,10 @@ impl Plugin for UIPlugin {
                     sync_route_info_panel,
                     building_panel_interaction,
                     update_citizen_tooltip,
-                    sync_queue_panel,
+                    rebuild_queue_panel,
+                    sync_queue_hover_state,
+                    sync_queue_highlight,
+                    sync_selected_building_highlight,
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -140,29 +155,23 @@ fn setup_ui(mut commands: Commands) {
         });
 
     // Construction queue panel (top left, below time display) — hidden when queue is empty.
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(10.0),
-                top: Val::Px(48.0),
-                padding: UiRect::all(Val::Px(8.0)),
-                display: Display::None,
-                ..Default::default()
-            },
-            BackgroundColor(Color::srgba(0.08, 0.12, 0.18, 0.88)),
-            BorderRadius::all(Val::Px(6.0)),
-            ZIndex(40),
-            QueuePanel,
-        ))
-        .with_children(|panel| {
-            panel.spawn((
-                Text::new(""),
-                TextFont { font_size: 12.0, ..Default::default() },
-                TextColor(Color::srgb(0.85, 0.92, 0.85)),
-                QueuePanelText,
-            ));
-        });
+    // Children (interactive rows) are managed dynamically by rebuild_queue_panel.
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(10.0),
+            top: Val::Px(48.0),
+            padding: UiRect::all(Val::Px(8.0)),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(2.0),
+            display: Display::None,
+            ..Default::default()
+        },
+        BackgroundColor(Color::srgba(0.08, 0.12, 0.18, 0.88)),
+        BorderRadius::all(Val::Px(6.0)),
+        ZIndex(40),
+        QueuePanel,
+    ));
 
     // Citizen info on hover (top right)
     commands
@@ -826,19 +835,21 @@ fn building_panel_interaction(
                     }
                     RoutePanelAction::SuggestOptimisation => {
                         if active_route.waypoints.len() >= 2 {
-                            let from_name = active_route.from_id.as_ref()
-                                .and_then(|id| world.buildings.iter().find(|b| &b.id == id))
-                                .map(|b| b.name.clone())
-                                .unwrap_or_else(|| "?".to_string());
-                            let to_name = active_route.to_id.as_ref()
-                                .and_then(|id| world.buildings.iter().find(|b| &b.id == id))
-                                .map(|b| b.name.clone())
-                                .unwrap_or_else(|| "?".to_string());
+                            let from_building = active_route.from_id.as_ref()
+                                .and_then(|id| world.buildings.iter().find(|b| &b.id == id));
+                            let to_building = active_route.to_id.as_ref()
+                                .and_then(|id| world.buildings.iter().find(|b| &b.id == id));
+                            let from_name = from_building.map(|b| b.name.clone()).unwrap_or_else(|| "?".to_string());
+                            let to_name   = to_building.map(|b| b.name.clone()).unwrap_or_else(|| "?".to_string());
+                            let from_pos  = from_building.map(|b| b.position).unwrap_or(Vec2::ZERO);
+                            let to_pos    = to_building.map(|b| b.position).unwrap_or(Vec2::ZERO);
                             construction_queue.projects.push(crate::roads::ConstructionProject {
                                 waypoints: active_route.waypoints.clone(),
                                 built_count: 0,
                                 created_day: 0.0,
                                 label: format!("Player: {} -> {}", from_name, to_name),
+                                from_pos,
+                                to_pos,
                             });
                         }
                         active_route.clear_route();
@@ -902,13 +913,19 @@ fn update_citizen_tooltip(
     panel_node.display = Display::None;
 }
 
-fn sync_queue_panel(
+/// Rebuilds the queue panel children whenever the queue resource changes.
+/// Each project gets its own interactive row so hover can be detected.
+fn rebuild_queue_panel(
     queue: Res<ConstructionQueue>,
-    mut panel_query: Query<&mut Node, With<QueuePanel>>,
-    mut text_query: Query<&mut Text, With<QueuePanelText>>,
+    panel_query: Query<Entity, With<QueuePanel>>,
+    mut panel_node_query: Query<&mut Node, With<QueuePanel>>,
+    mut commands: Commands,
 ) {
-    let Ok(mut panel_node) = panel_query.get_single_mut() else { return };
-    let Ok(mut text) = text_query.get_single_mut() else { return };
+    if !queue.is_changed() { return; }
+    let Ok(panel_entity) = panel_query.get_single() else { return };
+    let Ok(mut panel_node) = panel_node_query.get_single_mut() else { return };
+
+    commands.entity(panel_entity).despawn_descendants();
 
     if queue.projects.is_empty() {
         panel_node.display = Display::None;
@@ -917,16 +934,188 @@ fn sync_queue_panel(
 
     panel_node.display = Display::Flex;
 
-    let header = format!("=== Construction Queue ({}) ===", queue.projects.len());
-    let rows: Vec<String> = queue.projects.iter().map(|p| {
-        let total = p.total_segments();
-        let progress = if total == 0 {
-            "done".to_string()
-        } else {
-            format!("{}/{} segments", p.built_count, total)
-        };
-        format!("  {} [{}]", p.label, progress)
-    }).collect();
+    commands.entity(panel_entity).with_children(|panel| {
+        // Header row
+        panel.spawn((
+            Text::new(format!("=== Construction Queue ({}) ===", queue.projects.len())),
+            TextFont { font_size: 12.0, ..Default::default() },
+            TextColor(Color::srgb(0.7, 0.85, 1.0)),
+        ));
 
-    text.0 = std::iter::once(header).chain(rows).collect::<Vec<_>>().join("\n");
+        for (i, p) in queue.projects.iter().enumerate() {
+            let total = p.total_segments();
+            let progress = if total == 0 {
+                "done".to_string()
+            } else {
+                format!("{}/{}", p.built_count, total)
+            };
+            let row_text = format!("  {} [{}]", p.label, progress);
+
+            panel.spawn((
+                Node {
+                    padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                    ..Default::default()
+                },
+                Button,
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
+                BorderRadius::all(Val::Px(3.0)),
+                Interaction::default(),
+                QueueItemRow(i),
+            )).with_children(|row| {
+                row.spawn((
+                    Text::new(row_text),
+                    TextFont { font_size: 11.0, ..Default::default() },
+                    TextColor(Color::srgb(0.85, 0.92, 0.85)),
+                ));
+            });
+        }
+    });
 }
+
+/// Reads Interaction on queue rows each frame and updates HoveredQueueItem.
+fn sync_queue_hover_state(
+    row_query: Query<(&Interaction, &QueueItemRow)>,
+    mut hovered: ResMut<HoveredQueueItem>,
+) {
+    let found = row_query.iter()
+        .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
+        .map(|(_, r)| r.0);
+    if hovered.0 != found {
+        hovered.0 = found;
+    }
+}
+
+/// Spawns/despawns highlight overlays when the hovered queue item changes.
+fn sync_queue_highlight(
+    hovered: Res<HoveredQueueItem>,
+    queue: Res<ConstructionQueue>,
+    road_network: Res<RoadNetwork>,
+    buildings: Query<&Building>,
+    highlight_entities: Query<Entity, With<QueueHighlightMarker>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut last_idx: Local<Option<usize>>,
+) {
+    if !hovered.is_changed() { return; }
+
+    // Despawn previous highlights
+    for e in &highlight_entities {
+        commands.entity(e).despawn();
+    }
+    *last_idx = hovered.0;
+
+    let Some(idx) = hovered.0 else { return };
+    let Some(project) = queue.projects.get(idx) else { return };
+
+    let outline_color   = Color::srgba(1.0, 0.7, 0.1, 0.55);
+    let road_path_color = Color::srgba(1.0, 0.82, 0.1, 0.75);
+    let planned_color   = Color::srgba(0.1, 0.8, 0.65, 0.75);
+
+    // Highlight the two buildings involved
+    for &bpos in &[project.from_pos, project.to_pos] {
+        if let Some(b) = buildings.iter().find(|b| (b.position - bpos).length() < 10.0) {
+            let sz = b.size + Vec2::splat(8.0);
+            commands.spawn((
+                Mesh2d(meshes.add(Rectangle::new(sz.x, sz.y))),
+                MeshMaterial2d(materials.add(outline_color)),
+                Transform::from_xyz(bpos.x, bpos.y, 0.5),
+                QueueHighlightMarker,
+            ));
+        } else {
+            // Fallback if no building entity found at that pos
+            commands.spawn((
+                Mesh2d(meshes.add(Rectangle::new(120.0, 120.0))),
+                MeshMaterial2d(materials.add(outline_color)),
+                Transform::from_xyz(bpos.x, bpos.y, 0.5),
+                QueueHighlightMarker,
+            ));
+        }
+    }
+
+    // Current road path (yellow)
+    if let Some(path) = road_network.find_road_path(project.from_pos, project.to_pos) {
+        let mat = materials.add(road_path_color);
+        for window in path.windows(2) {
+            let (a, b) = (window[0], window[1]);
+            let diff = b - a;
+            let length = diff.length();
+            if length < 1.0 { continue; }
+            let angle = diff.y.atan2(diff.x);
+            let mid = (a + b) * 0.5;
+            commands.spawn((
+                Mesh2d(meshes.add(Rectangle::new(length, 3.0))),
+                MeshMaterial2d(mat.clone()),
+                Transform {
+                    translation: Vec3::new(mid.x, mid.y, 2.5),
+                    rotation: Quat::from_rotation_z(angle),
+                    ..Default::default()
+                },
+                QueueHighlightMarker,
+            ));
+        }
+    }
+
+    // Unbuilt construction waypoints (teal)
+    let unbuilt = &project.waypoints[project.built_count..];
+    if unbuilt.len() >= 2 {
+        let mat = materials.add(planned_color);
+        for window in unbuilt.windows(2) {
+            let (a, b) = (window[0], window[1]);
+            let diff = b - a;
+            let length = diff.length();
+            if length < 1.0 { continue; }
+            let angle = diff.y.atan2(diff.x);
+            let mid = (a + b) * 0.5;
+            commands.spawn((
+                Mesh2d(meshes.add(Rectangle::new(length, 3.0))),
+                MeshMaterial2d(mat.clone()),
+                Transform {
+                    translation: Vec3::new(mid.x, mid.y, 2.5),
+                    rotation: Quat::from_rotation_z(angle),
+                    ..Default::default()
+                },
+                QueueHighlightMarker,
+            ));
+        }
+    }
+}
+
+/// Shows a persistent orange outline around the currently selected building.
+fn sync_selected_building_highlight(
+    selection: Res<BuildingSelection>,
+    active_route: Res<ActiveRoute>,
+    world: Res<CityWorld>,
+    highlight_entities: Query<Entity, With<SelectedBuildingHighlightMarker>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut last_id: Local<Option<String>>,
+) {
+    // Only update when selection changes
+    let current_id = if active_route.waypoints.is_empty() {
+        selection.selected_id.clone()
+    } else {
+        None // hide while route is shown
+    };
+
+    if *last_id == current_id { return; }
+    *last_id = current_id.clone();
+
+    // Despawn previous highlight
+    for e in &highlight_entities {
+        commands.entity(e).despawn();
+    }
+
+    let Some(id) = current_id else { return };
+    let Some(building) = world.buildings.iter().find(|b| b.id == id) else { return };
+
+    let sz = building.size + Vec2::splat(8.0);
+    commands.spawn((
+        Mesh2d(meshes.add(Rectangle::new(sz.x, sz.y))),
+        MeshMaterial2d(materials.add(Color::srgba(1.0, 0.7, 0.1, 0.55))),
+        Transform::from_xyz(building.position.x, building.position.y, 0.5),
+        SelectedBuildingHighlightMarker,
+    ));
+}
+

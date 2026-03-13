@@ -76,6 +76,10 @@ pub struct ConstructionProject {
     pub created_day: f32,
     /// Human-readable description shown in the queue panel.
     pub label: String,
+    /// World position of the origin building (for highlight overlay).
+    pub from_pos: Vec2,
+    /// World position of the destination building (for highlight overlay).
+    pub to_pos: Vec2,
 }
 
 impl ConstructionProject {
@@ -791,6 +795,8 @@ fn auto_suggest_construction(
                 built_count: 0,
                 created_day: now,
                 label,
+                from_pos: from_b.position,
+                to_pos: to_b.position,
             });
             info!("Auto-suggest construction: {}", queue.projects.last().unwrap().label);
         }
@@ -834,7 +840,10 @@ fn advance_construction(
     let now = game_time.current_day();
 
     queue.projects.retain_mut(|project| {
-        if now - project.created_day < 1.0 {
+        if project.waypoints.len() < 2 {
+            return false; // degenerate project, remove immediately
+        }
+        if now - project.created_day < 0.1 {
             return true;
         }
         if project.built_count >= project.waypoints.len().saturating_sub(1) {
