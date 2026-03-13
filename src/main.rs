@@ -453,18 +453,30 @@ fn update_hovered_entity(
     camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
     citizen_query: Query<(Entity, &Transform), With<Citizen>>,
 ) {
-    hovered.0 = None;
-
-    let Some(window) = windows.iter().next() else { return };
-    let Some(cursor_pos) = window.cursor_position() else { return };
+    let Some(window) = windows.iter().next() else { hovered.0 = None; return };
+    let Some(cursor_pos) = window.cursor_position() else { hovered.0 = None; return };
     let Ok((camera, camera_transform)) = camera_query.get_single() else { return };
     let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_pos) else { return };
     let world_pos = ray.origin.truncate();
 
+    // Once a citizen is hovered, keep them hovered until the cursor drifts well
+    // beyond their position — prevents passing-by citizens from stealing the hover.
+    const INITIAL_RADIUS: f32 = 18.0;
+    const STICKY_RADIUS:  f32 = 36.0;
+
+    if let Some(current) = hovered.0 {
+        if let Ok((_, transform)) = citizen_query.get(current) {
+            if (transform.translation.truncate() - world_pos).length() < STICKY_RADIUS {
+                return; // keep the existing hover — cursor hasn't left the sticky zone
+            }
+        }
+        hovered.0 = None; // cursor left; fall through to find a new candidate
+    }
+
     for (entity, transform) in citizen_query.iter() {
-        if (transform.translation.truncate() - world_pos).length() < 18.0 {
+        if (transform.translation.truncate() - world_pos).length() < INITIAL_RADIUS {
             hovered.0 = Some(entity);
-            break;
+            return;
         }
     }
 }

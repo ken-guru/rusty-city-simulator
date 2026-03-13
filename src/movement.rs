@@ -59,9 +59,14 @@ pub fn simple_movement(
 }
 
 /// Syncs citizen.position back into the Bevy Transform so movement is visible.
-pub fn sync_citizen_transforms(mut query: Query<(&Citizen, &mut Transform)>) {
-    for (citizen, mut transform) in query.iter_mut() {
+/// The hovered citizen is elevated to Z=3 so they render above all others.
+pub fn sync_citizen_transforms(
+    mut query: Query<(Entity, &Citizen, &mut Transform)>,
+    hovered: Res<crate::hovered::HoveredEntity>,
+) {
+    for (entity, citizen, mut transform) in query.iter_mut() {
         transform.translation.x = citizen.position.x;
         transform.translation.y = citizen.position.y;
+        transform.translation.z = if hovered.0 == Some(entity) { 3.0 } else { 1.0 };
     }
 }
