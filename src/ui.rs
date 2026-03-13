@@ -1500,12 +1500,25 @@ fn format_money(amount: f32) -> String {
 
 fn update_floor_labels(
     world: Res<CityWorld>,
-    mut label_query: Query<(&FloorLabel, &mut Text, &mut TextColor)>,
+    label_query: Query<(Entity, &FloorLabel, &Children)>,
+    mut text_query: Query<(&mut Text, &mut TextColor)>,
+    mut sprite_query: Query<&mut Sprite, With<FloorLabel>>,
 ) {
-    for (label, mut text, mut color) in label_query.iter_mut() {
+    for (entity, label, children) in label_query.iter() {
         if let Some(building) = world.buildings.iter().find(|b| b.id == label.building_id) {
-            *text = Text::new(format!("F{}", building.floors));
-            color.0 = floor_label_color(building.floors);
+            let text_color = floor_label_color(building.floors);
+            // Tint the background sprite border with the floor color (keep alpha at 0.75).
+            if let Ok(mut sprite) = sprite_query.get_mut(entity) {
+                let c = text_color.to_srgba();
+                sprite.color = Color::srgba(c.red * 0.3, c.green * 0.3, c.blue * 0.3, 0.82);
+            }
+            // Update the text child.
+            for child in children.iter() {
+                if let Ok((mut text, mut color)) = text_query.get_mut(child) {
+                    *text = Text::new(format!("F{}", building.floors));
+                    color.0 = text_color;
+                }
+            }
         }
     }
 }

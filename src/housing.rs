@@ -317,14 +317,25 @@ fn spawn_building(
             b.clone(),
         ));
 
-        // Spawn floor label
-        commands.spawn((
-            Text2d::new("F1"),
-            TextFont { font_size: 18.0, ..Default::default() },
-            TextColor(Color::srgb(0.6, 0.6, 0.6)),
-            Transform::from_xyz(b.position.x, b.position.y, 1.0),
+        // Spawn floor label: dark background sprite parent + text child, floating
+        // above the building at z=5 so it renders over buildings and citizens.
+        let label_entity = commands.spawn((
+            Sprite {
+                color: Color::srgba(0.0, 0.0, 0.0, 0.75),
+                custom_size: Some(Vec2::new(36.0, 20.0)),
+                ..Default::default()
+            },
+            Transform::from_xyz(b.position.x, b.position.y + 50.0, 5.0),
             crate::ui::FloorLabel { building_id: b.id.clone() },
-        ));
+        )).id();
+        commands.entity(label_entity).with_children(|p| {
+            p.spawn((
+                Text2d::new("F1"),
+                TextFont { font_size: 13.0, ..Default::default() },
+                TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                Transform::from_xyz(0.0, 0.0, 0.1),
+            ));
+        });
 
         // Connect to the road network via the building's entrance.
         let buildings_snapshot = world.buildings.clone();
