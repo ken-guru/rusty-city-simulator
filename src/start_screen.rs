@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use crate::AppState;
+use crate::economy::DebugMode;
 use crate::save::{self, PendingLoad, SaveMeta};
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ enum StartScreenAction {
     LoadSave(usize),
     Back,
     Quit,
+    ToggleEconomyDebug,
 }
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
@@ -105,6 +107,7 @@ fn rebuild_panel(
     mut commands: Commands,
     mut state: ResMut<StartScreenState>,
     root_query: Query<Entity, With<StartScreenRoot>>,
+    debug: Res<DebugMode>,
 ) {
     if !state.dirty { return; }
     state.dirty = false;
@@ -116,6 +119,7 @@ fn rebuild_panel(
 
     let panel = state.panel.clone();
     let saves = state.saves.clone();
+    let economy_logging = debug.economy_logging;
 
     commands.entity(root).with_children(|parent| {
         // Title
@@ -137,6 +141,13 @@ fn rebuild_panel(
                 spawn_menu_button(parent, "New Game",  StartScreenAction::NewGame);
                 spawn_menu_button(parent, "Load Game", StartScreenAction::LoadGame);
                 spawn_menu_button(parent, "Quit",      StartScreenAction::Quit);
+                // Debug toggle — shown in a smaller, muted style below the main buttons
+                let debug_label = if economy_logging {
+                    "Economy Debug: ON"
+                } else {
+                    "Economy Debug: OFF"
+                };
+                spawn_debug_toggle_button(parent, debug_label);
             }
 
             StartScreenPanel::SaveList => {
@@ -202,6 +213,7 @@ fn handle_buttons(
     mut state: ResMut<StartScreenState>,
     mut next_state: ResMut<NextState<AppState>>,
     mut pending_load: ResMut<PendingLoad>,
+    mut debug: ResMut<DebugMode>,
 ) {
     for (interaction, action) in &interaction_query {
         if *interaction != Interaction::Pressed { continue; }
@@ -237,6 +249,14 @@ fn handle_buttons(
             }
             StartScreenAction::Quit => {
                 std::process::exit(0);
+            }
+            StartScreenAction::ToggleEconomyDebug => {
+                debug.economy_logging = !debug.economy_logging;
+                if !debug.economy_logging {
+                    // Reset header flag so a fresh header is written if re-enabled
+                    debug.log_header_written = false;
+                }
+                state.dirty = true;
             }
         }
     }
@@ -311,6 +331,33 @@ fn spawn_save_button(
                 Text::new(label),
                 TextFont { font_size: 14.0, ..default() },
                 TextColor(text_color),
+            ));
+        });
+}
+
+fn spawn_debug_toggle_button(parent: &mut ChildSpawnerCommands, label: &str) {
+    const DBG_BTN: Color = Color::srgb(0.18, 0.22, 0.18);
+    const DBG_TEXT: Color = Color::srgb(0.5, 0.75, 0.5);
+    parent
+        .spawn((
+            Button,
+            Node {
+                width: Val::Px(260.0),
+                height: Val::Px(38.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                margin: UiRect::top(Val::Px(32.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(DBG_BTN),
+            StartScreenAction::ToggleEconomyDebug,
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(label),
+                TextFont { font_size: 14.0, ..default() },
+                TextColor(DBG_TEXT),
             ));
         });
 }

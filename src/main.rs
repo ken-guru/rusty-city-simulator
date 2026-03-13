@@ -22,6 +22,7 @@ mod world;
 
 use aging::AgingPlugin;
 use ai::NeedsDecayPlugin;
+pub use economy::DebugMode;
 use economy::EconomyPlugin;
 use entities::*;
 use hovered::HoveredEntity;
@@ -112,6 +113,7 @@ fn main() {
         .insert_resource(ActiveRoute::default())
         .insert_resource(HoveredEntity::default())
         .insert_resource(HoveredQueueItem::default())
+        .insert_resource(DebugMode::default())
         // Camera is always present so UI renders on both StartScreen and InGame.
         .add_systems(Startup, (spawn_camera, sprites::setup_sprites))
         // Game world entities are spawned when entering InGame.

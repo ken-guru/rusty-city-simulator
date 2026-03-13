@@ -1,4 +1,4 @@
-use crate::economy::Economy;
+use crate::economy::{Economy, DebugMode, log_construction};
 use crate::entities::*;
 use crate::grid::{cell_to_world, is_building_cell, world_to_cell, CELL_SIZE};
 use crate::roads::RoadNetwork;
@@ -39,12 +39,13 @@ fn can_add_floor(building: &Building, all_buildings: &[Building]) -> bool {
 }
 
 /// Adds one floor to the named building: increments floors, scales capacity, charges economy.
-fn add_floor_to_building(building_id: &str, world: &mut CityWorld, economy: &mut Economy) {
+fn add_floor_to_building(building_id: &str, world: &mut CityWorld, economy: &mut Economy, debug: &mut DebugMode) {
     if let Some(b) = world.buildings.iter_mut().find(|b| b.id == building_id) {
         let cost = 25_000.0 + b.floors as f32 * 8_000.0;
         b.floors += 1;
         b.capacity_residents = b.base_capacity_residents * b.floors as usize;
         b.capacity_workers   = b.base_capacity_workers   * b.floors as usize;
+        log_construction(debug, &format!("floor added to {} (now {} floors)", building_id, b.floors), cost);
         economy.charge_construction(cost);
     }
 }
@@ -53,6 +54,7 @@ fn check_housing_pressure(
     mut world: ResMut<CityWorld>,
     mut building_events: MessageWriter<NewBuildingEvent>,
     mut economy: ResMut<Economy>,
+    mut debug: ResMut<DebugMode>,
     time: Res<Time>,
     game_time: Res<GameTime>,
 ) {
@@ -119,7 +121,7 @@ fn check_housing_pressure(
 
         if go_vertical {
             if let Some(ref id) = best_floor_target {
-                add_floor_to_building(id, &mut world, &mut economy);
+                add_floor_to_building(id, &mut world, &mut economy, &mut debug);
                 return;
             }
         }
@@ -129,6 +131,7 @@ fn check_housing_pressure(
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
+            log_construction(&mut debug, "new Home building", 50_000.0);
             economy.charge_construction(50_000.0);
             building_events.write(NewBuildingEvent { building });
         }
@@ -147,6 +150,7 @@ fn check_housing_pressure(
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
+            log_construction(&mut debug, "new Office building", 50_000.0);
             economy.charge_construction(50_000.0);
             building_events.write(NewBuildingEvent { building });
         }
@@ -159,6 +163,7 @@ fn check_housing_pressure(
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
             building.founded_day = game_time.current_day();
             world.buildings.push(building.clone());
+            log_construction(&mut debug, "new Shop building", 50_000.0);
             economy.charge_construction(50_000.0);
             building_events.write(NewBuildingEvent { building });
         }

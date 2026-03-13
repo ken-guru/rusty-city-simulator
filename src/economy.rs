@@ -1,9 +1,18 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use crate::entities::BuildingType;
 use crate::world::CityWorld;
 use crate::roads::{RoadNetwork, SegmentType};
 use crate::time::GameTime;
+
+/// Toggleable debug flags — toggled from the start screen.
+#[derive(Resource, Default, Clone)]
+pub struct DebugMode {
+    pub economy_logging: bool,
+    /// Whether the session header has been written to the log file this run.
+    pub log_header_written: bool,
+}
 
 #[derive(Resource, Clone, Serialize, Deserialize, Default)]
 pub struct Economy {
@@ -48,6 +57,7 @@ impl Plugin for EconomyPlugin {
 
 fn update_economy(
     mut economy: ResMut<Economy>,
+    mut debug: ResMut<DebugMode>,
     world: Res<CityWorld>,
     road_network: Res<RoadNetwork>,
     game_time: Res<GameTime>,
@@ -68,13 +78,16 @@ fn update_economy(
     economy.daily_income = citizen_count * 100.0 + shop_count * 50.0;
 
     // -- Expenses --
-    // Building maintenance: 10 per floor per building per day
+    let building_count = world.buildings.len();
     let building_cost: f32 = world.buildings.iter()
         .map(|b| 10.0 * b.floors as f32)
         .sum();
 
-    // Road maintenance: 5 per Road segment, 3 per Path, 1 per Desire per day
-    let road_cost: f32 = road_network.segments.iter()
+    let road_segments: Vec<_> = road_network.segments.iter().collect();
+    let road_segment_count = road_segments.iter()
+        .filter(|s| matches!(s.seg_type, SegmentType::Road | SegmentType::Path | SegmentType::Desire))
+        .count();
+    let road_cost: f32 = road_segments.iter()
         .map(|s| match s.seg_type {
             SegmentType::Road => 5.0,
             SegmentType::Path => 3.0,
@@ -83,16 +96,45 @@ fn update_economy(
         })
         .sum();
 
-    // Park maintenance: 20 per park cell per day
-    let park_cost = world.park_cells.len() as f32 * 20.0;
+    let park_cell_count = world.park_cells.len();
+    let park_cost = park_cell_count as f32 * 20.0;
 
-    // Travel overhead: average distance between home and workplace for each employed citizen
-    let travel_overhead = average_travel_distance(&world) * 0.5;
+    let avg_travel = average_travel_distance(&world);
+    let travel_overhead = avg_travel * 0.5;
 
     economy.daily_expenses = building_cost + road_cost + park_cost + travel_overhead;
 
-    // Apply net to balance (pro-rated by elapsed days)
-    economy.balance += (economy.daily_income - economy.daily_expenses) * days_elapsed;
+    let net = economy.daily_income - economy.daily_expenses;
+    economy.balance += net * days_elapsed;
+
+    // -- Debug logging --
+    if debug.economy_logging {
+        if !debug.log_header_written {
+            debug.log_header_written = true;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let _ = append_log(&format!(
+                "\n=== SESSION STARTED (unix: {now}) ===\n\
+                 day | balance | citizens | shops | income | bldg_cost(n) | road_cost(n_segs) | park_cost(n_cells) | travel | net | elapsed\n"
+            ));
+        }
+        let _ = append_log(&format!(
+            "DAY {:.1} | bal={:.0} | cit={} | shops={} | inc={:.0} | bldg={:.0}({}) | road={:.0}({}) | park={:.0}({}) | travel={:.0} | net={:.0} | elapsed={:.2}\n",
+            current_day,
+            economy.balance,
+            citizen_count as u32,
+            shop_count as u32,
+            economy.daily_income,
+            building_cost, building_count,
+            road_cost, road_segment_count,
+            park_cost, park_cell_count,
+            travel_overhead,
+            net,
+            days_elapsed,
+        ));
+    }
 }
 
 /// Estimate average home-to-work travel distance for employed citizens.
@@ -113,6 +155,21 @@ fn average_travel_distance(world: &CityWorld) -> f32 {
         }
     }
     if count > 0 { total / count as f32 } else { 0.0 }
+}
+
+fn append_log(msg: &str) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("economy_debug.log")?;
+    file.write_all(msg.as_bytes())
+}
+
+/// Call this from housing.rs when charging construction, if debug mode is on.
+pub fn log_construction(debug: &mut DebugMode, description: &str, amount: f32) {
+    if debug.economy_logging {
+        let _ = append_log(&format!("[CONSTRUCTION] {description}: -{amount:.0}\n"));
+    }
 }
 
 #[cfg(test)]
