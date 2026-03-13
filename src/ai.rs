@@ -1,5 +1,6 @@
 use crate::entities::*;
 use crate::grid::CELL_SIZE;
+use crate::hovered::HoveredEntity;
 use crate::roads::RoadNetwork;
 use crate::time::GameTime;
 use crate::world::{park_positions, CityWorld};
@@ -16,13 +17,15 @@ impl Plugin for NeedsDecayPlugin {
 
 /// Needs decay over real time, scaled by simulation speed.
 fn decay_needs(
-    mut citizens: Query<&mut Citizen>,
+    mut citizens: Query<(Entity, &mut Citizen)>,
     time: Res<Time>,
     game_time: Res<GameTime>,
+    hovered: Res<HoveredEntity>,
 ) {
     let delta = time.delta_secs() * game_time.time_scale;
 
-    for mut citizen in citizens.iter_mut() {
+    for (entity, mut citizen) in citizens.iter_mut() {
+        if hovered.0 == Some(entity) { continue; }
         if citizen.age < 1.0 {
             // Infants sleep and eat mostly
             citizen.hunger = (citizen.hunger + 0.04 * delta).min(1.0);
@@ -38,16 +41,18 @@ fn decay_needs(
 
 /// AI: periodically choose an activity and set a target building position.
 fn run_citizen_ai(
-    mut citizens: Query<&mut Citizen>,
+    mut citizens: Query<(Entity, &mut Citizen)>,
     world: Res<CityWorld>,
     road_network: Res<RoadNetwork>,
     time: Res<Time>,
     game_time: Res<GameTime>,
+    hovered: Res<HoveredEntity>,
 ) {
     let mut rng = rand::thread_rng();
     let delta = time.delta_secs() * game_time.time_scale;
 
-    for mut citizen in citizens.iter_mut() {
+    for (entity, mut citizen) in citizens.iter_mut() {
+        if hovered.0 == Some(entity) { continue; }
         // Only re-decide when idle (no movement target or pending waypoints)
         if citizen.target_position.is_some() || !citizen.waypoints.is_empty() {
             continue;
@@ -168,15 +173,17 @@ fn nearest_park(world: &CityWorld, from: &Vec2) -> Option<Vec2> {
 
 /// When a citizen arrives at a building, satisfy the relevant need.
 fn satisfy_needs_at_destination(
-    mut citizens: Query<&mut Citizen>,
+    mut citizens: Query<(Entity, &mut Citizen)>,
     world: Res<CityWorld>,
     time: Res<Time>,
     game_time: Res<GameTime>,
+    hovered: Res<HoveredEntity>,
 ) {
     let delta = time.delta_secs() * game_time.time_scale;
     let satisfy_rate = 0.05 * delta;
 
-    for mut citizen in citizens.iter_mut() {
+    for (entity, mut citizen) in citizens.iter_mut() {
+        if hovered.0 == Some(entity) { continue; }
         if citizen.target_position.is_some() {
             continue; // still travelling
         }
