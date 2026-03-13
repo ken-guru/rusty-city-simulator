@@ -31,7 +31,7 @@ use save::SaveLoadPlugin;
 use sprites::{SpriteAssets, SpritesPlugin};
 use start_screen::StartScreenPlugin;
 use time::GameTimePlugin;
-use ui::{HoveredQueueItem, UIPlugin};
+use ui::{HoveredLogItem, HoveredQueueItem, UIPlugin};
 use world::*;
 
 /// Top-level application state.
@@ -139,6 +139,7 @@ fn cleanup_ingame(
     route_viz: Query<Entity, With<RouteVisualizationMarker>>,
     queue_highlights: Query<Entity, With<ui::QueueHighlightMarker>>,
     sel_highlights: Query<Entity, With<ui::SelectedBuildingHighlightMarker>>,
+    log_highlights: Query<Entity, With<ui::LogHighlightMarker>>,
     mut road_entities: ResMut<RoadEntities>,
 ) {
     for entity in buildings.iter()
@@ -148,6 +149,7 @@ fn cleanup_ingame(
         .chain(route_viz.iter())
         .chain(queue_highlights.iter())
         .chain(sel_highlights.iter())
+        .chain(log_highlights.iter())
     {
         commands.entity(entity).despawn_recursive();
     }
@@ -164,7 +166,9 @@ fn cleanup_ingame(
     commands.insert_resource(BuildingSelection::default());
     commands.insert_resource(ActiveRoute::default());
     commands.insert_resource(roads::ConstructionQueue::default());
+    commands.insert_resource(roads::ConstructionLog::default());
     commands.insert_resource(HoveredQueueItem::default());
+    commands.insert_resource(HoveredLogItem::default());
 }
 
 fn setup(

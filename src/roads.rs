@@ -74,6 +74,8 @@ pub struct ConstructionProject {
     pub waypoints: Vec<Vec2>,
     pub built_count: usize,
     pub created_day: f32,
+    /// How many of the waypoint segments were genuinely new (not already existing roads).
+    pub segments_added: usize,
     /// Human-readable description shown in the queue panel.
     pub label: String,
     /// World position of the origin building (for highlight overlay).
@@ -86,6 +88,33 @@ impl ConstructionProject {
     pub fn total_segments(&self) -> usize {
         self.waypoints.len().saturating_sub(1)
     }
+}
+
+/// Outcome of a completed construction project.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ProjectStatus {
+    /// At least one genuinely new road segment was built.
+    Completed,
+    /// All waypoints already had roads — no new road was constructed.
+    Discarded,
+}
+
+/// An archived construction project (completed or discarded).
+#[derive(Clone, Debug)]
+pub struct CompletedProject {
+    pub label: String,
+    pub from_pos: Vec2,
+    pub to_pos: Vec2,
+    /// The full waypoint list the project attempted to build.
+    pub waypoints: Vec<Vec2>,
+    pub status: ProjectStatus,
+}
+
+/// Historical record of all finished construction projects.
+/// Capped at 15 entries (oldest dropped first).
+#[derive(Resource, Default)]
+pub struct ConstructionLog {
+    pub entries: Vec<CompletedProject>,
 }
 
 /// Queue of road construction projects (player-suggested or city-initiated).
@@ -108,9 +137,11 @@ const DESIRE_THRESHOLD: f32 = 5.0;
 
 impl RoadNetwork {
     /// Add a road segment between two positions (skips duplicates and very short segments).
-    pub fn connect(&mut self, start: Vec2, end: Vec2, seg_type: SegmentType, current_day: f32) {
+    /// Add a road segment between two positions. Returns `true` if a new segment was
+    /// actually inserted, `false` if it already existed or was too short.
+    pub fn connect(&mut self, start: Vec2, end: Vec2, seg_type: SegmentType, current_day: f32) -> bool {
         if (end - start).length() < 20.0 {
-            return;
+            return false;
         }
         let already_exists = self.segments.iter().any(|s| {
             (nodes_close(s.start, start) && nodes_close(s.end, end))
@@ -120,6 +151,9 @@ impl RoadNetwork {
             let mut seg = RoadSegment::new(start, end, seg_type);
             seg.last_used_day = current_day;
             self.segments.push(seg);
+            true
+        } else {
+            false
         }
     }
 
@@ -794,6 +828,7 @@ fn auto_suggest_construction(
                 waypoints,
                 built_count: 0,
                 created_day: now,
+                segments_added: 0,
                 label,
                 from_pos: from_b.position,
                 to_pos: to_b.position,
@@ -832,6 +867,7 @@ const AUTO_SUGGEST_MIN_SAVINGS: usize = 4;
 fn advance_construction(
     mut queue: ResMut<ConstructionQueue>,
     mut road_network: ResMut<RoadNetwork>,
+    mut log: ResMut<ConstructionLog>,
     game_time: Res<crate::time::GameTime>,
 ) {
     if game_time.time_scale == 0.0 {
@@ -839,23 +875,61 @@ fn advance_construction(
     }
     let now = game_time.current_day();
 
-    queue.projects.retain_mut(|project| {
+    let mut still_active: Vec<ConstructionProject> = Vec::new();
+
+    for mut project in queue.projects.drain(..) {
+        // Degenerate — archive immediately as Discarded.
         if project.waypoints.len() < 2 {
-            return false; // degenerate project, remove immediately
+            archive_project(&mut log, project, false);
+            continue;
         }
+
+        // Not yet time for next segment — keep in queue.
         if now - project.created_day < 0.1 {
-            return true;
+            still_active.push(project);
+            continue;
         }
+
+        // Already finished (edge case) — archive.
         if project.built_count >= project.waypoints.len().saturating_sub(1) {
-            return false;
+            let ok = project.segments_added > 0;
+            archive_project(&mut log, project, ok);
+            continue;
         }
+
+        // Build next segment.
         let i = project.built_count;
         let (a, b) = (project.waypoints[i], project.waypoints[i + 1]);
-        road_network.connect(a, b, SegmentType::PlayerSuggested, now);
+        if road_network.connect(a, b, SegmentType::PlayerSuggested, now) {
+            project.segments_added += 1;
+        }
         project.built_count += 1;
         project.created_day = now;
-        project.built_count < project.waypoints.len().saturating_sub(1)
+
+        if project.built_count >= project.waypoints.len().saturating_sub(1) {
+            // Project finished — archive it.
+            let ok = project.segments_added > 0;
+            archive_project(&mut log, project, ok);
+        } else {
+            still_active.push(project);
+        }
+    }
+
+    queue.projects = still_active;
+}
+
+fn archive_project(log: &mut ConstructionLog, project: ConstructionProject, success: bool) {
+    const LOG_CAP: usize = 15;
+    log.entries.push(CompletedProject {
+        label: project.label,
+        from_pos: project.from_pos,
+        to_pos: project.to_pos,
+        waypoints: project.waypoints,
+        status: if success { ProjectStatus::Completed } else { ProjectStatus::Discarded },
     });
+    if log.entries.len() > LOG_CAP {
+        log.entries.remove(0);
+    }
 }
 
 pub struct RoadsPlugin;
@@ -867,6 +941,7 @@ impl Plugin for RoadsPlugin {
             .insert_resource(LastCrossConnectDay::default())
             .insert_resource(LastAutoSuggestDay::default())
             .init_resource::<ConstructionQueue>()
+            .init_resource::<ConstructionLog>()
             .add_systems(OnEnter(AppState::InGame), generate_initial_roads)
             .add_systems(
                 Update,

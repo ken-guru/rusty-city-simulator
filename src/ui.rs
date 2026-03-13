@@ -1,6 +1,6 @@
 use crate::entities::*;
 use crate::hovered::HoveredEntity;
-use crate::roads::{ConstructionQueue, RoadNetwork};
+use crate::roads::{ConstructionLog, ConstructionQueue, ProjectStatus, RoadNetwork};
 use crate::save::{save_game, sync_citizens_to_world, SaveRequestEvent};
 use crate::time::GameTime;
 use crate::world::CityWorld;
@@ -41,6 +41,22 @@ pub struct SelectedBuildingHighlightMarker;
 /// Which queue row is currently hovered (if any).
 #[derive(Resource, Default)]
 pub struct HoveredQueueItem(pub Option<usize>);
+
+/// Marks the construction history log panel root node.
+#[derive(Component)]
+struct LogPanel;
+
+/// Marks a single interactive row inside the log panel.
+#[derive(Component)]
+struct LogItemRow(pub usize);
+
+/// Tags entities spawned for log-hover highlights (building outlines + path lines).
+#[derive(Component)]
+pub struct LogHighlightMarker;
+
+/// Which log row is currently hovered (if any).
+#[derive(Resource, Default)]
+pub struct HoveredLogItem(pub Option<usize>);
 
 /// Marks the game toolbar (bottom bar) so it can be hidden on the start screen.
 #[derive(Component)]
@@ -114,6 +130,7 @@ impl Plugin for UIPlugin {
         app.init_resource::<QuitDialogVisible>()
             .init_resource::<PendingQuit>()
             .init_resource::<HoveredQueueItem>()
+            .init_resource::<HoveredLogItem>()
             .add_systems(Startup, setup_ui)
             .add_systems(
                 Update,
@@ -133,6 +150,9 @@ impl Plugin for UIPlugin {
                     sync_queue_hover_state,
                     sync_queue_highlight,
                     sync_selected_building_highlight,
+                    rebuild_log_panel,
+                    sync_log_hover_state,
+                    sync_log_highlight,
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -176,6 +196,25 @@ fn setup_ui(mut commands: Commands) {
         BorderRadius::all(Val::Px(6.0)),
         ZIndex(40),
         QueuePanel,
+    ));
+
+    // Construction history log panel (top left, below queue panel) — hidden when empty.
+    // Children managed dynamically by rebuild_log_panel.
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(10.0),
+            top: Val::Px(160.0),
+            padding: UiRect::all(Val::Px(8.0)),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(2.0),
+            display: Display::None,
+            ..Default::default()
+        },
+        BackgroundColor(Color::srgba(0.06, 0.10, 0.08, 0.88)),
+        BorderRadius::all(Val::Px(6.0)),
+        ZIndex(39),
+        LogPanel,
     ));
 
     // Citizen info on hover (top right)
@@ -868,6 +907,7 @@ fn building_panel_interaction(
                             construction_queue.projects.push(crate::roads::ConstructionProject {
                                 waypoints: active_route.waypoints.clone(),
                                 built_count: 0,
+                                segments_added: 0,
                                 created_day: 0.0,
                                 label: format!("Player: {} -> {}", from_name, to_name),
                                 from_pos,
@@ -1141,3 +1181,135 @@ fn sync_selected_building_highlight(
     ));
 }
 
+
+/// Rebuilds the history log panel children whenever ConstructionLog changes.
+fn rebuild_log_panel(
+    log: Res<ConstructionLog>,
+    panel_query: Query<Entity, With<LogPanel>>,
+    mut panel_node_query: Query<&mut Node, With<LogPanel>>,
+    mut commands: Commands,
+) {
+    if !log.is_changed() { return; }
+    let Ok(panel_entity) = panel_query.get_single() else { return };
+    let Ok(mut panel_node) = panel_node_query.get_single_mut() else { return };
+
+    commands.entity(panel_entity).despawn_descendants();
+
+    if log.entries.is_empty() {
+        panel_node.display = Display::None;
+        return;
+    }
+
+    panel_node.display = Display::Flex;
+
+    commands.entity(panel_entity).with_children(|panel| {
+        // Header
+        panel.spawn((
+            Text::new(format!("=== Build History ({}) ===", log.entries.len())),
+            TextFont { font_size: 12.0, ..Default::default() },
+            TextColor(Color::srgb(0.7, 1.0, 0.75)),
+        ));
+
+        // Entries shown newest-first (reverse order).
+        for (i, entry) in log.entries.iter().enumerate().rev() {
+            let (icon, icon_color) = match entry.status {
+                ProjectStatus::Completed => ("[+]", Color::srgb(0.3, 1.0, 0.4)),
+                ProjectStatus::Discarded => ("[x]", Color::srgb(1.0, 0.35, 0.35)),
+            };
+
+            panel.spawn((
+                Node {
+                    padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                    ..Default::default()
+                },
+                Button,
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
+                BorderRadius::all(Val::Px(3.0)),
+                Interaction::default(),
+                LogItemRow(i),
+            )).with_children(|row| {
+                row.spawn((
+                    Text::new(format!("{} {}", icon, entry.label)),
+                    TextFont { font_size: 11.0, ..Default::default() },
+                    TextColor(icon_color),
+                ));
+            });
+        }
+    });
+}
+
+/// Reads Interaction on log rows each frame and updates HoveredLogItem.
+fn sync_log_hover_state(
+    row_query: Query<(&Interaction, &LogItemRow)>,
+    mut hovered: ResMut<HoveredLogItem>,
+) {
+    let found = row_query.iter()
+        .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
+        .map(|(_, r)| r.0);
+    if hovered.0 != found {
+        hovered.0 = found;
+    }
+}
+
+/// Spawns/despawns highlight overlays when the hovered log item changes.
+fn sync_log_highlight(
+    hovered: Res<HoveredLogItem>,
+    log: Res<ConstructionLog>,
+    buildings: Query<&Building>,
+    highlight_entities: Query<Entity, With<LogHighlightMarker>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    if !hovered.is_changed() { return; }
+
+    for e in &highlight_entities {
+        commands.entity(e).despawn();
+    }
+
+    let Some(idx) = hovered.0 else { return };
+    let Some(entry) = log.entries.get(idx) else { return };
+
+    let outline_color = Color::srgba(1.0, 0.7, 0.1, 0.55);
+    let path_color = match entry.status {
+        ProjectStatus::Completed => Color::srgba(0.2, 0.9, 0.3, 0.75),
+        ProjectStatus::Discarded => Color::srgba(0.8, 0.3, 0.2, 0.60),
+    };
+
+    // Orange outlines on both buildings.
+    for &bpos in &[entry.from_pos, entry.to_pos] {
+        let sz = buildings.iter()
+            .find(|b| (b.position - bpos).length() < 10.0)
+            .map(|b| b.size + Vec2::splat(8.0))
+            .unwrap_or(Vec2::splat(128.0));
+        commands.spawn((
+            Mesh2d(meshes.add(Rectangle::new(sz.x, sz.y))),
+            MeshMaterial2d(materials.add(outline_color)),
+            Transform::from_xyz(bpos.x, bpos.y, 0.5),
+            LogHighlightMarker,
+        ));
+    }
+
+    // Path overlay (green = completed, red = discarded).
+    if entry.waypoints.len() >= 2 {
+        let mat = materials.add(path_color);
+        for window in entry.waypoints.windows(2) {
+            let (a, b) = (window[0], window[1]);
+            let diff = b - a;
+            let length = diff.length();
+            if length < 1.0 { continue; }
+            let angle = diff.y.atan2(diff.x);
+            let mid = (a + b) * 0.5;
+            commands.spawn((
+                Mesh2d(meshes.add(Rectangle::new(length, 3.0))),
+                MeshMaterial2d(mat.clone()),
+                Transform {
+                    translation: Vec3::new(mid.x, mid.y, 2.5),
+                    rotation: Quat::from_rotation_z(angle),
+                    ..Default::default()
+                },
+                LogHighlightMarker,
+            ));
+        }
+    }
+}

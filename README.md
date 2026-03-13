@@ -15,6 +15,7 @@ A Rust-based city simulation where citizens autonomously live out their daily li
 - **Road Evolution**: Lightly used roads degrade; new roads extend to connect new buildings
 - **Player-Suggested Roads**: Players can suggest route optimisations; a construction queue builds new road segments progressively in teal (~0.1 game-days per segment), blending into normal roads with use
 - **Construction Queue Panel**: Visible top-left whenever projects are queued; hover any row to highlight the two buildings involved, the current road path (yellow), and the planned new route (teal)
+- **Build History Log**: Completed and discarded construction projects are archived in a log panel below the queue; `[+]` = new road built, `[x]` = all waypoints already had roads; hovering a log entry highlights the buildings and path (green = completed, red = discarded)
 - **Building Selection Highlight**: The selected building is outlined in orange while its info panel is open
 - **Parks**: Enclosed spaces surrounded by buildings automatically become parks; adjacent parks merge across corridor cells with walkable paths
 - **Park Corridors**: Walkable grass+path corridor cells between adjacent parks, visually distinct with wide stone path
