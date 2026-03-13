@@ -298,8 +298,15 @@ fn handle_building_click(
     mut active_route: ResMut<ActiveRoute>,
     road_network: Res<roads::RoadNetwork>,
     world: Res<CityWorld>,
+    ui_buttons: Query<&Interaction, With<Button>>,
 ) {
     if !mouse_input.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    // If any UI button is being clicked this frame, ignore the world click entirely.
+    // Bevy sets Interaction::Pressed during PreUpdate, so this is reliable in Update.
+    if ui_buttons.iter().any(|i| *i == Interaction::Pressed) {
         return;
     }
 

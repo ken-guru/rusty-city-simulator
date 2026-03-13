@@ -645,11 +645,13 @@ fn update_hovered_info(
 
 fn sync_building_info_panel(
     selection: Res<BuildingSelection>,
+    active_route: Res<ActiveRoute>,
     world: Res<CityWorld>,
     mut panel_query: Query<&mut Node, With<BuildingInfoPanel>>,
     mut text_query: Query<&mut Text, With<BuildingInfoText>>,
 ) {
-    let visible = selection.selected_id.is_some();
+    // Hide the building panel while a route is displayed (route panel takes over).
+    let visible = selection.selected_id.is_some() && active_route.waypoints.is_empty();
     for mut node in &mut panel_query {
         node.display = if visible { Display::Flex } else { Display::None };
     }
