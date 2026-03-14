@@ -159,8 +159,8 @@ fn check_housing_pressure(
     let office_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Office).count();
     let shop_count   = world.buildings.iter().filter(|b| b.building_type == BuildingType::Shop).count();
 
-    // 1 office per 5 citizens — at most once per game-day.
-    if total_pop > office_count * 5 && current_day - cooldown.last_office_day >= 1.0 {
+    // 1 office per 10 citizens — at most once per game-day.
+    if total_pop > office_count * 10 && current_day - cooldown.last_office_day >= 1.0 {
         if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Office) {
             world.occupied_cells.insert(cell);
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
@@ -173,8 +173,8 @@ fn check_housing_pressure(
         }
     }
 
-    // 1 shop per 7 citizens — at most once per game-day.
-    if total_pop > shop_count * 7 && current_day - cooldown.last_shop_day >= 1.0 {
+    // 1 shop per 15 citizens — at most once per game-day.
+    if total_pop > shop_count * 15 && current_day - cooldown.last_shop_day >= 1.0 {
         if let Some((mut building, cell)) = place_new_building(&world, BuildingType::Shop) {
             world.occupied_cells.insert(cell);
             building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());

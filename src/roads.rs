@@ -132,14 +132,14 @@ pub struct ConstructionQueue {
 
 // Evolution thresholds (usage counts)
 const PATH_THRESHOLD: f32 = 25.0; // desire → path
-const ROAD_THRESHOLD: f32 = 80.0; // path   → road (via usage)
+const ROAD_THRESHOLD: f32 = 50.0; // path   → road (via usage, was 80)
 
 // Degradation thresholds (game-days of disuse)
-const ROAD_DEGRADE_DAYS: f32 = 45.0; // road → path
-const PATH_DEGRADE_DAYS: f32 = 30.0; // path → desire / removal
+const ROAD_DEGRADE_DAYS: f32 = 75.0; // road → path (was 45)
+const PATH_DEGRADE_DAYS: f32 = 60.0; // path → desire / removal (was 30)
 
 // Desire path fully removed if unused for this many days AND below threshold
-const DESIRE_REMOVE_DAYS: f32 = 60.0;
+const DESIRE_REMOVE_DAYS: f32 = 90.0; // was 60
 const DESIRE_THRESHOLD: f32 = 5.0;
 
 /// A Path segment that has persisted for this many game-days is upgraded to Road

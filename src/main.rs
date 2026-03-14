@@ -179,6 +179,7 @@ fn cleanup_ingame(
     commands.insert_resource(HoveredLogItem::default());
     commands.insert_resource(economy::Economy::new());
     commands.insert_resource(housing::HousingCooldown::default());
+    commands.insert_resource(movement::CityTravelStats::default());
     // Reset log header flag so a new session header is written if debug logging fires again.
     debug.log_header_written = false;
 }

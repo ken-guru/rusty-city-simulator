@@ -80,41 +80,41 @@ fn run_citizen_ai(
         let activity = pick_activity(&citizen);
         citizen.current_activity = activity;
 
-        // Find a target building for the chosen activity
-        let target_pos: Option<Vec2> = match activity {
-            ActivityType::Eating => find_building(&world, BuildingType::Shop, &citizen.position),
-            ActivityType::Sleeping => find_home(&world, &citizen.home_building_id),
-            ActivityType::Working => find_building(&world, BuildingType::Office, &citizen.position),
-            ActivityType::Socializing => find_any_building(&world, &citizen.position),
-            ActivityType::VisitingPark => nearest_park(&world, &citizen.position),
-            ActivityType::Walking | ActivityType::Idle => None,
+        // Build a candidate list of positions for the chosen activity.
+        // For Eating/Working we try up to 3 nearest buildings of the right type
+        // in Euclidean order so that a disconnected nearest building is skipped
+        // in favour of the next-closest reachable one.
+        let candidates: Vec<Vec2> = match activity {
+            ActivityType::Eating  => nearest_buildings(&world, BuildingType::Shop,   &citizen.position, 3),
+            ActivityType::Working => nearest_buildings(&world, BuildingType::Office,  &citizen.position, 3),
+            ActivityType::Sleeping    => find_home(&world, &citizen.home_building_id).into_iter().collect(),
+            ActivityType::Socializing => find_any_building(&world, &citizen.position).into_iter().collect(),
+            ActivityType::VisitingPark => nearest_park(&world, &citizen.position).into_iter().collect(),
+            ActivityType::Walking | ActivityType::Idle => vec![],
         };
 
-        if let Some(pos) = target_pos {
-            // Route to the exact building/park position (no random offset).
-            let destination = pos;
+        if !candidates.is_empty() {
+            let mut routed = false;
+            for pos in &candidates {
+                // For parks: route to the nearest road node in a cardinal direction.
+                let road_dest = if matches!(activity, ActivityType::VisitingPark) {
+                    road_network.nearest_node_to(*pos, CELL_SIZE * 1.1)
+                        .unwrap_or_else(|| road_network.nearest_node_to(*pos, CELL_SIZE * 2.0)
+                            .unwrap_or(*pos))
+                } else {
+                    *pos
+                };
 
-            // For parks: route to the nearest road node that's within 1 CELL_SIZE
-            // in a cardinal direction (not diagonal cross-cells). Stop there — the
-            // park satisfaction system doesn't check exact location, so benefits
-            // apply once the citizen is adjacent to the park.
-            let road_dest = if matches!(activity, ActivityType::VisitingPark) {
-                // Prefer a node strictly within 1.1 cells (cardinal neighbours only).
-                road_network.nearest_node_to(pos, CELL_SIZE * 1.1)
-                    .unwrap_or_else(|| road_network.nearest_node_to(pos, CELL_SIZE * 2.0)
-                        .unwrap_or(destination))
-            } else {
-                destination
-            };
-
-            if let Some(mut waypoints) = road_network.find_road_path(citizen.position, road_dest) {
-                // Route via road network. Stored reversed so `pop()` yields the first node.
-                waypoints.reverse();
-                citizen.waypoints = waypoints;
-                // Park visits: stop at the road node; no separate diagonal hop to park centre.
-                citizen.target_position = None;
-            } else {
-                // No road connection yet — wait for the city to build roads.
+                if let Some(mut waypoints) = road_network.find_road_path(citizen.position, road_dest) {
+                    waypoints.reverse();
+                    citizen.waypoints = waypoints;
+                    citizen.target_position = None;
+                    routed = true;
+                    break;
+                }
+            }
+            if !routed {
+                // All candidates unreachable — log once and stay idle.
                 let activity_name = format!("{:?}", activity);
                 crate::economy::log_pathfind_fail(&debug, &citizen.name, &activity_name);
                 citizen.target_position = None;
@@ -167,13 +167,16 @@ fn pick_activity(citizen: &Citizen) -> ActivityType {
         .unwrap_or(ActivityType::Idle)
 }
 
-fn find_building(world: &CityWorld, kind: BuildingType, from: &Vec2) -> Option<Vec2> {
-    world
+/// Return up to `n` buildings of `kind`, sorted nearest-first from `from`.
+fn nearest_buildings(world: &CityWorld, kind: BuildingType, from: &Vec2, n: usize) -> Vec<Vec2> {
+    let mut candidates: Vec<_> = world
         .buildings
         .iter()
         .filter(|b| b.building_type == kind)
-        .min_by_key(|b| ((b.position - *from).length() * 100.0) as i32)
-        .map(|b| b.position)
+        .map(|b| (((b.position - *from).length() * 100.0) as i32, b.position))
+        .collect();
+    candidates.sort_by_key(|(d, _)| *d);
+    candidates.into_iter().take(n).map(|(_, pos)| pos).collect()
 }
 
 fn find_home(world: &CityWorld, home_id: &Option<String>) -> Option<Vec2> {

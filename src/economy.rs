@@ -108,8 +108,8 @@ fn update_economy(
     let park_cost = park_cell_count as f32 * 20.0;
 
     // Travel overhead now uses real ECS-tracked distance
-    let avg_travel_px = travel_stats.avg_distance_traveled;
-    let travel_overhead = avg_travel_px * 0.5;
+    let avg_travel_px = travel_stats.avg_daily_distance;
+    let travel_overhead = avg_travel_px * 0.01;
 
     economy.daily_expenses = building_cost + road_cost + park_cost + travel_overhead;
 
@@ -128,7 +128,7 @@ fn update_economy(
                 "\n=== SESSION STARTED (unix: {now}) ===\n\
                  Columns: day | balance | citizens(idle) | shops | income \
                  | bldg_cost(n_bldgs) | road_cost(road/path/desire) \
-                 | park(cells/corridors) | avg_travel_px | net | elapsed\n"
+                 | park(cells/corridors) | avg_daily_travel_px | net | elapsed\n"
             ));
         }
 
