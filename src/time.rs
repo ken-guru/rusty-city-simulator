@@ -41,6 +41,7 @@ fn update_game_time(mut game_time: ResMut<GameTime>, time: Res<Time>) {
 fn handle_time_controls(
     input: Res<ButtonInput<KeyCode>>,
     mut game_time: ResMut<GameTime>,
+    debug: Res<crate::economy::DebugMode>,
 ) {
     if input.just_pressed(KeyCode::Space) {
         if game_time.time_scale == 0.0 {
@@ -61,5 +62,21 @@ fn handle_time_controls(
     }
     if input.just_pressed(KeyCode::Digit4) {
         game_time.time_scale = 4.0; // very fast
+    }
+
+    // Extra speed steps available in debug mode (economy logging enabled).
+    if debug.economy_logging {
+        if input.just_pressed(KeyCode::Digit5) {
+            game_time.time_scale = 8.0;
+        }
+        if input.just_pressed(KeyCode::Digit6) {
+            game_time.time_scale = 16.0;
+        }
+        if input.just_pressed(KeyCode::Digit7) {
+            game_time.time_scale = 32.0;
+        }
+        if input.just_pressed(KeyCode::Digit8) {
+            game_time.time_scale = 64.0;
+        }
     }
 }

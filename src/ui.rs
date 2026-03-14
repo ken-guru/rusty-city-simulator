@@ -1,4 +1,4 @@
-use crate::economy::Economy;
+use crate::economy::{Economy, DebugMode};
 use crate::entities::*;
 use crate::hovered::HoveredEntity;
 use crate::roads::{ConstructionLog, ConstructionQueue, ProjectStatus, RoadNetwork};
@@ -192,7 +192,7 @@ impl Plugin for UIPlugin {
     }
 }
 
-fn setup_ui(mut commands: Commands) {
+fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
     // Time + population (top left)
     commands
         .spawn(Node {
@@ -289,14 +289,20 @@ fn setup_ui(mut commands: Commands) {
             ..Default::default()
         })
         .with_children(|parent| {
+            let speed_hint = if debug.economy_logging {
+                "1/2/3/4/5/6/7/8: Speed (0.5x/1x/2x/4x/8x/16x/32x/64x)  |  F5: Save"
+            } else {
+                "1/2/3/4: Speed (0.5x/1x/2x/4x)  |  F5: Save"
+            };
             parent.spawn((
-                Text::new(
+                Text::new(format!(
                     "* Blue: Male   * Pink: Female\n\
                      # Brown: Home   # Blue: Office   # Yellow: Shop   # Green: Park\n\
                      WASD/Arrows: Pan  |  Right-click drag: Pan\n\
                      Scroll/Pinch: Zoom  |  Space: Pause\n\
-                     1/2/3/4: Speed (0.5x/1x/2x/4x)  |  F5: Save",
-                ),
+                     {}",
+                    speed_hint
+                )),
                 TextFont { font_size: 12.0, ..Default::default() },
                 TextColor(Color::srgb(0.55, 0.55, 0.55)),
             ));
@@ -327,6 +333,12 @@ fn setup_ui(mut commands: Commands) {
             toolbar_button(parent, "1x",      ToolbarAction::SetSpeed(1.0));
             toolbar_button(parent, "2x",      ToolbarAction::SetSpeed(2.0));
             toolbar_button(parent, "4x",      ToolbarAction::SetSpeed(4.0));
+            if debug.economy_logging {
+                toolbar_button(parent, "8x",  ToolbarAction::SetSpeed(8.0));
+                toolbar_button(parent, "16x", ToolbarAction::SetSpeed(16.0));
+                toolbar_button(parent, "32x", ToolbarAction::SetSpeed(32.0));
+                toolbar_button(parent, "64x", ToolbarAction::SetSpeed(64.0));
+            }
             toolbar_button(parent, "Save",    ToolbarAction::Save);
             toolbar_button(parent, "Quit",    ToolbarAction::Quit);
         });
