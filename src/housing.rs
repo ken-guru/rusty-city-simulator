@@ -296,6 +296,7 @@ fn spawn_building(
     mut world: ResMut<CityWorld>,
     sprite_assets: Res<SpriteAssets>,
     game_time: Res<GameTime>,
+    debug: Res<DebugMode>,
 ) {
     for event in building_events.read() {
         let b = &event.building;
@@ -349,6 +350,10 @@ fn spawn_building(
         // Detect any cells that became fully enclosed and should become parks.
         let cell = world_to_cell(b.position);
         let new_parks = world.detect_new_parks(&[cell]);
+        if !new_parks.is_empty() {
+            crate::economy::log_park_event(&debug, &format!(
+                "{} park cell(s) created adjacent to {:?}", new_parks.len(), cell));
+        }
         for park_cell in &new_parks {
             let park_pos = cell_to_world(park_cell.0, park_cell.1);
             commands.spawn((

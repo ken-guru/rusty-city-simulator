@@ -5,9 +5,20 @@ use bevy::prelude::*;
 
 pub struct MovementPlugin;
 
+/// Per-frame aggregate citizen travel stats, available to other systems (e.g. economy debug log).
+#[derive(Resource, Default)]
+pub struct CityTravelStats {
+    /// Average distance (in world pixels) each citizen has traveled this session.
+    pub avg_distance_traveled: f32,
+    /// Number of citizens currently idle (no waypoints, no target).
+    pub idle_count: usize,
+}
+
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (simple_movement, sync_citizen_transforms).run_if(in_state(crate::AppState::InGame)));
+        app.init_resource::<CityTravelStats>()
+            .add_systems(Update, (simple_movement, sync_citizen_transforms, update_travel_stats)
+                .run_if(in_state(crate::AppState::InGame)));
     }
 }
 
@@ -44,6 +55,7 @@ pub fn simple_movement(
 
             if distance > move_distance {
                 citizen.position += diff.normalize() * move_distance;
+                citizen.total_distance_traveled += move_distance;
             } else {
                 // Arrived at target.
                 citizen.position = target;
@@ -69,4 +81,23 @@ pub fn sync_citizen_transforms(
         transform.translation.y = citizen.position.y;
         transform.translation.z = if hovered.0 == Some(entity) { 3.0 } else { 1.0 };
     }
+}
+
+/// Aggregates per-citizen travel stats into `CityTravelStats` for other systems to read.
+fn update_travel_stats(
+    citizens: Query<&Citizen>,
+    mut stats: ResMut<CityTravelStats>,
+) {
+    let mut total_dist = 0.0f32;
+    let mut idle = 0usize;
+    let mut count = 0usize;
+    for c in citizens.iter() {
+        total_dist += c.total_distance_traveled;
+        if c.target_position.is_none() && c.waypoints.is_empty() {
+            idle += 1;
+        }
+        count += 1;
+    }
+    stats.avg_distance_traveled = if count > 0 { total_dist / count as f32 } else { 0.0 };
+    stats.idle_count = idle;
 }

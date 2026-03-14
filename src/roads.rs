@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
 
+use crate::economy::DebugMode;
 use crate::entities::Building;
 use crate::grid::{cell_to_world, is_building_cell, world_to_cell, CELL_SIZE};
 use crate::time::GameTime;
@@ -39,6 +40,9 @@ pub struct RoadSegment {
     pub usage: f32,
     /// Game-day when last traversed (used for degradation).
     pub last_used_day: f32,
+    /// Game-day when seg_type last changed (used for time-based upgrades).
+    #[serde(default)]
+    pub type_changed_day: f32,
 }
 
 fn new_segment_id() -> String {
@@ -54,6 +58,7 @@ impl RoadSegment {
             seg_type,
             usage: 0.0,
             last_used_day: 0.0,
+            type_changed_day: 0.0,
         }
     }
 }
@@ -127,7 +132,7 @@ pub struct ConstructionQueue {
 
 // Evolution thresholds (usage counts)
 const PATH_THRESHOLD: f32 = 25.0; // desire → path
-const ROAD_THRESHOLD: f32 = 80.0; // path   → road
+const ROAD_THRESHOLD: f32 = 80.0; // path   → road (via usage)
 
 // Degradation thresholds (game-days of disuse)
 const ROAD_DEGRADE_DAYS: f32 = 45.0; // road → path
@@ -136,6 +141,10 @@ const PATH_DEGRADE_DAYS: f32 = 30.0; // path → desire / removal
 // Desire path fully removed if unused for this many days AND below threshold
 const DESIRE_REMOVE_DAYS: f32 = 60.0;
 const DESIRE_THRESHOLD: f32 = 5.0;
+
+/// A Path segment that has persisted for this many game-days is upgraded to Road
+/// regardless of usage count, representing gradual city infrastructure investment.
+const PATH_TO_ROAD_AGE_DAYS: f32 = 90.0;
 
 impl RoadNetwork {
     /// Add a road segment between two positions (skips duplicates and very short segments).
@@ -152,6 +161,7 @@ impl RoadNetwork {
         if !already_exists {
             let mut seg = RoadSegment::new(start, end, seg_type);
             seg.last_used_day = current_day;
+            seg.type_changed_day = current_day;
             self.segments.push(seg);
             true
         } else {
@@ -170,8 +180,11 @@ impl RoadNetwork {
         }
     }
 
-    /// Find a route from `start` to `end` through Road/Path segments.
+    /// Find a route from `start` to `end` through Road/Path/Desire segments.
     /// Returns `Some(waypoints)` in travel order (ending at `end`), or `None` if not connected.
+    ///
+    /// Desire paths are included so that citizens can walk on lightly-used or
+    /// degraded routes, keeping them alive long enough to upgrade back to Path/Road.
     ///
     /// Building-centre nodes (even,even grid cells) are valid only as the first or last
     /// waypoint — citizens must never transit THROUGH a building en route to somewhere else.
@@ -179,7 +192,14 @@ impl RoadNetwork {
         let passable: Vec<&RoadSegment> = self
             .segments
             .iter()
-            .filter(|s| matches!(s.seg_type, SegmentType::Road | SegmentType::Path | SegmentType::ParkPath | SegmentType::PlayerSuggested))
+            .filter(|s| matches!(
+                s.seg_type,
+                SegmentType::Road
+                    | SegmentType::Path
+                    | SegmentType::Desire
+                    | SegmentType::ParkPath
+                    | SegmentType::PlayerSuggested
+            ))
             .collect();
 
         if passable.is_empty() {
@@ -391,7 +411,8 @@ impl RoadNetwork {
     }
 
     /// Return unique passable road nodes whose distance from `pos` is within
-    /// `[min_dist, max_dist]`. Used by the AI for road-bounded wandering.
+    /// `[min_dist, max_dist]`. Includes Desire paths so citizens can wander on
+    /// lightly-used routes and keep them in use. Used by the AI for road-bounded wandering.
     pub fn passable_nodes_near(&self, pos: Vec2, min_dist: f32, max_dist: f32) -> Vec<Vec2> {
         let mut nodes: Vec<Vec2> = Vec::new();
         for seg in &self.segments {
@@ -399,6 +420,7 @@ impl RoadNetwork {
                 seg.seg_type,
                 SegmentType::Road
                     | SegmentType::Path
+                    | SegmentType::Desire
                     | SegmentType::ParkPath
                     | SegmentType::PlayerSuggested
             ) {
@@ -1079,6 +1101,7 @@ fn evolve_roads(
     mut network: ResMut<RoadNetwork>,
     game_time: Res<GameTime>,
     time: Res<Time>,
+    debug: Res<DebugMode>,
 ) {
     if game_time.time_scale == 0.0 {
         return;
@@ -1097,14 +1120,30 @@ fn evolve_roads(
         match seg.seg_type {
             SegmentType::Desire if seg.usage >= PATH_THRESHOLD => {
                 seg.seg_type = SegmentType::Path;
-                info!("A desire path has worn into a proper path.");
+                seg.type_changed_day = now;
+                crate::economy::log_road_event(&debug, &format!(
+                    "desire→path (usage={:.0}, day={:.1})", seg.usage, now));
             }
             SegmentType::Path if seg.usage >= ROAD_THRESHOLD => {
                 seg.seg_type = SegmentType::Road;
-                info!("A path has been paved into a road!");
+                seg.type_changed_day = now;
+                crate::economy::log_road_event(&debug, &format!(
+                    "path→road via usage (usage={:.0}, day={:.1})", seg.usage, now));
+            }
+            // Time-based upgrade: a Path that has persisted for PATH_TO_ROAD_AGE_DAYS
+            // is upgraded to Road regardless of traffic — represents city investment.
+            SegmentType::Path if (now - seg.type_changed_day) >= PATH_TO_ROAD_AGE_DAYS => {
+                seg.seg_type = SegmentType::Road;
+                seg.type_changed_day = now;
+                crate::economy::log_road_event(&debug, &format!(
+                    "path→road via age (age={:.0}d, usage={:.0}, day={:.1})",
+                    now - seg.type_changed_day, seg.usage, now));
             }
             SegmentType::PlayerSuggested if seg.usage >= 5.0 => {
                 seg.seg_type = SegmentType::Path;
+                seg.type_changed_day = now;
+                crate::economy::log_road_event(&debug, &format!(
+                    "player-suggested→path (usage={:.0}, day={:.1})", seg.usage, now));
             }
             _ => {}
         }
@@ -1113,10 +1152,15 @@ fn evolve_roads(
         match seg.seg_type {
             SegmentType::Road if days_unused > ROAD_DEGRADE_DAYS => {
                 seg.seg_type = SegmentType::Path;
-                info!("An unused road has degraded to a path.");
+                seg.type_changed_day = now;
+                crate::economy::log_road_event(&debug, &format!(
+                    "road→path via disuse (unused={:.0}d, day={:.1})", days_unused, now));
             }
             SegmentType::Path if days_unused > PATH_DEGRADE_DAYS => {
                 seg.seg_type = SegmentType::Desire;
+                seg.type_changed_day = now;
+                crate::economy::log_road_event(&debug, &format!(
+                    "path→desire via disuse (unused={:.0}d, day={:.1})", days_unused, now));
             }
             _ => {}
         }
@@ -1368,11 +1412,11 @@ mod tests {
         let c = Vec2::new(360.0, 120.0); // corridor cell (3,1)
         network.segments.push(RoadSegment {
             id: "ab".into(), start: a, end: b, seg_type: SegmentType::Road,
-            usage: 0.0, last_used_day: 0.0,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0,
         });
         network.segments.push(RoadSegment {
             id: "bc".into(), start: b, end: c, seg_type: SegmentType::Road,
-            usage: 0.0, last_used_day: 0.0,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0,
         });
         // Direct path A→C doesn't exist, and B is a building so can't transit.
         // A is start_node, C is end_node, B would be the only intermediate.
@@ -1389,7 +1433,7 @@ mod tests {
         let b = Vec2::new(240.0, 0.0);   // building cell (2,0) — destination
         network.segments.push(RoadSegment {
             id: "ab".into(), start: a, end: b, seg_type: SegmentType::Road,
-            usage: 0.0, last_used_day: 0.0,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0,
         });
         // start ≈ a (corridor), end = b (building).
         // start_node = a, end_node = b → direct single-hop.

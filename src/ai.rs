@@ -1,3 +1,4 @@
+use crate::economy::DebugMode;
 use crate::entities::*;
 use crate::grid::CELL_SIZE;
 use crate::hovered::HoveredEntity;
@@ -47,6 +48,7 @@ fn run_citizen_ai(
     time: Res<Time>,
     game_time: Res<GameTime>,
     hovered: Res<HoveredEntity>,
+    debug: Res<DebugMode>,
 ) {
     let mut rng = rand::rng();
     let delta = time.delta_secs() * game_time.time_scale;
@@ -92,10 +94,15 @@ fn run_citizen_ai(
             // Route to the exact building/park position (no random offset).
             let destination = pos;
 
-            // For parks: route to nearest road node adjacent to the park first,
-            // then set park as the final target after reaching that node.
+            // For parks: route to the nearest road node that's within 1 CELL_SIZE
+            // in a cardinal direction (not diagonal cross-cells). Stop there — the
+            // park satisfaction system doesn't check exact location, so benefits
+            // apply once the citizen is adjacent to the park.
             let road_dest = if matches!(activity, ActivityType::VisitingPark) {
-                road_network.nearest_node_to(pos, CELL_SIZE * 2.0).unwrap_or(destination)
+                // Prefer a node strictly within 1.1 cells (cardinal neighbours only).
+                road_network.nearest_node_to(pos, CELL_SIZE * 1.1)
+                    .unwrap_or_else(|| road_network.nearest_node_to(pos, CELL_SIZE * 2.0)
+                        .unwrap_or(destination))
             } else {
                 destination
             };
@@ -104,14 +111,12 @@ fn run_citizen_ai(
                 // Route via road network. Stored reversed so `pop()` yields the first node.
                 waypoints.reverse();
                 citizen.waypoints = waypoints;
-                // For park visits the final target_position is set after the road waypoints.
-                if matches!(activity, ActivityType::VisitingPark) {
-                    citizen.target_position = Some(destination);
-                } else {
-                    citizen.target_position = None;
-                }
+                // Park visits: stop at the road node; no separate diagonal hop to park centre.
+                citizen.target_position = None;
             } else {
                 // No road connection yet — wait for the city to build roads.
+                let activity_name = format!("{:?}", activity);
+                crate::economy::log_pathfind_fail(&debug, &citizen.name, &activity_name);
                 citizen.target_position = None;
                 citizen.waypoints.clear();
             }

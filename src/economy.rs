@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use crate::entities::BuildingType;
+use crate::movement::CityTravelStats;
 use crate::world::CityWorld;
 use crate::roads::{RoadNetwork, SegmentType};
 use crate::time::GameTime;
@@ -62,6 +63,7 @@ fn update_economy(
     road_network: Res<RoadNetwork>,
     game_time: Res<GameTime>,
     citizen_query: Query<&crate::entities::Citizen>,
+    travel_stats: Res<CityTravelStats>,
 ) {
     let current_day = game_time.current_day();
     if current_day - economy.last_update_day < 1.0 {
@@ -83,24 +85,31 @@ fn update_economy(
         .map(|b| 10.0 * b.floors as f32)
         .sum();
 
-    let road_segments: Vec<_> = road_network.segments.iter().collect();
-    let road_segment_count = road_segments.iter()
-        .filter(|s| matches!(s.seg_type, SegmentType::Road | SegmentType::Path | SegmentType::Desire))
-        .count();
-    let road_cost: f32 = road_segments.iter()
-        .map(|s| match s.seg_type {
-            SegmentType::Road => 5.0,
-            SegmentType::Path => 3.0,
-            SegmentType::Desire => 1.0,
-            _ => 0.0,
-        })
-        .sum();
+    // Segment breakdown
+    let mut seg_road = 0usize;
+    let mut seg_path = 0usize;
+    let mut seg_desire = 0usize;
+    let mut seg_park = 0usize;
+    let mut seg_player = 0usize;
+    for s in &road_network.segments {
+        match s.seg_type {
+            SegmentType::Road            => seg_road   += 1,
+            SegmentType::Path            => seg_path   += 1,
+            SegmentType::Desire          => seg_desire += 1,
+            SegmentType::ParkPath        => seg_park   += 1,
+            SegmentType::PlayerSuggested => seg_player += 1,
+        }
+    }
+    let road_cost: f32 = seg_road as f32 * 5.0
+        + seg_path as f32 * 3.0
+        + seg_desire as f32 * 1.0;
 
     let park_cell_count = world.park_cells.len();
     let park_cost = park_cell_count as f32 * 20.0;
 
-    let avg_travel = average_travel_distance(&world);
-    let travel_overhead = avg_travel * 0.5;
+    // Travel overhead now uses real ECS-tracked distance
+    let avg_travel_px = travel_stats.avg_distance_traveled;
+    let travel_overhead = avg_travel_px * 0.5;
 
     economy.daily_expenses = building_cost + road_cost + park_cost + travel_overhead;
 
@@ -117,25 +126,42 @@ fn update_economy(
                 .unwrap_or(0);
             let _ = append_log(&format!(
                 "\n=== SESSION STARTED (unix: {now}) ===\n\
-                 day | balance | ecs_cit | world_cit | shops | income | bldg_cost(n) | road_cost(n_segs) | park_cells | park_corridors | travel(avg_dist) | net | elapsed\n"
+                 Columns: day | balance | citizens(idle) | shops | income \
+                 | bldg_cost(n_bldgs) | road_cost(road/path/desire) \
+                 | park(cells/corridors) | avg_travel_px | net | elapsed\n"
             ));
         }
+
         let world_citizen_count = world.citizens.len();
         let park_corridor_count = world.park_corridor_cells.len();
+        let idle_count = travel_stats.idle_count;
+
+        // Tallies for home/office/shop building counts
+        let home_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Home).count();
+        let office_count = world.buildings.iter().filter(|b| b.building_type == BuildingType::Office).count();
+
+        // Max floors in city
+        let max_floors = world.buildings.iter().map(|b| b.floors).max().unwrap_or(1);
+
         let _ = append_log(&format!(
-            "DAY {:.1} | bal={:.0} | ecs_cit={} | world_cit={} | shops={} | inc={:.0} | bldg={:.0}({}) | road={:.0}({}) | parks={} | corridors={} | travel={:.0}(avg={:.0}px) | net={:.0} | elapsed={:.2}\n",
+            "DAY {:.1} | bal={:.0} | ecs={} world={} idle={} \
+             | shops={} homes={} offices={} max_floors={} \
+             | inc={:.0} | bldg={:.0}({}) | road={:.0}(R:{}/P:{}/D:{}/PK:{}/PL:{}) \
+             | park({}/{}) | travel={:.0}px | net={:.0} | elapsed={:.2}\n",
             current_day,
             economy.balance,
             citizen_count as u32,
             world_citizen_count,
+            idle_count,
             shop_count as u32,
+            home_count,
+            office_count,
+            max_floors,
             economy.daily_income,
             building_cost, building_count,
-            road_cost, road_segment_count,
-            park_cell_count,
-            park_corridor_count,
-            travel_overhead,
-            avg_travel,
+            road_cost, seg_road, seg_path, seg_desire, seg_park, seg_player,
+            park_cell_count, park_corridor_count,
+            avg_travel_px,
             net,
             days_elapsed,
         ));
@@ -143,6 +169,9 @@ fn update_economy(
 }
 
 /// Estimate average home-to-work travel distance for employed citizens.
+/// NOTE: uses world.citizens positions (only synced on save) — kept for
+/// reference but prefer CityTravelStats for real-time tracking.
+#[allow(dead_code)]
 fn average_travel_distance(world: &CityWorld) -> f32 {
     let mut total = 0.0f32;
     let mut count = 0u32;
@@ -174,6 +203,35 @@ fn append_log(msg: &str) -> std::io::Result<()> {
 pub fn log_construction(debug: &mut DebugMode, description: &str, amount: f32) {
     if debug.economy_logging {
         let _ = append_log(&format!("[CONSTRUCTION] {description}: -{amount:.0}\n"));
+    }
+}
+
+/// Log a road evolution event (desire→path, path→road, degradations).
+pub fn log_road_event(debug: &DebugMode, description: &str) {
+    if debug.economy_logging {
+        let _ = append_log(&format!("[ROAD] {description}\n"));
+    }
+}
+
+/// Log a pathfinding failure for a citizen (when no route could be found).
+pub fn log_pathfind_fail(debug: &DebugMode, citizen_name: &str, activity: &str) {
+    if debug.economy_logging {
+        let _ = append_log(&format!("[PATHFIND_FAIL] {citizen_name} → {activity}: no route\n"));
+    }
+}
+
+/// Log a park creation event.
+pub fn log_park_event(debug: &DebugMode, description: &str) {
+    if debug.economy_logging {
+        let _ = append_log(&format!("[PARK] {description}\n"));
+    }
+}
+
+/// Log a general simulation event not covered by other categories.
+#[allow(dead_code)]
+pub fn log_sim_event(debug: &DebugMode, description: &str) {
+    if debug.economy_logging {
+        let _ = append_log(&format!("[SIM] {description}\n"));
     }
 }
 

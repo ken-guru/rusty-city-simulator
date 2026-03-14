@@ -72,6 +72,9 @@ pub struct Citizen {
     /// Time remaining (in game-seconds) to stay at a park.
     #[serde(default)]
     pub park_timer: f32,
+    /// Cumulative distance traveled this session (transient — not saved).
+    #[serde(skip, default)]
+    pub total_distance_traveled: f32,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -106,6 +109,7 @@ impl Citizen {
             waypoints: Vec::new(),
             last_road_node: None,
             park_timer: 0.0,
+            total_distance_traveled: 0.0,
         }
     }
 
