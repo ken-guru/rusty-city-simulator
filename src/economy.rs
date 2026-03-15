@@ -20,6 +20,8 @@ pub struct Economy {
     pub balance: f32,
     pub daily_income: f32,
     pub daily_expenses: f32,
+    pub last_income: f32,
+    pub last_expenses: f32,
     pub total_construction_cost: f32,
     last_update_day: f32,
 }
@@ -30,6 +32,8 @@ impl Economy {
             balance: 200_000.0,
             daily_income: 0.0,
             daily_expenses: 0.0,
+            last_income: 0.0,
+            last_expenses: 0.0,
             total_construction_cost: 0.0,
             last_update_day: 0.0,
         }
@@ -112,6 +116,10 @@ fn update_economy(
     let travel_overhead = avg_travel_px * 0.01;
 
     economy.daily_expenses = building_cost + road_cost + park_cost + travel_overhead;
+    
+    // Store for history tracking
+    economy.last_income = economy.daily_income;
+    economy.last_expenses = economy.daily_expenses;
 
     let net = economy.daily_income - economy.daily_expenses;
     economy.balance += net * days_elapsed;

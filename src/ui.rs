@@ -73,6 +73,26 @@ struct PanelScrollable;
 #[derive(Component)]
 struct QuitDialogRoot;
 
+/// Marks the citizen detail side panel.
+#[derive(Component)]
+struct CitizenDetailPanel;
+
+/// Marks the stats/history panel.
+#[derive(Component)]
+struct StatsPanel;
+
+/// Marks the policies panel.
+#[derive(Component)]
+struct PoliciesPanel;
+
+/// Tracks visibility of the stats panel.
+#[derive(Resource, Default)]
+struct StatsPanelVisible(bool);
+
+/// Tracks visibility of the policies panel.
+#[derive(Resource, Default)]
+struct PoliciesPanelVisible(bool);
+
 /// Actions for toolbar buttons.
 #[derive(Component, Clone, Debug)]
 pub enum ToolbarAction {
@@ -81,6 +101,8 @@ pub enum ToolbarAction {
     Save,
     Quit,
     ToggleNews,
+    ToggleStats,
+    TogglePolicies,
 }
 
 /// Actions for buttons inside the quit dialog.
@@ -167,6 +189,8 @@ impl Plugin for UIPlugin {
         app.init_resource::<QuitDialogVisible>()
             .init_resource::<PendingQuit>()
             .init_resource::<NewsPanelVisible>()
+            .init_resource::<StatsPanelVisible>()
+            .init_resource::<PoliciesPanelVisible>()
             .init_resource::<HoveredQueueItem>()
             .init_resource::<HoveredLogItem>()
             .add_systems(Startup, setup_ui)
@@ -205,6 +229,13 @@ impl Plugin for UIPlugin {
                     update_toast_panel.run_if(in_state(AppState::InGame)),
                     rebuild_news_panel.run_if(in_state(AppState::InGame)),
                     sync_news_panel_visibility,
+                    toggle_stats_panel.run_if(in_state(AppState::InGame)),
+                    sync_stats_panel_visibility.run_if(in_state(AppState::InGame)),
+                    update_stats_panel.run_if(in_state(AppState::InGame)),
+                    toggle_policies_panel.run_if(in_state(AppState::InGame)),
+                    sync_policies_panel_visibility.run_if(in_state(AppState::InGame)),
+                    update_policies_panel.run_if(in_state(AppState::InGame)),
+                    update_citizen_detail_panel.run_if(in_state(AppState::InGame)),
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -426,6 +457,8 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
                 toolbar_button(parent, "64x", ToolbarAction::SetSpeed(64.0));
             }
             toolbar_button(parent, "📰 News", ToolbarAction::ToggleNews);
+            toolbar_button(parent, "📊 Stats", ToolbarAction::ToggleStats);
+            toolbar_button(parent, "🏛️ Policies", ToolbarAction::TogglePolicies);
             toolbar_button(parent, "Save",    ToolbarAction::Save);
             toolbar_button(parent, "Quit",    ToolbarAction::Quit);
         });
@@ -734,6 +767,12 @@ fn toolbar_interaction(
                     ToolbarAction::ToggleNews => {
                         news_visible.0 = !news_visible.0;
                     }
+                    ToolbarAction::ToggleStats => {
+                        // Handled by toggle_stats_panel system
+                    }
+                    ToolbarAction::TogglePolicies => {
+                        // Handled by toggle_policies_panel system
+                    }
                 }
             }
             Interaction::Hovered => {
@@ -797,6 +836,8 @@ fn handle_pending_quit(
     citizen_query: Query<&Citizen>,
     game_name: Res<crate::city_name::GameName>,
     news_log: Res<crate::news::CityNewsLog>,
+    history: Res<crate::history::HistoryTracker>,
+    policies: Res<crate::policies::ActivePolicies>,
 ) {
     if !pending.active {
         return;
@@ -806,7 +847,7 @@ fn handle_pending_quit(
         let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
         sync_citizens_to_world(&mut world, &ecs_citizens);
 
-        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log) {
+        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log, &history, &policies) {
             eprintln!("Failed to save before quit: {e}");
         }
     }
@@ -1694,6 +1735,241 @@ fn sync_news_panel_visibility(
     mut panel_query: Query<&mut Node, With<NewsFeedPanel>>,
 ) {
     if !visible.is_changed() { return; }
-    let Ok(mut node) = panel_query.single_mut() else { return };
+    let Ok(mut node) = panel_query.single_mut() else { return; };
     node.display = if visible.0 { Display::Flex } else { Display::None };
+}
+
+fn toggle_stats_panel(
+    buttons: Query<(&ToolbarAction, &Interaction), Changed<Interaction>>,
+    mut visible: ResMut<StatsPanelVisible>,
+) {
+    for (action, interaction) in buttons.iter() {
+        if matches!(action, ToolbarAction::ToggleStats) && *interaction == Interaction::Pressed {
+            visible.0 = !visible.0;
+        }
+    }
+}
+
+fn sync_stats_panel_visibility(
+    visible: Res<StatsPanelVisible>,
+    mut commands: Commands,
+    mut panel_query: Query<Entity, With<StatsPanel>>,
+) {
+    if !visible.is_changed() { return; }
+    if visible.0 {
+        if panel_query.is_empty() {
+            commands.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(10.0),
+                    top: Val::Px(150.0),
+                    width: Val::Px(380.0),
+                    height: Val::Px(280.0),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(12.0)),
+                    overflow: Overflow::scroll_y(),
+                    row_gap: Val::Px(8.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
+                ScrollPosition::default(),
+                PanelScrollable,
+                StatsPanel,
+            ));
+        }
+    } else {
+        for entity in panel_query.iter() {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+fn update_stats_panel(
+    mut commands: Commands,
+    history: Res<crate::history::HistoryTracker>,
+    panel_query: Query<Entity, With<StatsPanel>>,
+) {
+    if !history.is_changed() { return; }
+    let Ok(panel) = panel_query.single() else { return; };
+    
+    commands.entity(panel).despawn_children();
+    commands.entity(panel).with_children(|parent| {
+        parent.spawn((
+            Text::new("📊 City History (Last 30 days)"),
+            TextFont { font_size: 14.0, ..Default::default() },
+            TextColor(Color::srgb(0.9, 0.85, 0.5)),
+        ));
+        
+        if history.snapshots.is_empty() {
+            parent.spawn((
+                Text::new("No history data yet"),
+                TextFont { font_size: 12.0, ..Default::default() },
+                TextColor(Color::srgb(0.6, 0.6, 0.6)),
+            ));
+        } else {
+            for snapshot in history.snapshots.iter().rev().take(15) {
+                let label = format!(
+                    "Day {:.1}: Pop={} | Inc={:.0} | Exp={:.0} | Hap={:.1}",
+                    snapshot.day, snapshot.population, snapshot.income, snapshot.expenses, snapshot.happiness
+                );
+                parent.spawn((
+                    Text::new(label),
+                    TextFont { font_size: 11.0, ..Default::default() },
+                    TextColor(Color::srgb(0.75, 0.75, 0.75)),
+                ));
+            }
+        }
+    });
+}
+
+fn toggle_policies_panel(
+    buttons: Query<(&ToolbarAction, &Interaction), Changed<Interaction>>,
+    mut visible: ResMut<PoliciesPanelVisible>,
+) {
+    for (action, interaction) in buttons.iter() {
+        if matches!(action, ToolbarAction::TogglePolicies) && *interaction == Interaction::Pressed {
+            visible.0 = !visible.0;
+        }
+    }
+}
+
+fn sync_policies_panel_visibility(
+    visible: Res<PoliciesPanelVisible>,
+    mut commands: Commands,
+    mut panel_query: Query<Entity, With<PoliciesPanel>>,
+) {
+    if !visible.is_changed() { return; }
+    if visible.0 {
+        if panel_query.is_empty() {
+            commands.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(10.0),
+                    top: Val::Px(400.0),
+                    width: Val::Px(360.0),
+                    height: Val::Px(220.0),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(12.0)),
+                    overflow: Overflow::scroll_y(),
+                    row_gap: Val::Px(10.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
+                ScrollPosition::default(),
+                PanelScrollable,
+                PoliciesPanel,
+            ));
+        }
+    } else {
+        for entity in panel_query.iter() {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+fn update_policies_panel(
+    mut commands: Commands,
+    policies: Res<crate::policies::ActivePolicies>,
+    panel_query: Query<Entity, With<PoliciesPanel>>,
+) {
+    if !policies.is_changed() { return; }
+    let Ok(panel) = panel_query.single() else { return; };
+    
+    commands.entity(panel).despawn_children();
+    commands.entity(panel).with_children(|parent| {
+        parent.spawn((
+            Text::new("🏛️ City Policies"),
+            TextFont { font_size: 14.0, ..Default::default() },
+            TextColor(Color::srgb(0.9, 0.85, 0.5)),
+        ));
+        
+        let park_status = if policies.park_day { "✓ ON" } else { "✗ OFF" };
+        parent.spawn((
+            Text::new(format!("Park Day {}\nCitizens visit parks 2× more\nHappiness +10%", park_status)),
+            TextFont { font_size: 11.0, ..Default::default() },
+            TextColor(Color::srgb(0.8, 0.8, 0.8)),
+        ));
+        
+        let overtime_status = if policies.overtime { "✓ ON" } else { "✗ OFF" };
+        parent.spawn((
+            Text::new(format!("Overtime {}\nWorkers stay longer\nIncome +20%, Happiness -15%", overtime_status)),
+            TextFont { font_size: 11.0, ..Default::default() },
+            TextColor(Color::srgb(0.8, 0.8, 0.8)),
+        ));
+        
+        let open_status = if policies.open_city { "✓ ON" } else { "✗ OFF" };
+        parent.spawn((
+            Text::new(format!("Open City {}\nMigration +50% more frequent\nHappiness +5%", open_status)),
+            TextFont { font_size: 11.0, ..Default::default() },
+            TextColor(Color::srgb(0.8, 0.8, 0.8)),
+        ));
+        
+        let happiness_delta = policies.happiness_impact();
+        let delta_text = if happiness_delta > 0.0 {
+            format!("+{:.0}%", happiness_delta * 100.0)
+        } else if happiness_delta < 0.0 {
+            format!("{:.0}%", happiness_delta * 100.0)
+        } else {
+            "0%".to_string()
+        };
+        parent.spawn((
+            Text::new(format!("Net Happiness Impact: {}", delta_text)),
+            TextFont { font_size: 12.0, ..Default::default() },
+            TextColor(Color::srgb(0.95, 0.8, 0.6)),
+        ));
+    });
+}
+
+fn update_citizen_detail_panel(
+    mut commands: Commands,
+    citizens: Query<&crate::entities::Citizen>,
+    selection: Res<crate::CitizenSelection>,
+    panel_query: Query<Entity, With<CitizenDetailPanel>>,
+) {
+    let Ok(panel) = panel_query.single() else { return; };
+    
+    commands.entity(panel).despawn_children();
+    
+    // Update with selected citizen data
+    if let Some(selected_entity) = selection.selected {
+        if let Ok(citizen) = citizens.get(selected_entity) {
+            commands.entity(panel).with_children(|parent| {
+                parent.spawn((
+                    Text::new(&citizen.name),
+                    TextFont { font_size: 16.0, ..Default::default() },
+                    TextColor(Color::srgb(0.95, 0.9, 0.7)),
+                ));
+                
+                let gender_str = match citizen.gender {
+                    crate::entities::Gender::Male => "Male",
+                    crate::entities::Gender::Female => "Female",
+                };
+                parent.spawn((
+                    Text::new(format!("{} | Age: {:.1} years", gender_str, citizen.age)),
+                    TextFont { font_size: 12.0, ..Default::default() },
+                    TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                ));
+                
+                let home = if citizen.home_building_id.is_some() { "Housed" } else { "Homeless" };
+                let work = if citizen.workplace_building_id.is_some() { "Employed" } else { "Unemployed" };
+                parent.spawn((
+                    Text::new(format!("{} | {}", home, work)),
+                    TextFont { font_size: 11.0, ..Default::default() },
+                    TextColor(Color::srgb(0.75, 0.75, 0.75)),
+                ));
+                
+                parent.spawn((
+                    Text::new(format!(
+                        "Hunger: {:.0}%  Energy: {:.0}%\nSocial: {:.0}%  Hygiene: {:.0}%",
+                        citizen.hunger * 100.0,
+                        citizen.energy * 100.0,
+                        citizen.social * 100.0,
+                        citizen.hygiene * 100.0,
+                    )),
+                    TextFont { font_size: 10.0, ..Default::default() },
+                    TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                ));
+            });
+        }
+    }
 }

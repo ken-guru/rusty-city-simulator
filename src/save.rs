@@ -51,6 +51,10 @@ pub struct GameSave {
     pub city_name: String,
     #[serde(default)]
     pub news_log: CityNewsLog,
+    #[serde(default)]
+    pub history: crate::history::HistoryTracker,
+    #[serde(default)]
+    pub active_policies: crate::policies::ActivePolicies,
 }
 
 fn default_version() -> String {
@@ -93,6 +97,8 @@ pub fn save_game(
     economy: &Economy,
     game_name: &GameName,
     news_log: &CityNewsLog,
+    history: &crate::history::HistoryTracker,
+    policies: &crate::policies::ActivePolicies,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     fs::create_dir_all(SAVES_DIR)?;
 
@@ -112,6 +118,8 @@ pub fn save_game(
         economy: economy.clone(),
         city_name: game_name.0.clone(),
         news_log: news_log.clone(),
+        history: history.clone(),
+        active_policies: *policies,
     };
 
     let json = serde_json::to_string(&save)?;
@@ -313,6 +321,8 @@ fn handle_save_load(
     citizen_query: Query<&Citizen>,
     game_name: Res<GameName>,
     news_log: Res<CityNewsLog>,
+    history: Res<crate::history::HistoryTracker>,
+    policies: Res<crate::policies::ActivePolicies>,
 ) {
     let triggered_by_key = input.just_pressed(KeyCode::F5);
     let triggered_by_ui  = save_events.read().next().is_some();
@@ -321,7 +331,7 @@ fn handle_save_load(
         let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
         sync_citizens_to_world(&mut world, &ecs_citizens);
 
-        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log) {
+        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log, &history, &policies) {
             eprintln!("Failed to save game: {e}");
         }
     }

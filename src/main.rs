@@ -9,9 +9,11 @@ mod entities;
 mod events;
 mod grid;
 mod happiness;
+mod history;
 mod hovered;
 mod housing;
 mod movement;
+mod policies;
 mod reproduction;
 mod roads;
 mod save;
@@ -33,9 +35,11 @@ use economy::EconomyPlugin;
 use entities::*;
 use events::EventsPlugin;
 use happiness::HappinessPlugin;
+use history::HistoryPlugin;
 use hovered::HoveredEntity;
 use housing::HousingPlugin;
 use movement::MovementPlugin;
+use policies::PoliciesPlugin;
 use reproduction::ReproductionPlugin;
 use roads::{RoadEntities, RoadsPlugin};
 use save::SaveLoadPlugin;
@@ -108,6 +112,12 @@ pub struct BuildMode {
     pub selected_type: Option<BuildingType>,
 }
 
+/// Tracks which citizen (if any) is selected for detail viewing.
+#[derive(Resource, Default, Clone)]
+pub struct CitizenSelection {
+    pub selected: Option<Entity>,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
@@ -126,6 +136,8 @@ fn main() {
         .add_plugins(StartScreenPlugin)
         .add_plugins(EventsPlugin)
         .add_plugins(HappinessPlugin)
+        .add_plugins(HistoryPlugin)
+        .add_plugins(PoliciesPlugin)
         .insert_resource(CityWorld::new())
         .insert_resource(GameState::default())
         .insert_resource(BuildingSelection::default())
@@ -137,6 +149,8 @@ fn main() {
         .add_plugins(NewsPlugin)
         .insert_resource(GameName::default())
         .insert_resource(BuildMode::default())
+        .insert_resource(CitizenSelection::default())
+        .insert_resource(policies::ActivePolicies::default())
         .insert_resource(happiness::CityHappiness::default())
         .insert_resource(events::RandomEventQueue::default())
         .insert_resource(events::EventModalState::default())
@@ -210,6 +224,8 @@ fn cleanup_ingame(
     commands.insert_resource(housing::HousingCooldown::default());
     commands.insert_resource(movement::CityTravelStats::default());
     commands.insert_resource(BuildMode::default());
+    commands.insert_resource(CitizenSelection::default());
+    commands.insert_resource(policies::ActivePolicies::default());
     commands.insert_resource(happiness::CityHappiness::default());
     commands.insert_resource(events::RandomEventQueue::default());
     commands.insert_resource(events::EventModalState::default());
@@ -231,6 +247,8 @@ fn setup(
     mut economy: ResMut<economy::Economy>,
     mut game_name: ResMut<city_name::GameName>,
     mut city_news: ResMut<news::CityNewsLog>,
+    mut history: ResMut<history::HistoryTracker>,
+    mut policies: ResMut<policies::ActivePolicies>,
 ) {
     // If the start screen queued a save to load, apply it before spawning entities.
     if let Some(path) = pending_load.0.take() {
@@ -245,6 +263,8 @@ fn setup(
                 *economy               = save_data.economy;
                 game_name.0 = save_data.city_name.clone();
                 *city_news = save_data.news_log.clone();
+                *history = save_data.history;
+                *policies = save_data.active_policies;
 
                 // Reset citizen navigation state so stale waypoints/targets from
                 // the saved game don't cause pathfinding issues on re-entry.
