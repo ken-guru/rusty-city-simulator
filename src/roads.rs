@@ -1121,12 +1121,14 @@ fn evolve_roads(
             SegmentType::Desire if seg.usage >= PATH_THRESHOLD => {
                 seg.seg_type = SegmentType::Path;
                 seg.type_changed_day = now;
+                seg.last_used_day = now; // reset so degrade timer starts fresh
                 crate::economy::log_road_event(&debug, &format!(
                     "desire→path (usage={:.0}, day={:.1})", seg.usage, now));
             }
             SegmentType::Path if seg.usage >= ROAD_THRESHOLD => {
                 seg.seg_type = SegmentType::Road;
                 seg.type_changed_day = now;
+                seg.last_used_day = now; // reset so degrade timer starts fresh
                 crate::economy::log_road_event(&debug, &format!(
                     "path→road via usage (usage={:.0}, day={:.1})", seg.usage, now));
             }
@@ -1135,6 +1137,7 @@ fn evolve_roads(
             SegmentType::Path if (now - seg.type_changed_day) >= PATH_TO_ROAD_AGE_DAYS => {
                 seg.seg_type = SegmentType::Road;
                 seg.type_changed_day = now;
+                seg.last_used_day = now; // reset so degrade timer starts fresh
                 crate::economy::log_road_event(&debug, &format!(
                     "path→road via age (age={:.0}d, usage={:.0}, day={:.1})",
                     now - seg.type_changed_day, seg.usage, now));
@@ -1142,6 +1145,7 @@ fn evolve_roads(
             SegmentType::PlayerSuggested if seg.usage >= 5.0 => {
                 seg.seg_type = SegmentType::Path;
                 seg.type_changed_day = now;
+                seg.last_used_day = now; // reset so degrade timer starts fresh
                 crate::economy::log_road_event(&debug, &format!(
                     "player-suggested→path (usage={:.0}, day={:.1})", seg.usage, now));
             }

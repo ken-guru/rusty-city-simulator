@@ -204,6 +204,7 @@ fn apply_event_consequences(
     mut city_happiness: ResMut<crate::happiness::CityHappiness>,
     game_time: Res<GameTime>,
     mut news: ResMut<crate::news::CityNewsLog>,
+    mut spawn_immigrants: MessageWriter<crate::reproduction::SpawnImmigrantsMessage>,
 ) {
     for chosen in events.read() {
         let c = &chosen.consequence;
@@ -220,10 +221,8 @@ fn apply_event_consequences(
             news.push(game_time.current_day(), "😊", format!("City happiness {sign}{:.0}% for {:.0} days", c.happiness_delta * 100.0, c.happiness_duration_days));
         }
 
-        // citizen_delta (positive = spawn citizens) is handled by ui.rs which
-        // has access to Commands — signal via news if needed.
         if c.citizen_delta > 0 {
-            news.push(game_time.current_day(), "👥", format!("{} new citizens are moving in!", c.citizen_delta));
+            spawn_immigrants.write(crate::reproduction::SpawnImmigrantsMessage { count: c.citizen_delta as u32 });
         } else if c.citizen_delta < 0 {
             news.push(game_time.current_day(), "👤", format!("{} citizens left the city.", -c.citizen_delta));
         }

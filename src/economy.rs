@@ -46,6 +46,7 @@ impl Economy {
     }
 
     /// Net per day (positive = surplus).
+    #[allow(dead_code)]
     pub fn daily_net(&self) -> f32 {
         self.daily_income - self.daily_expenses
     }

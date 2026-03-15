@@ -229,6 +229,7 @@ fn cleanup_ingame(
     commands.insert_resource(happiness::CityHappiness::default());
     commands.insert_resource(events::RandomEventQueue::default());
     commands.insert_resource(events::EventModalState::default());
+    commands.insert_resource(reproduction::GhostCityTracker::default());
     // Reset log header flag so a new session header is written if debug logging fires again.
     debug.log_header_written = false;
 }

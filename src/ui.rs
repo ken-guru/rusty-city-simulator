@@ -80,19 +80,13 @@ struct CitizenDetailPanel;
 
 /// Marks the stats/history panel.
 #[derive(Component)]
+#[allow(dead_code)]
 struct StatsPanel;
 
-/// Marks the policies panel.
+/// Marks the policies panel (legacy, content now in sidebar).
 #[derive(Component)]
+#[allow(dead_code)]
 struct PoliciesPanel;
-
-/// Tracks visibility of the stats panel.
-#[derive(Resource, Default)]
-struct StatsPanelVisible(bool);
-
-/// Tracks visibility of the policies panel.
-#[derive(Resource, Default)]
-struct PoliciesPanelVisible(bool);
 
 /// Actions for toolbar buttons.
 #[derive(Component, Clone, Debug)]
@@ -101,9 +95,6 @@ pub enum ToolbarAction {
     SetSpeed(f32),
     Save,
     Quit,
-    ToggleNews,
-    ToggleStats,
-    TogglePolicies,
 }
 
 /// Actions for buttons inside the quit dialog.
@@ -141,12 +132,15 @@ pub struct RouteInfoPanel;
 #[derive(Component)]
 pub struct RouteInfoText;
 
+#[allow(dead_code)]
 #[derive(Component)]
 pub struct EconomyPanel;
 
+#[allow(dead_code)]
 #[derive(Component)]
 pub struct EconomyBalanceText;
 
+#[allow(dead_code)]
 #[derive(Component)]
 pub struct EconomyFlowText;
 
@@ -183,9 +177,45 @@ pub enum PolicyButton {
     OpenCity,
 }
 
+/// Tracks which of the 5 sidebar sections are expanded.
+/// Order: 0=Queue, 1=History, 2=News, 3=Stats, 4=Policies
 #[derive(Resource, Default)]
-struct NewsPanelVisible(bool);
+struct SidebarExpanded([bool; 5]);
 
+/// Marks the root left sidebar node.
+#[derive(Component)]
+struct LeftSidebar;
+
+/// Marks a section content container (the collapsible area).
+#[derive(Component)]
+struct SidebarSectionContent(usize);
+
+/// Marks a section header button.
+#[derive(Component)]
+struct SidebarSectionHeader(usize);
+
+/// Marks the top-right compact HUD strip text.
+#[derive(Component)]
+struct HudStripText;
+
+/// Marker for stats sidebar section content.
+#[derive(Component)]
+struct StatsSectionContent;
+
+/// Marker for policies sidebar section content.
+#[derive(Component)]
+struct PoliciesSectionContent;
+
+/// Countdown timer on a dialog; auto-triggers default action at 0.
+#[derive(Component)]
+struct DialogCountdown {
+    remaining: f32,
+    total: f32,
+}
+
+/// Marks countdown text nodes inside dialogs.
+#[derive(Component)]
+struct CountdownText;
 
 #[derive(Component, Clone, Debug)]
 pub enum BuildingPanelAction {
@@ -205,18 +235,13 @@ impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<QuitDialogVisible>()
             .init_resource::<PendingQuit>()
-            .init_resource::<NewsPanelVisible>()
-            .init_resource::<StatsPanelVisible>()
-            .init_resource::<PoliciesPanelVisible>()
             .init_resource::<HoveredQueueItem>()
             .init_resource::<HoveredLogItem>()
+            .init_resource::<SidebarExpanded>()
             .add_systems(Startup, setup_ui)
-            .add_systems(OnEnter(AppState::InGame), show_economy_panel)
-            .add_systems(OnExit(AppState::InGame), hide_economy_panel)
             .add_systems(
                 Update,
                 (
-                    update_time_ui,
                     update_hovered_info,
                     toolbar_interaction,
                     quit_dialog_interaction,
@@ -228,6 +253,11 @@ impl Plugin for UIPlugin {
                     building_panel_interaction,
                     update_citizen_tooltip,
                     rebuild_queue_panel,
+                ),
+            )
+            .add_systems(
+                Update,
+                (
                     sync_queue_hover_state,
                     sync_queue_highlight,
                     sync_selected_building_highlight,
@@ -235,52 +265,211 @@ impl Plugin for UIPlugin {
                     sync_log_hover_state,
                     sync_log_highlight,
                     scroll_panels,
+                    handle_sidebar_header_click,
+                    sync_sidebar_sections,
+                    tick_dialog_countdowns,
                 ),
             )
             .add_systems(
                 Update,
                 (
-                    update_economy_ui.run_if(in_state(AppState::InGame)),
+                    update_hud_strip.run_if(in_state(AppState::InGame)),
                     update_floor_labels.run_if(in_state(AppState::InGame)),
                     update_city_name_label.run_if(in_state(AppState::InGame)),
                     update_toast_panel.run_if(in_state(AppState::InGame)),
                     rebuild_news_panel.run_if(in_state(AppState::InGame)),
-                    sync_news_panel_visibility,
-                    toggle_stats_panel.run_if(in_state(AppState::InGame)),
-                    sync_stats_panel_visibility.run_if(in_state(AppState::InGame)),
-                    update_stats_panel.run_if(in_state(AppState::InGame)),
-                    toggle_policies_panel.run_if(in_state(AppState::InGame)),
-                    sync_policies_panel_visibility.run_if(in_state(AppState::InGame)),
-                    update_policies_panel.run_if(in_state(AppState::InGame)),
+                    update_stats_section.run_if(in_state(AppState::InGame)),
+                    update_policies_section.run_if(in_state(AppState::InGame)),
                     update_citizen_detail_panel.run_if(in_state(AppState::InGame)),
                     sync_event_modal.run_if(in_state(AppState::InGame)),
                     handle_event_option_click.run_if(in_state(AppState::InGame)),
                     handle_policy_button_click.run_if(in_state(AppState::InGame)),
                 ),
             )
-            // Run the actual exit at the very end of the frame so any
-            // pending events (e.g. save) have already been dispatched.
             .add_systems(Last, handle_pending_quit);
     }
 }
 
 fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
-    // Time + population (top left)
-    commands
-        .spawn(Node {
+    // LEFT SIDEBAR (260px wide, from top to above toolbar)
+    let sidebar = commands.spawn((
+        Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(10.0),
-            top: Val::Px(10.0),
+            left: Val::Px(0.0),
+            top: Val::Px(0.0),
+            bottom: Val::Px(56.0),
+            width: Val::Px(260.0),
+            flex_direction: FlexDirection::Column,
+            overflow: Overflow::clip(),
             ..Default::default()
-        })
-        .with_children(|parent| {
-            parent.spawn((
-                Text::new(""),
-                TextFont { font_size: 16.0, ..Default::default() },
-                TextColor(Color::srgb(1.0, 1.0, 1.0)),
-                TimeText,
+        },
+        BackgroundColor(Color::srgba(0.08, 0.08, 0.12, 0.88)),
+        ZIndex(30),
+        LeftSidebar,
+    )).id();
+
+    // Spawn the 5 sidebar sections
+    let sections: &[(&str, &str)] = &[
+        ("🔨", "Queue"),
+        ("📋", "History"),
+        ("📰", "News"),
+        ("📊", "Stats"),
+        ("🏛️", "Policies"),
+    ];
+
+    for (i, (icon, title)) in sections.iter().enumerate() {
+        // Header button
+        let header_label = format!("▶ {} {}", icon, title);
+        let header = commands.spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(36.0),
+                padding: UiRect::all(Val::Px(8.0)),
+                align_items: AlignItems::Center,
+                ..Default::default()
+            },
+            Button,
+            BackgroundColor(Color::srgba(0.15, 0.15, 0.2, 0.9)),
+            Interaction::default(),
+            SidebarSectionHeader(i),
+        )).with_children(|btn| {
+            btn.spawn((
+                Text::new(header_label),
+                TextFont { font_size: 13.0, ..Default::default() },
+                TextColor(Color::srgb(0.85, 0.85, 0.85)),
             ));
-        });
+        }).id();
+
+        // Content node (collapsed by default)
+        let content = match i {
+            0 => {
+                commands.spawn((
+                    Node {
+                        display: Display::None,
+                        flex_direction: FlexDirection::Column,
+                        max_height: Val::Px(280.0),
+                        overflow: Overflow::scroll_y(),
+                        width: Val::Percent(100.0),
+                        padding: UiRect::all(Val::Px(6.0)),
+                        ..Default::default()
+                    },
+                    BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.95)),
+                    ScrollPosition::default(),
+                    PanelScrollable,
+                    SidebarSectionContent(i),
+                    QueuePanel,
+                )).id()
+            }
+            1 => {
+                commands.spawn((
+                    Node {
+                        display: Display::None,
+                        flex_direction: FlexDirection::Column,
+                        max_height: Val::Px(280.0),
+                        overflow: Overflow::scroll_y(),
+                        width: Val::Percent(100.0),
+                        padding: UiRect::all(Val::Px(6.0)),
+                        ..Default::default()
+                    },
+                    BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.95)),
+                    ScrollPosition::default(),
+                    PanelScrollable,
+                    SidebarSectionContent(i),
+                    LogPanel,
+                )).id()
+            }
+            2 => {
+                commands.spawn((
+                    Node {
+                        display: Display::None,
+                        flex_direction: FlexDirection::Column,
+                        max_height: Val::Px(280.0),
+                        overflow: Overflow::scroll_y(),
+                        width: Val::Percent(100.0),
+                        padding: UiRect::all(Val::Px(6.0)),
+                        ..Default::default()
+                    },
+                    BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.95)),
+                    ScrollPosition::default(),
+                    PanelScrollable,
+                    SidebarSectionContent(i),
+                    NewsFeedPanel,
+                )).id()
+            }
+            3 => {
+                commands.spawn((
+                    Node {
+                        display: Display::None,
+                        flex_direction: FlexDirection::Column,
+                        max_height: Val::Px(280.0),
+                        overflow: Overflow::scroll_y(),
+                        width: Val::Percent(100.0),
+                        padding: UiRect::all(Val::Px(6.0)),
+                        ..Default::default()
+                    },
+                    BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.95)),
+                    ScrollPosition::default(),
+                    PanelScrollable,
+                    SidebarSectionContent(i),
+                    StatsSectionContent,
+                )).with_children(|p| {
+                    p.spawn((
+                        Text::new("No history yet"),
+                        TextFont { font_size: 11.0, ..Default::default() },
+                        TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                    ));
+                }).id()
+            }
+            _ => {
+                commands.spawn((
+                    Node {
+                        display: Display::None,
+                        flex_direction: FlexDirection::Column,
+                        max_height: Val::Px(280.0),
+                        overflow: Overflow::scroll_y(),
+                        width: Val::Percent(100.0),
+                        padding: UiRect::all(Val::Px(6.0)),
+                        ..Default::default()
+                    },
+                    BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.95)),
+                    ScrollPosition::default(),
+                    PanelScrollable,
+                    SidebarSectionContent(i),
+                    PoliciesSectionContent,
+                )).with_children(|p| {
+                    p.spawn((
+                        Text::new("Loading policies..."),
+                        TextFont { font_size: 11.0, ..Default::default() },
+                        TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                    ));
+                }).id()
+            }
+        };
+
+        commands.entity(sidebar).add_children(&[header, content]);
+    }
+
+    // TOP-RIGHT HUD STRIP
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(10.0),
+            top: Val::Px(10.0),
+            padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+            border_radius: BorderRadius::all(Val::Px(6.0)),
+            ..Default::default()
+        },
+        BackgroundColor(Color::srgba(0.05, 0.05, 0.1, 0.82)),
+        ZIndex(35),
+    )).with_children(|p| {
+        p.spawn((
+            Text::new(""),
+            TextFont { font_size: 14.0, ..Default::default() },
+            TextColor(Color::srgb(0.9, 0.9, 0.9)),
+            HudStripText,
+            TimeText,
+        ));
+    });
 
     // City name label (top center)
     commands.spawn(Node {
@@ -299,12 +488,12 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
         ));
     });
 
-    // Toast panel (top right, below hover info)
+    // Toast panel (top right, below HUD strip)
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
             right: Val::Px(10.0),
-            top: Val::Px(60.0),
+            top: Val::Px(50.0),
             width: Val::Px(320.0),
             padding: UiRect::all(Val::Px(10.0)),
             flex_direction: FlexDirection::Column,
@@ -324,103 +513,11 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
         ));
     });
 
-    // News feed panel (right side)
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            right: Val::Px(10.0),
-            top: Val::Px(100.0),
-            width: Val::Px(340.0),
-            max_height: Val::Px(400.0),
-            padding: UiRect::all(Val::Px(8.0)),
-            flex_direction: FlexDirection::Column,
-            overflow: Overflow::scroll_y(),
-            display: Display::None,
-            border_radius: BorderRadius::all(Val::Px(6.0)),
-            row_gap: Val::Px(4.0),
-            ..Default::default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
-        ZIndex(85),
-        ScrollPosition::default(),
-        PanelScrollable,
-        NewsFeedPanel,
-    ));
-
-    // Construction queue + log panels share a flex-column wrapper so they
-    // stack vertically and never overlap regardless of queue length.
-    // Each panel manages its own Display::Flex/None; the wrapper is always visible.
-    commands.spawn(Node {
-        position_type: PositionType::Absolute,
-        left: Val::Px(10.0),
-        top: Val::Px(48.0),
-        flex_direction: FlexDirection::Column,
-        row_gap: Val::Px(6.0),
-        ..Default::default()
-    }).with_children(|wrapper| {
-        // Construction queue panel — hidden when queue is empty.
-        // Children (interactive rows) managed dynamically by rebuild_queue_panel.
-        wrapper.spawn((
-            Node {
-                padding: UiRect::all(Val::Px(8.0)),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(2.0),
-                max_height: Val::Px(220.0),
-                overflow: Overflow::scroll_y(),
-                display: Display::None,
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                ..Default::default()
-            },
-            BackgroundColor(Color::srgba(0.08, 0.12, 0.18, 0.88)),
-            ZIndex(40),
-            ScrollPosition::default(),
-            PanelScrollable,
-            QueuePanel,
-        ));
-
-        // Construction history log panel — hidden when empty.
-        // Children managed dynamically by rebuild_log_panel.
-        wrapper.spawn((
-            Node {
-                padding: UiRect::all(Val::Px(8.0)),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(2.0),
-                max_height: Val::Px(220.0),
-                overflow: Overflow::scroll_y(),
-                display: Display::None,
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                ..Default::default()
-            },
-            BackgroundColor(Color::srgba(0.06, 0.10, 0.08, 0.88)),
-            ZIndex(39),
-            ScrollPosition::default(),
-            PanelScrollable,
-            LogPanel,
-        ));
-    });
-
-    // Citizen info on hover (top right)
-    commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
-            right: Val::Px(10.0),
-            top: Val::Px(10.0),
-            ..Default::default()
-        })
-        .with_children(|parent| {
-            parent.spawn((
-                Text::new("Hover over a citizen for info"),
-                TextFont { font_size: 14.0, ..Default::default() },
-                TextColor(Color::srgb(0.8, 0.8, 0.8)),
-                InfoText,
-            ));
-        });
-
     // Legend (bottom left, above toolbar)
     commands
         .spawn(Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(10.0),
+            left: Val::Px(270.0),
             bottom: Val::Px(70.0),
             flex_direction: FlexDirection::Column,
             ..Default::default()
@@ -445,7 +542,7 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
             ));
         });
 
-    // Toolbar (bottom, full width) — hidden on start screen
+    // Toolbar (bottom, full width)
     commands
         .spawn((
             Node {
@@ -476,9 +573,6 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
                 toolbar_button(parent, "32x", ToolbarAction::SetSpeed(32.0));
                 toolbar_button(parent, "64x", ToolbarAction::SetSpeed(64.0));
             }
-            toolbar_button(parent, "📰 News", ToolbarAction::ToggleNews);
-            toolbar_button(parent, "📊 Stats", ToolbarAction::ToggleStats);
-            toolbar_button(parent, "🏛️ Policies", ToolbarAction::TogglePolicies);
             toolbar_button(parent, "Save",    ToolbarAction::Save);
             toolbar_button(parent, "Quit",    ToolbarAction::Quit);
         });
@@ -500,6 +594,7 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
             ZIndex(100),
             QuitDialogRoot,
+            DialogCountdown { remaining: 60.0, total: 60.0 },
         ))
         .with_children(|overlay| {
             overlay
@@ -526,6 +621,12 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
                         TextFont { font_size: 14.0, ..Default::default() },
                         TextColor(Color::srgb(0.65, 0.65, 0.65)),
                     ));
+                    dialog.spawn((
+                        Text::new("Auto-cancelling in 60s"),
+                        TextFont { font_size: 12.0, ..Default::default() },
+                        TextColor(Color::srgb(0.5, 0.7, 0.5)),
+                        CountdownText,
+                    ));
                     // Button row
                     dialog
                         .spawn(Node {
@@ -534,10 +635,10 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
                             ..Default::default()
                         })
                         .with_children(|row| {
-                            dialog_button(row, "Save & Quit",       QuitDialogAction::SaveAndQuit,   Color::srgba(0.15, 0.40, 0.20, 0.95));
-                            dialog_button(row, "Quit Without Saving", QuitDialogAction::QuitNoSave,  Color::srgba(0.40, 0.15, 0.15, 0.95));
-                            dialog_button(row, "Return to Menu",    QuitDialogAction::ReturnToMenu,  Color::srgba(0.20, 0.30, 0.45, 0.95));
-                            dialog_button(row, "Cancel",            QuitDialogAction::Cancel,        Color::srgba(0.20, 0.22, 0.28, 0.95));
+                            dialog_button(row, "Save & Quit",         QuitDialogAction::SaveAndQuit,   Color::srgba(0.15, 0.40, 0.20, 0.95));
+                            dialog_button(row, "Quit Without Saving", QuitDialogAction::QuitNoSave,    Color::srgba(0.40, 0.15, 0.15, 0.95));
+                            dialog_button(row, "Return to Menu",      QuitDialogAction::ReturnToMenu,  Color::srgba(0.20, 0.30, 0.45, 0.95));
+                            dialog_button(row, "Cancel",              QuitDialogAction::Cancel,        Color::srgba(0.20, 0.22, 0.28, 0.95));
                         });
                 });
         });
@@ -638,36 +739,6 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
                 CitizenTooltipText,
             ));
         });
-
-    // Economy panel — bottom left
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(10.0),
-            bottom: Val::Px(10.0),
-            padding: UiRect::all(Val::Px(6.0)),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(2.0),
-            ..Default::default()
-        },
-        BackgroundColor(Color::srgba(0.05, 0.08, 0.12, 0.85)),
-        ZIndex(30),
-        Visibility::Hidden,
-        EconomyPanel,
-    )).with_children(|p| {
-        p.spawn((
-            Text::new("Balance: $0"),
-            TextFont { font_size: 13.0, ..Default::default() },
-            TextColor(Color::srgb(0.8, 0.9, 0.6)),
-            EconomyBalanceText,
-        ));
-        p.spawn((
-            Text::new("+$0 / -$0 per day"),
-            TextFont { font_size: 11.0, ..Default::default() },
-            TextColor(Color::srgb(0.6, 0.7, 0.5)),
-            EconomyFlowText,
-        ));
-    });
 }
 
 fn toolbar_button(parent: &mut ChildSpawnerCommands, label: &str, action: ToolbarAction) {
@@ -761,7 +832,7 @@ fn toolbar_interaction(
     mut game_time: ResMut<GameTime>,
     mut save_events: MessageWriter<SaveRequestEvent>,
     mut quit_visible: ResMut<QuitDialogVisible>,
-    mut news_visible: ResMut<NewsPanelVisible>,
+    mut quit_countdown_query: Query<&mut DialogCountdown, With<QuitDialogRoot>>,
 ) {
     for (interaction, action, mut bg) in &mut interaction_query {
         match interaction {
@@ -783,15 +854,10 @@ fn toolbar_interaction(
                     }
                     ToolbarAction::Quit => {
                         quit_visible.0 = true;
-                    }
-                    ToolbarAction::ToggleNews => {
-                        news_visible.0 = !news_visible.0;
-                    }
-                    ToolbarAction::ToggleStats => {
-                        // Handled by toggle_stats_panel system
-                    }
-                    ToolbarAction::TogglePolicies => {
-                        // Handled by toggle_policies_panel system
+                        // Reset countdown when dialog opens
+                        for mut cd in quit_countdown_query.iter_mut() {
+                            cd.remaining = cd.total;
+                        }
                     }
                 }
             }
@@ -899,7 +965,7 @@ fn sync_toolbar_button_states(
                 game_time.time_scale != 0.0
                     && (game_time.time_scale - s).abs() < 0.001
             }
-            _ => false,
+            ToolbarAction::Save | ToolbarAction::Quit => false,
         };
 
         *bg = if is_active {
@@ -923,29 +989,6 @@ fn sync_quit_dialog_visibility(
     for mut node in &mut dialog_query {
         node.display = if quit_visible.0 { Display::Flex } else { Display::None };
     }
-}
-
-fn update_time_ui(
-    mut text_query: Query<&mut Text, With<TimeText>>,
-    game_time: Res<GameTime>,
-    world: Res<CityWorld>,
-) {
-    let Ok(mut text) = text_query.single_mut() else { return };
-
-    let day = game_time.current_day() as u32;
-    let hour = game_time.current_hour();
-    let speed_label = if game_time.time_scale == 0.0 {
-        "PAUSED".to_string()
-    } else {
-        format!("{}x", game_time.time_scale)
-    };
-
-    let pop = world.citizens.len();
-    let homes = world.buildings.iter().filter(|b| b.building_type == BuildingType::Home).count();
-
-    text.0 = format!(
-        "Day {day}  {hour:04.1}h  [{speed_label}]\nPop: {pop}  |  Homes: {homes}"
-    );
 }
 
 fn update_hovered_info(
@@ -1224,28 +1267,23 @@ fn update_citizen_tooltip(
 fn rebuild_queue_panel(
     queue: Res<ConstructionQueue>,
     panel_query: Query<Entity, With<QueuePanel>>,
-    mut panel_node_query: Query<&mut Node, With<QueuePanel>>,
     mut scroll_query: Query<&mut ScrollPosition, With<QueuePanel>>,
     mut commands: Commands,
 ) {
     if !queue.is_changed() { return; }
     let Ok(panel_entity) = panel_query.single() else { return };
-    let Ok(mut panel_node) = panel_node_query.single_mut() else { return };
 
     commands.entity(panel_entity).despawn_children();
 
     if queue.projects.is_empty() {
-        panel_node.display = Display::None;
         return;
     }
 
-    panel_node.display = Display::Flex;
     if let Ok(mut scroll) = scroll_query.single_mut() {
         scroll.0.y = 0.0;
     }
 
     commands.entity(panel_entity).with_children(|panel| {
-        // Header row
         panel.spawn((
             Text::new(format!("=== Construction Queue ({}) ===", queue.projects.len())),
             TextFont { font_size: 12.0, ..Default::default() },
@@ -1430,40 +1468,32 @@ fn sync_selected_building_highlight(
 }
 
 
-/// Rebuilds the history log panel children whenever ConstructionLog changes.
 fn rebuild_log_panel(
     log: Res<ConstructionLog>,
     panel_query: Query<Entity, With<LogPanel>>,
-    mut panel_node_query: Query<&mut Node, With<LogPanel>>,
     mut scroll_query: Query<&mut ScrollPosition, With<LogPanel>>,
     mut commands: Commands,
 ) {
     if !log.is_changed() { return; }
     let Ok(panel_entity) = panel_query.single() else { return };
-    let Ok(mut panel_node) = panel_node_query.single_mut() else { return };
 
     commands.entity(panel_entity).despawn_children();
 
     if log.entries.is_empty() {
-        panel_node.display = Display::None;
         return;
     }
 
-    panel_node.display = Display::Flex;
-    // Scroll to top whenever content changes so newest entry is visible.
     if let Ok(mut scroll) = scroll_query.single_mut() {
         scroll.0.y = 0.0;
     }
 
     commands.entity(panel_entity).with_children(|panel| {
-        // Header
         panel.spawn((
             Text::new(format!("=== Build History ({}) ===", log.entries.len())),
             TextFont { font_size: 12.0, ..Default::default() },
             TextColor(Color::srgb(0.7, 1.0, 0.75)),
         ));
 
-        // Entries shown newest-first (reverse order).
         for (i, entry) in log.entries.iter().enumerate().rev() {
             let (icon, icon_color) = match entry.status {
                 ProjectStatus::Completed => ("[+]", Color::srgb(0.3, 1.0, 0.4)),
@@ -1618,52 +1648,6 @@ fn scroll_panels(
     }
 }
 
-fn update_economy_ui(
-    economy: Res<Economy>,
-    mut balance_query: Query<&mut Text, (With<EconomyBalanceText>, Without<EconomyFlowText>)>,
-    mut flow_query: Query<&mut Text, (With<EconomyFlowText>, Without<EconomyBalanceText>)>,
-) {
-    let Ok(mut balance_text) = balance_query.single_mut() else { return };
-    let Ok(mut flow_text) = flow_query.single_mut() else { return };
-
-    let balance = economy.balance;
-    let sign = if balance >= 0.0 { "" } else { "-" };
-    *balance_text = Text::new(format!("Balance: {}{}", sign, format_money(balance.abs())));
-
-    let net = economy.daily_net();
-    let net_sign = if net >= 0.0 { "+" } else { "" };
-    *flow_text = Text::new(format!(
-        "{}{}  /day (in {} out {})",
-        net_sign,
-        format_money(net),
-        format_money(economy.daily_income),
-        format_money(economy.daily_expenses),
-    ));
-}
-
-fn show_economy_panel(mut query: Query<&mut Visibility, With<EconomyPanel>>) {
-    if let Ok(mut vis) = query.single_mut() {
-        *vis = Visibility::Visible;
-    }
-}
-
-fn hide_economy_panel(mut query: Query<&mut Visibility, With<EconomyPanel>>) {
-    if let Ok(mut vis) = query.single_mut() {
-        *vis = Visibility::Hidden;
-    }
-}
-
-fn format_money(amount: f32) -> String {
-    let n = amount.abs() as u64;
-    if n >= 1_000_000 {
-        format!("${:.1}M", amount / 1_000_000.0)
-    } else if n >= 1_000 {
-        format!("${:.1}k", amount / 1_000.0)
-    } else {
-        format!("${}", n)
-    }
-}
-
 fn update_floor_labels(
     world: Res<CityWorld>,
     label_query: Query<(Entity, &FloorLabel, &Children)>,
@@ -1747,185 +1731,6 @@ fn rebuild_news_panel(
                 TextColor(Color::srgb(0.75, 0.75, 0.75)),
             ));
         }
-    });
-}
-
-fn sync_news_panel_visibility(
-    visible: Res<NewsPanelVisible>,
-    mut panel_query: Query<&mut Node, With<NewsFeedPanel>>,
-) {
-    if !visible.is_changed() { return; }
-    let Ok(mut node) = panel_query.single_mut() else { return; };
-    node.display = if visible.0 { Display::Flex } else { Display::None };
-}
-
-fn toggle_stats_panel(
-    buttons: Query<(&ToolbarAction, &Interaction), Changed<Interaction>>,
-    mut visible: ResMut<StatsPanelVisible>,
-) {
-    for (action, interaction) in buttons.iter() {
-        if matches!(action, ToolbarAction::ToggleStats) && *interaction == Interaction::Pressed {
-            visible.0 = !visible.0;
-        }
-    }
-}
-
-fn sync_stats_panel_visibility(
-    visible: Res<StatsPanelVisible>,
-    mut commands: Commands,
-    panel_query: Query<Entity, With<StatsPanel>>,
-) {
-    if !visible.is_changed() { return; }
-    if visible.0 {
-        if panel_query.is_empty() {
-            commands.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    right: Val::Px(10.0),
-                    top: Val::Px(150.0),
-                    width: Val::Px(380.0),
-                    height: Val::Px(280.0),
-                    flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(Val::Px(12.0)),
-                    overflow: Overflow::scroll_y(),
-                    row_gap: Val::Px(8.0),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
-                ScrollPosition::default(),
-                PanelScrollable,
-                StatsPanel,
-            ));
-        }
-    } else {
-        for entity in panel_query.iter() {
-            commands.entity(entity).despawn();
-        }
-    }
-}
-
-fn update_stats_panel(
-    mut commands: Commands,
-    history: Res<crate::history::HistoryTracker>,
-    panel_query: Query<Entity, With<StatsPanel>>,
-) {
-    if !history.is_changed() { return; }
-    let Ok(panel) = panel_query.single() else { return; };
-    
-    commands.entity(panel).despawn_children();
-    commands.entity(panel).with_children(|parent| {
-        parent.spawn((
-            Text::new("📊 City History (Last 30 days)"),
-            TextFont { font_size: 14.0, ..Default::default() },
-            TextColor(Color::srgb(0.9, 0.85, 0.5)),
-        ));
-        
-        if history.snapshots.is_empty() {
-            parent.spawn((
-                Text::new("No history data yet"),
-                TextFont { font_size: 12.0, ..Default::default() },
-                TextColor(Color::srgb(0.6, 0.6, 0.6)),
-            ));
-        } else {
-            for snapshot in history.snapshots.iter().rev().take(15) {
-                let label = format!(
-                    "Day {:.1}: Pop={} | Inc={:.0} | Exp={:.0} | Hap={:.1}",
-                    snapshot.day, snapshot.population, snapshot.income, snapshot.expenses, snapshot.happiness
-                );
-                parent.spawn((
-                    Text::new(label),
-                    TextFont { font_size: 11.0, ..Default::default() },
-                    TextColor(Color::srgb(0.75, 0.75, 0.75)),
-                ));
-            }
-        }
-    });
-}
-
-fn toggle_policies_panel(
-    buttons: Query<(&ToolbarAction, &Interaction), Changed<Interaction>>,
-    mut visible: ResMut<PoliciesPanelVisible>,
-) {
-    for (action, interaction) in buttons.iter() {
-        if matches!(action, ToolbarAction::TogglePolicies) && *interaction == Interaction::Pressed {
-            visible.0 = !visible.0;
-        }
-    }
-}
-
-fn sync_policies_panel_visibility(
-    visible: Res<PoliciesPanelVisible>,
-    mut commands: Commands,
-    panel_query: Query<Entity, With<PoliciesPanel>>,
-) {
-    if !visible.is_changed() { return; }
-    if visible.0 {
-        if panel_query.is_empty() {
-            commands.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(10.0),
-                    top: Val::Px(400.0),
-                    width: Val::Px(360.0),
-                    height: Val::Px(220.0),
-                    flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(Val::Px(12.0)),
-                    overflow: Overflow::scroll_y(),
-                    row_gap: Val::Px(10.0),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
-                ScrollPosition::default(),
-                PanelScrollable,
-                PoliciesPanel,
-            ));
-        }
-    } else {
-        for entity in panel_query.iter() {
-            commands.entity(entity).despawn();
-        }
-    }
-}
-
-fn update_policies_panel(
-    mut commands: Commands,
-    policies: Res<crate::policies::ActivePolicies>,
-    panel_query: Query<Entity, With<PoliciesPanel>>,
-) {
-    if !policies.is_changed() { return; }
-    let Ok(panel) = panel_query.single() else { return; };
-
-    commands.entity(panel).despawn_children();
-    commands.entity(panel).with_children(|parent| {
-        parent.spawn((
-            Text::new("🏛️ City Policies"),
-            TextFont { font_size: 14.0, ..Default::default() },
-            TextColor(Color::srgb(0.9, 0.85, 0.5)),
-        ));
-
-        spawn_policy_row(parent, "🌳 Park Day",
-            "Citizens visit parks 2× more | Happiness +10%",
-            policies.park_day, PolicyButton::ParkDay);
-        spawn_policy_row(parent, "⏰ Overtime",
-            "Income +20% | Happiness -15%",
-            policies.overtime, PolicyButton::Overtime);
-        spawn_policy_row(parent, "🏙️ Open City",
-            "Migration events +50% | Happiness +5%",
-            policies.open_city, PolicyButton::OpenCity);
-
-        let happiness_delta = policies.happiness_impact();
-        let delta_text = if happiness_delta > 0.0 {
-            format!("+{:.0}%", happiness_delta * 100.0)
-        } else if happiness_delta < 0.0 {
-            format!("{:.0}%", happiness_delta * 100.0)
-        } else {
-            "0%".to_string()
-        };
-        parent.spawn((
-            Text::new(format!("Net Happiness Impact: {}", delta_text)),
-            TextFont { font_size: 12.0, ..Default::default() },
-            TextColor(Color::srgb(0.95, 0.8, 0.6)),
-        ));
     });
 }
 
@@ -2150,5 +1955,196 @@ fn handle_event_option_click(
                 *bg = BackgroundColor(Color::srgba(0.15, 0.25, 0.4, 0.95));
             }
         }
+    }
+}
+
+// ─── Sidebar systems ──────────────────────────────────────────────────────────
+
+fn handle_sidebar_header_click(
+    interaction_query: Query<(&Interaction, &SidebarSectionHeader), Changed<Interaction>>,
+    mut expanded: ResMut<SidebarExpanded>,
+) {
+    for (interaction, header) in &interaction_query {
+        if matches!(interaction, Interaction::Pressed) {
+            expanded.0[header.0] = !expanded.0[header.0];
+        }
+    }
+}
+
+fn sync_sidebar_sections(
+    expanded: Res<SidebarExpanded>,
+    mut header_query: Query<(&SidebarSectionHeader, &mut BackgroundColor), Without<SidebarSectionContent>>,
+    mut content_query: Query<(&SidebarSectionContent, &mut Node)>,
+) {
+    if !expanded.is_changed() { return; }
+    for (header, mut bg) in &mut header_query {
+        if expanded.0[header.0] {
+            *bg = BackgroundColor(Color::srgba(0.2, 0.25, 0.35, 0.95));
+        } else {
+            *bg = BackgroundColor(Color::srgba(0.15, 0.15, 0.2, 0.9));
+        }
+    }
+    for (content, mut node) in &mut content_query {
+        node.display = if expanded.0[content.0] { Display::Flex } else { Display::None };
+    }
+}
+
+// ─── HUD strip ────────────────────────────────────────────────────────────────
+
+fn update_hud_strip(
+    mut text_query: Query<&mut Text, With<HudStripText>>,
+    game_time: Res<GameTime>,
+    economy: Res<Economy>,
+    world: Res<CityWorld>,
+    happiness: Res<crate::happiness::CityHappiness>,
+) {
+    let Ok(mut text) = text_query.single_mut() else { return; };
+    let day = game_time.current_day() as u32;
+    let hour = game_time.current_hour();
+    let speed_str = match game_time.time_scale as u32 {
+        0 => "⏸",
+        1 => "1×",
+        2 => "2×",
+        4 => "4×",
+        8 => "8×",
+        16 => "16×",
+        32 => "32×",
+        64 => "64×",
+        _ => if (game_time.time_scale - 0.5).abs() < 0.1 { "½×" } else { "?×" },
+    };
+    let balance = economy.balance;
+    let net = economy.last_income - economy.last_expenses;
+    let pop = world.citizens.len();
+    let happiness_pct = (happiness.value * 100.0) as u32;
+    let bal_sign = if net >= 0.0 { "+" } else { "" };
+
+    text.0 = format!(
+        "Day {day} | {hour:04.1}h | {speed_str}  ◆  💰 ${balance:.0} ({bal_sign}{net:.0}/d)  ◆  👥 {pop}  ◆  😊 {happiness_pct}%"
+    );
+}
+
+// ─── Stats section ────────────────────────────────────────────────────────────
+
+fn update_stats_section(
+    mut commands: Commands,
+    content_query: Query<Entity, With<StatsSectionContent>>,
+    history: Res<crate::history::HistoryTracker>,
+    expanded: Res<SidebarExpanded>,
+) {
+    if !expanded.0[3] { return; }
+    if !history.is_changed() && !expanded.is_changed() { return; }
+    let Ok(panel) = content_query.single() else { return; };
+
+    commands.entity(panel).despawn_children();
+    commands.entity(panel).with_children(|parent| {
+        parent.spawn((
+            Text::new("📊 City History"),
+            TextFont { font_size: 13.0, ..Default::default() },
+            TextColor(Color::srgb(0.9, 0.85, 0.5)),
+        ));
+        if history.snapshots.is_empty() {
+            parent.spawn((
+                Text::new("No history data yet"),
+                TextFont { font_size: 11.0, ..Default::default() },
+                TextColor(Color::srgb(0.6, 0.6, 0.6)),
+            ));
+        } else {
+            for snapshot in history.snapshots.iter().rev().take(10) {
+                let net = snapshot.income - snapshot.expenses;
+                let net_sign = if net >= 0.0 { "+" } else { "" };
+                let label = format!(
+                    "Day {}: 👥 {} | 💰 {}{:.0} | 😊 {:.0}%",
+                    snapshot.day as u32,
+                    snapshot.population,
+                    net_sign,
+                    net,
+                    snapshot.happiness * 100.0
+                );
+                parent.spawn((
+                    Text::new(label),
+                    TextFont { font_size: 11.0, ..Default::default() },
+                    TextColor(Color::srgb(0.75, 0.75, 0.75)),
+                ));
+            }
+        }
+    });
+}
+
+// ─── Policies section ─────────────────────────────────────────────────────────
+
+fn update_policies_section(
+    mut commands: Commands,
+    content_query: Query<Entity, With<PoliciesSectionContent>>,
+    policies: Res<crate::policies::ActivePolicies>,
+    expanded: Res<SidebarExpanded>,
+) {
+    if !expanded.0[4] { return; }
+    if !policies.is_changed() && !expanded.is_changed() { return; }
+    let Ok(panel) = content_query.single() else { return; };
+
+    commands.entity(panel).despawn_children();
+    commands.entity(panel).with_children(|parent| {
+        parent.spawn((
+            Text::new("🏛️ City Policies"),
+            TextFont { font_size: 13.0, ..Default::default() },
+            TextColor(Color::srgb(0.9, 0.85, 0.5)),
+        ));
+
+        spawn_policy_row(parent, "🌳 Park Day",
+            "Citizens visit parks 2× more | Happiness +10%",
+            policies.park_day, PolicyButton::ParkDay);
+        spawn_policy_row(parent, "⏰ Overtime",
+            "Income +20% | Happiness -15%",
+            policies.overtime, PolicyButton::Overtime);
+        spawn_policy_row(parent, "🏙️ Open City",
+            "Migration events +50% | Happiness +5%",
+            policies.open_city, PolicyButton::OpenCity);
+
+        let happiness_delta = policies.happiness_impact();
+        let delta_text = if happiness_delta > 0.0 {
+            format!("+{:.0}%", happiness_delta * 100.0)
+        } else if happiness_delta < 0.0 {
+            format!("{:.0}%", happiness_delta * 100.0)
+        } else {
+            "0%".to_string()
+        };
+        parent.spawn((
+            Text::new(format!("Net Happiness Impact: {}", delta_text)),
+            TextFont { font_size: 11.0, ..Default::default() },
+            TextColor(Color::srgb(0.95, 0.8, 0.6)),
+        ));
+    });
+}
+
+// ─── Dialog countdown ─────────────────────────────────────────────────────────
+
+fn tick_dialog_countdowns(
+    time: Res<Time>,
+    mut quit_dialog_query: Query<&mut DialogCountdown, With<QuitDialogRoot>>,
+    mut countdown_texts: Query<&mut Text, With<CountdownText>>,
+    mut quit_visible: ResMut<QuitDialogVisible>,
+) {
+    let dt = time.delta_secs();
+
+    let mut auto_cancel = false;
+    let mut remaining_secs: u32 = 60;
+
+    for mut countdown in quit_dialog_query.iter_mut() {
+        if quit_visible.0 {
+            countdown.remaining -= dt;
+        }
+        remaining_secs = countdown.remaining.ceil().max(0.0) as u32;
+        if countdown.remaining <= 0.0 {
+            countdown.remaining = countdown.total;
+            auto_cancel = true;
+        }
+    }
+
+    if auto_cancel {
+        quit_visible.0 = false;
+    }
+
+    for mut text in countdown_texts.iter_mut() {
+        text.0 = format!("Auto-cancelling in {}s", remaining_secs);
     }
 }
