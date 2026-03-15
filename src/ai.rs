@@ -7,6 +7,8 @@ use crate::time::GameTime;
 use crate::world::{park_positions, CityWorld};
 use bevy::prelude::*;
 use rand::RngExt;
+use crate::milestones::{MilestoneTracker, ToastQueue};
+use crate::news::CityNewsLog;
 
 pub struct NeedsDecayPlugin;
 
@@ -205,17 +207,51 @@ fn satisfy_needs_at_destination(
     time: Res<Time>,
     game_time: Res<GameTime>,
     hovered: Res<HoveredEntity>,
+    mut news: ResMut<CityNewsLog>,
+    mut milestones: ResMut<MilestoneTracker>,
+    mut toast_queue: ResMut<ToastQueue>,
 ) {
     let delta = time.delta_secs() * game_time.time_scale;
+    let delta_secs = time.delta_secs();
     let satisfy_rate = 0.05 * delta;
+    let current_day = game_time.current_day();
 
+    // Phase 1: collect snapshot
+    let snapshot: Vec<(Entity, String, String, Vec2, ActivityType, bool, Option<String>, f32)> = citizens
+        .iter()
+        .map(|(e, c)| (
+            e,
+            c.id.clone(),
+            c.name.clone(),
+            c.position,
+            c.current_activity,
+            c.waypoints.is_empty() && c.target_position.is_none(),
+            c.partner_id.clone(),
+            c.age,
+        ))
+        .collect();
+
+    // Phase 2: find socializing pairs
+    let mut rel_pairs: Vec<(Entity, String, String, Entity, String, String, Option<String>, f32)> = Vec::new();
+    for (e, id, name, pos, activity, at_dest, _partner, _age) in &snapshot {
+        if *activity != ActivityType::Socializing || !at_dest { continue; }
+        let nearest = snapshot.iter()
+            .filter(|(oe, _, _, opos, _, _, _, _)| *oe != *e && opos.distance(*pos) < 200.0)
+            .min_by(|a, b| a.3.distance(*pos).partial_cmp(&b.3.distance(*pos)).unwrap());
+        if let Some((other_e, other_id, other_name, _, _, _, other_partner_id, other_age)) = nearest {
+            rel_pairs.push((
+                *e, id.clone(), name.clone(),
+                *other_e, other_id.clone(), other_name.clone(),
+                other_partner_id.clone(), *other_age,
+            ));
+        }
+    }
+
+    // Phase 3: needs satisfaction
     for (entity, mut citizen) in citizens.iter_mut() {
         if hovered.0 == Some(entity) { continue; }
-        if citizen.target_position.is_some() {
-            continue; // still travelling
-        }
+        if citizen.target_position.is_some() { continue; }
 
-        // Check if citizen is near a building that matches their activity
         let at_shop = is_near_building(&world, BuildingType::Shop, citizen.position, 60.0);
         let at_home = citizen.home_building_id.as_ref()
             .and_then(|id| world.buildings.iter().find(|b| &b.id == id))
@@ -226,7 +262,7 @@ fn satisfy_needs_at_destination(
         match citizen.current_activity {
             ActivityType::Eating if at_shop => {
                 citizen.hunger = (citizen.hunger - satisfy_rate * 3.0).max(0.0);
-                citizen.social = (citizen.social - satisfy_rate).max(0.0); // socialise while eating
+                citizen.social = (citizen.social - satisfy_rate).max(0.0);
             }
             ActivityType::Sleeping if at_home => {
                 citizen.energy = (citizen.energy + satisfy_rate * 2.0).min(1.0);
@@ -240,7 +276,6 @@ fn satisfy_needs_at_destination(
                 citizen.social = (citizen.social - satisfy_rate * 2.0).max(0.0);
             }
             ActivityType::VisitingPark => {
-                // Restore energy and reduce loneliness; leave after a short stay.
                 citizen.energy = (citizen.energy + satisfy_rate * 1.5).min(1.0);
                 citizen.social = (citizen.social - satisfy_rate * 1.5).max(0.0);
                 citizen.park_timer += delta;
@@ -250,6 +285,91 @@ fn satisfy_needs_at_destination(
                 }
             }
             _ => {}
+        }
+    }
+
+    // Phase 4: relationship updates
+    struct RelUpdate {
+        entity: Entity,
+        my_name: String,
+        with_id: String,
+        with_name: String,
+        other_partner_id: Option<String>,
+        other_age: f32,
+    }
+
+    let mut updates: Vec<RelUpdate> = Vec::new();
+    for (my_e, my_id, my_name, other_e, other_id, other_name, other_partner_id, other_age) in &rel_pairs {
+        let my_partner_id = snapshot.iter()
+            .find(|(e, ..)| e == my_e)
+            .and_then(|(_, _, _, _, _, _, p, _)| p.clone());
+        let my_age = snapshot.iter()
+            .find(|(e, ..)| e == my_e)
+            .map(|(_, _, _, _, _, _, _, age)| *age)
+            .unwrap_or(0.0);
+        updates.push(RelUpdate {
+            entity: *my_e,
+            my_name: my_name.clone(),
+            with_id: other_id.clone(),
+            with_name: other_name.clone(),
+            other_partner_id: other_partner_id.clone(),
+            other_age: *other_age,
+        });
+        updates.push(RelUpdate {
+            entity: *other_e,
+            my_name: other_name.clone(),
+            with_id: my_id.clone(),
+            with_name: my_name.clone(),
+            other_partner_id: my_partner_id,
+            other_age: my_age,
+        });
+    }
+
+    for update in updates {
+        let Ok((_, mut citizen)) = citizens.get_mut(update.entity) else { continue };
+
+        let existing_idx = citizen.relationships.iter().position(|r| r.citizen_id == update.with_id);
+        if existing_idx.is_none() {
+            citizen.relationships.push(crate::entities::RelationshipEntry {
+                citizen_id: update.with_id.clone(),
+                name: update.with_name.clone(),
+                kind: crate::entities::RelationshipKind::Acquaintance,
+                strength: 0.0,
+            });
+        }
+        let idx = citizen.relationships.iter().position(|r| r.citizen_id == update.with_id).unwrap();
+        citizen.relationships[idx].strength += 0.5 * delta_secs;
+        let strength = citizen.relationships[idx].strength;
+        let kind = citizen.relationships[idx].kind.clone();
+
+        if strength >= 5.0 && kind == crate::entities::RelationshipKind::Acquaintance {
+            citizen.relationships[idx].kind = crate::entities::RelationshipKind::Friend;
+            if !milestones.first_friendship {
+                milestones.first_friendship = true;
+                let msg = format!("👫 {} and {} became friends! 🤝", update.my_name, update.with_name);
+                toast_queue.push(msg.clone());
+                news.push(current_day, "🤝", msg);
+            } else {
+                news.push(current_day, "🤝", format!("{} and {} became friends! 🤝", update.my_name, update.with_name));
+            }
+        }
+
+        if strength >= 15.0 && kind == crate::entities::RelationshipKind::Friend
+            && citizen.partner_id.is_none()
+            && update.other_partner_id.is_none()
+            && citizen.age >= 18.0 && citizen.age <= 60.0
+            && update.other_age >= 18.0 && update.other_age <= 60.0
+        {
+            citizen.relationships[idx].kind = crate::entities::RelationshipKind::Partner;
+            citizen.partner_id = Some(update.with_id.clone());
+            if !milestones.first_couple {
+                milestones.first_couple = true;
+                let msg = format!("💑 {} and {} became partners ❤️", update.my_name, update.with_name);
+                toast_queue.push(msg.clone());
+                news.push(current_day, "❤️", msg);
+            } else {
+                news.push(current_day, "❤️", format!("{} and {} became partners ❤️", update.my_name, update.with_name));
+            }
         }
     }
 }

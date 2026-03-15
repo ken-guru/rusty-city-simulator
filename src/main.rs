@@ -19,10 +19,14 @@ mod time;
 mod ui;
 mod version;
 mod world;
+pub mod city_name;
+mod milestones;
+mod news;
 
 use aging::AgingPlugin;
 use ai::NeedsDecayPlugin;
 pub use economy::DebugMode;
+pub use city_name::GameName;
 use economy::EconomyPlugin;
 use entities::*;
 use hovered::HoveredEntity;
@@ -36,6 +40,8 @@ use start_screen::StartScreenPlugin;
 use time::GameTimePlugin;
 use ui::{HoveredLogItem, HoveredQueueItem, UIPlugin};
 use world::*;
+use milestones::MilestonesPlugin;
+use news::NewsPlugin;
 
 /// Top-level application state.
 #[derive(States, Default, Clone, PartialEq, Eq, Hash, Debug)]
@@ -114,6 +120,9 @@ fn main() {
         .insert_resource(HoveredEntity::default())
         .insert_resource(HoveredQueueItem::default())
         .insert_resource(DebugMode::default())
+        .add_plugins(MilestonesPlugin)
+        .add_plugins(NewsPlugin)
+        .insert_resource(GameName::default())
         // Camera is always present so UI renders on both StartScreen and InGame.
         .add_systems(Startup, (spawn_camera, sprites::setup_sprites))
         // Game world entities are spawned when entering InGame.
@@ -178,6 +187,9 @@ fn cleanup_ingame(
     commands.insert_resource(HoveredQueueItem::default());
     commands.insert_resource(HoveredLogItem::default());
     commands.insert_resource(economy::Economy::new());
+    commands.insert_resource(milestones::MilestoneTracker::default());
+    commands.insert_resource(milestones::ToastQueue::default());
+    commands.insert_resource(news::CityNewsLog::default());
     commands.insert_resource(housing::HousingCooldown::default());
     commands.insert_resource(movement::CityTravelStats::default());
     // Reset log header flag so a new session header is written if debug logging fires again.
@@ -196,6 +208,8 @@ fn setup(
     mut queue: ResMut<roads::ConstructionQueue>,
     mut log: ResMut<roads::ConstructionLog>,
     mut economy: ResMut<economy::Economy>,
+    mut game_name: ResMut<city_name::GameName>,
+    mut city_news: ResMut<news::CityNewsLog>,
 ) {
     // If the start screen queued a save to load, apply it before spawning entities.
     if let Some(path) = pending_load.0.take() {
@@ -208,6 +222,8 @@ fn setup(
                 *queue                 = save_data.queue;
                 *log                   = save_data.log;
                 *economy               = save_data.economy;
+                game_name.0 = save_data.city_name.clone();
+                *city_news = save_data.news_log.clone();
 
                 // Reset citizen navigation state so stale waypoints/targets from
                 // the saved game don't cause pathfinding issues on re-entry.

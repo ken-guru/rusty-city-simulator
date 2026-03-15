@@ -78,9 +78,26 @@ pub struct Citizen {
     /// Game-day when this female last gave birth (transient — not saved; used for birth cooldown).
     #[serde(skip, default)]
     pub last_birth_day: f32,
+    #[serde(default)]
+    pub relationships: Vec<RelationshipEntry>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum RelationshipKind {
+    Acquaintance,
+    Friend,
+    Partner,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RelationshipEntry {
+    pub citizen_id: String,
+    pub name: String,
+    pub kind: RelationshipKind,
+    pub strength: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ActivityType {
     Idle,
     Walking,
@@ -114,6 +131,7 @@ impl Citizen {
             park_timer: 0.0,
             total_distance_traveled: 0.0,
             last_birth_day: -999.0, // Sufficiently far in the past to allow first birth
+            relationships: Vec::new(),
         }
     }
 

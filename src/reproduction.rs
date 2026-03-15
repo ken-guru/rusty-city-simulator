@@ -3,6 +3,8 @@ use crate::world::CityWorld;
 use bevy::prelude::*;
 use rand::RngExt;
 use uuid::Uuid;
+use crate::news::CityNewsLog;
+use crate::city_name::GameName;
 
 #[derive(Message)]
 pub struct BirthEvent {
@@ -41,6 +43,8 @@ fn check_reproduction(
     mut birth_events: MessageWriter<BirthEvent>,
     time: Res<Time>,
     game_time: Res<crate::time::GameTime>,
+    mut news: ResMut<CityNewsLog>,
+    game_name: Res<GameName>,
 ) {
     let mut rng = rand::rng();
     let delta = time.delta_secs() * game_time.time_scale;
@@ -96,6 +100,7 @@ fn check_reproduction(
         // Mark this female as having given birth today.
         female.last_birth_day = current_day;
 
+        news.push(current_day, "👶", format!("{} was born in {}!", name, game_name.display()));
         birth_events.write(BirthEvent { position: birth_pos, gender, name, home_building_id: Some(home_id) });
     }
 }

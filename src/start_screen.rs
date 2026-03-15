@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use crate::AppState;
 use crate::economy::DebugMode;
 use crate::save::{self, PendingLoad, SaveMeta};
+use crate::city_name::GameName;
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -28,11 +29,19 @@ struct StartScreenState {
     panel: StartScreenPanel,
     dirty: bool,
     saves: Vec<SaveMeta>,
+    city_name: String,
+    city_name_focused: bool,
 }
 
 impl Default for StartScreenState {
     fn default() -> Self {
-        Self { panel: StartScreenPanel::Main, dirty: true, saves: Vec::new() }
+        Self {
+            panel: StartScreenPanel::Main,
+            dirty: true,
+            saves: Vec::new(),
+            city_name: String::new(),
+            city_name_focused: false,
+        }
     }
 }
 
@@ -51,6 +60,7 @@ enum StartScreenAction {
     Back,
     Quit,
     ToggleEconomyDebug,
+    FocusCityNameInput,
 }
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
@@ -79,6 +89,7 @@ fn setup_start_screen(
     state.panel = StartScreenPanel::Main;
     state.dirty = true;
     state.saves = Vec::new();
+    state.city_name_focused = false;
 
     commands.spawn((
         Node {
@@ -120,6 +131,8 @@ fn rebuild_panel(
     let panel = state.panel.clone();
     let saves = state.saves.clone();
     let economy_logging = debug.economy_logging;
+    let city_name = state.city_name.clone();
+    let city_name_focused = state.city_name_focused;
 
     commands.entity(root).with_children(|parent| {
         // Title
@@ -138,6 +151,29 @@ fn rebuild_panel(
 
         match panel {
             StartScreenPanel::Main => {
+                let cursor = if city_name_focused { "_" } else { "" };
+                let display = format!("City Name: [{}{}]", city_name, cursor);
+                parent.spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(320.0),
+                        height: Val::Px(44.0),
+                        justify_content: JustifyContent::FlexStart,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::horizontal(Val::Px(12.0)),
+                        margin: UiRect::bottom(Val::Px(16.0)),
+                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.12, 0.14, 0.18)),
+                    StartScreenAction::FocusCityNameInput,
+                )).with_children(|btn| {
+                    btn.spawn((
+                        Text::new(display),
+                        TextFont { font_size: 16.0, ..default() },
+                        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+                    ));
+                });
                 spawn_menu_button(parent, "New Game",  StartScreenAction::NewGame);
                 spawn_menu_button(parent, "Load Game", StartScreenAction::LoadGame);
                 spawn_menu_button(parent, "Quit",      StartScreenAction::Quit);
@@ -214,12 +250,32 @@ fn handle_buttons(
     mut next_state: ResMut<NextState<AppState>>,
     mut pending_load: ResMut<PendingLoad>,
     mut debug: ResMut<DebugMode>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut game_name: ResMut<GameName>,
 ) {
+    // Keyboard input when city name field is focused
+    if state.city_name_focused {
+        for key in keyboard.get_just_pressed() {
+            match key {
+                KeyCode::Backspace => { state.city_name.pop(); state.dirty = true; }
+                KeyCode::Enter | KeyCode::Escape => { state.city_name_focused = false; state.dirty = true; }
+                KeyCode::Space => { state.city_name.push(' '); state.dirty = true; }
+                k => {
+                    if let Some(ch) = keycode_to_char(k) {
+                        state.city_name.push(ch);
+                        state.dirty = true;
+                    }
+                }
+            }
+        }
+    }
+
     for (interaction, action) in &interaction_query {
         if *interaction != Interaction::Pressed { continue; }
 
         match action {
             StartScreenAction::NewGame => {
+                game_name.0 = state.city_name.clone();
                 next_state.set(AppState::InGame);
             }
             StartScreenAction::LoadGame => {
@@ -258,7 +314,26 @@ fn handle_buttons(
                 }
                 state.dirty = true;
             }
+            StartScreenAction::FocusCityNameInput => {
+                state.city_name_focused = !state.city_name_focused;
+                state.dirty = true;
+            }
         }
+    }
+}
+
+fn keycode_to_char(key: &KeyCode) -> Option<char> {
+    match key {
+        KeyCode::KeyA => Some('a'), KeyCode::KeyB => Some('b'), KeyCode::KeyC => Some('c'),
+        KeyCode::KeyD => Some('d'), KeyCode::KeyE => Some('e'), KeyCode::KeyF => Some('f'),
+        KeyCode::KeyG => Some('g'), KeyCode::KeyH => Some('h'), KeyCode::KeyI => Some('i'),
+        KeyCode::KeyJ => Some('j'), KeyCode::KeyK => Some('k'), KeyCode::KeyL => Some('l'),
+        KeyCode::KeyM => Some('m'), KeyCode::KeyN => Some('n'), KeyCode::KeyO => Some('o'),
+        KeyCode::KeyP => Some('p'), KeyCode::KeyQ => Some('q'), KeyCode::KeyR => Some('r'),
+        KeyCode::KeyS => Some('s'), KeyCode::KeyT => Some('t'), KeyCode::KeyU => Some('u'),
+        KeyCode::KeyV => Some('v'), KeyCode::KeyW => Some('w'), KeyCode::KeyX => Some('x'),
+        KeyCode::KeyY => Some('y'), KeyCode::KeyZ => Some('z'),
+        _ => None,
     }
 }
 

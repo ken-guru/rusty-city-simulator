@@ -80,6 +80,7 @@ pub enum ToolbarAction {
     SetSpeed(f32),
     Save,
     Quit,
+    ToggleNews,
 }
 
 /// Actions for buttons inside the quit dialog.
@@ -131,6 +132,21 @@ pub struct FloorLabel {
     pub building_id: String,
 }
 
+#[derive(Component)]
+pub struct CityNameLabel;
+
+#[derive(Component)]
+struct ToastPanel;
+
+#[derive(Component)]
+struct ToastText;
+
+#[derive(Component)]
+pub struct NewsFeedPanel;
+
+#[derive(Resource, Default)]
+struct NewsPanelVisible(bool);
+
 
 #[derive(Component, Clone, Debug)]
 pub enum BuildingPanelAction {
@@ -150,6 +166,7 @@ impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<QuitDialogVisible>()
             .init_resource::<PendingQuit>()
+            .init_resource::<NewsPanelVisible>()
             .init_resource::<HoveredQueueItem>()
             .init_resource::<HoveredLogItem>()
             .add_systems(Startup, setup_ui)
@@ -184,6 +201,10 @@ impl Plugin for UIPlugin {
                 (
                     update_economy_ui.run_if(in_state(AppState::InGame)),
                     update_floor_labels.run_if(in_state(AppState::InGame)),
+                    update_city_name_label.run_if(in_state(AppState::InGame)),
+                    update_toast_panel.run_if(in_state(AppState::InGame)),
+                    rebuild_news_panel.run_if(in_state(AppState::InGame)),
+                    sync_news_panel_visibility,
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -209,6 +230,71 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
                 TimeText,
             ));
         });
+
+    // City name label (top center)
+    commands.spawn(Node {
+        position_type: PositionType::Absolute,
+        top: Val::Px(10.0),
+        left: Val::Px(0.0),
+        right: Val::Px(0.0),
+        justify_content: JustifyContent::Center,
+        ..Default::default()
+    }).with_children(|p| {
+        p.spawn((
+            Text::new("📍 My City"),
+            TextFont { font_size: 18.0, ..Default::default() },
+            TextColor(Color::srgb(0.9, 0.85, 0.5)),
+            CityNameLabel,
+        ));
+    });
+
+    // Toast panel (top right, below hover info)
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(10.0),
+            top: Val::Px(60.0),
+            width: Val::Px(320.0),
+            padding: UiRect::all(Val::Px(10.0)),
+            flex_direction: FlexDirection::Column,
+            display: Display::None,
+            border_radius: BorderRadius::all(Val::Px(6.0)),
+            ..Default::default()
+        },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
+        ZIndex(90),
+        ToastPanel,
+    )).with_children(|p| {
+        p.spawn((
+            Text::new(""),
+            TextFont { font_size: 15.0, ..Default::default() },
+            TextColor(Color::srgb(1.0, 0.95, 0.7)),
+            ToastText,
+        ));
+    });
+
+    // News feed panel (right side)
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(10.0),
+            top: Val::Px(100.0),
+            width: Val::Px(340.0),
+            max_height: Val::Px(400.0),
+            padding: UiRect::all(Val::Px(8.0)),
+            flex_direction: FlexDirection::Column,
+            overflow: Overflow::scroll_y(),
+            display: Display::None,
+            border_radius: BorderRadius::all(Val::Px(6.0)),
+            row_gap: Val::Px(4.0),
+            ..Default::default()
+        },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
+        ZIndex(85),
+        ScrollPosition::default(),
+        PanelScrollable,
+        NewsFeedPanel,
+    ));
 
     // Construction queue + log panels share a flex-column wrapper so they
     // stack vertically and never overlap regardless of queue length.
@@ -339,6 +425,7 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
                 toolbar_button(parent, "32x", ToolbarAction::SetSpeed(32.0));
                 toolbar_button(parent, "64x", ToolbarAction::SetSpeed(64.0));
             }
+            toolbar_button(parent, "📰 News", ToolbarAction::ToggleNews);
             toolbar_button(parent, "Save",    ToolbarAction::Save);
             toolbar_button(parent, "Quit",    ToolbarAction::Quit);
         });
@@ -621,6 +708,7 @@ fn toolbar_interaction(
     mut game_time: ResMut<GameTime>,
     mut save_events: MessageWriter<SaveRequestEvent>,
     mut quit_visible: ResMut<QuitDialogVisible>,
+    mut news_visible: ResMut<NewsPanelVisible>,
 ) {
     for (interaction, action, mut bg) in &mut interaction_query {
         match interaction {
@@ -642,6 +730,9 @@ fn toolbar_interaction(
                     }
                     ToolbarAction::Quit => {
                         quit_visible.0 = true;
+                    }
+                    ToolbarAction::ToggleNews => {
+                        news_visible.0 = !news_visible.0;
                     }
                 }
             }
@@ -704,6 +795,8 @@ fn handle_pending_quit(
     mut next_state: ResMut<NextState<AppState>>,
     mut quit_visible: ResMut<QuitDialogVisible>,
     citizen_query: Query<&Citizen>,
+    game_name: Res<crate::city_name::GameName>,
+    news_log: Res<crate::news::CityNewsLog>,
 ) {
     if !pending.active {
         return;
@@ -713,7 +806,7 @@ fn handle_pending_quit(
         let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
         sync_citizens_to_world(&mut world, &ecs_citizens);
 
-        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy) {
+        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log) {
             eprintln!("Failed to save before quit: {e}");
         }
     }
@@ -1542,4 +1635,65 @@ fn floor_label_color(floors: u32) -> Color {
         4 | 5 => Color::srgb(1.0, 0.6, 0.1),
         _ => Color::srgb(1.0, 0.2, 0.1),
     }
+}
+
+fn update_city_name_label(
+    mut label: Query<&mut Text, With<CityNameLabel>>,
+    name: Res<crate::city_name::GameName>,
+) {
+    if !name.is_changed() { return; }
+    let Ok(mut text) = label.single_mut() else { return };
+    text.0 = format!("📍 {}", name.display());
+}
+
+fn update_toast_panel(
+    mut panel_query: Query<(&mut Node, &mut BackgroundColor), With<ToastPanel>>,
+    mut text_query: Query<&mut Text, With<ToastText>>,
+    toasts: Res<crate::milestones::ToastQueue>,
+) {
+    let Ok((mut node, mut bg)) = panel_query.single_mut() else { return };
+    let Ok(mut text) = text_query.single_mut() else { return };
+
+    if let Some(ref active) = toasts.active {
+        node.display = Display::Flex;
+        text.0 = active.text.clone();
+        let alpha = if active.timer < 1.0 { active.timer.max(0.1) } else { 0.85 };
+        bg.0 = Color::srgba(0.0, 0.0, 0.0, alpha);
+    } else {
+        node.display = Display::None;
+    }
+}
+
+fn rebuild_news_panel(
+    mut commands: Commands,
+    news: Res<crate::news::CityNewsLog>,
+    panel_query: Query<Entity, With<NewsFeedPanel>>,
+) {
+    if !news.is_changed() { return; }
+    let Ok(panel) = panel_query.single() else { return };
+    commands.entity(panel).despawn_related::<Children>();
+    commands.entity(panel).with_children(|parent| {
+        parent.spawn((
+            Text::new("📰 City News"),
+            TextFont { font_size: 14.0, ..Default::default() },
+            TextColor(Color::srgb(0.9, 0.85, 0.5)),
+        ));
+        for entry in news.entries.iter().take(20) {
+            let label = format!("Day {}: {} {}", entry.day as u32, entry.icon, entry.text);
+            parent.spawn((
+                Text::new(label),
+                TextFont { font_size: 11.0, ..Default::default() },
+                TextColor(Color::srgb(0.75, 0.75, 0.75)),
+            ));
+        }
+    });
+}
+
+fn sync_news_panel_visibility(
+    visible: Res<NewsPanelVisible>,
+    mut panel_query: Query<&mut Node, With<NewsFeedPanel>>,
+) {
+    if !visible.is_changed() { return; }
+    let Ok(mut node) = panel_query.single_mut() else { return };
+    node.display = if visible.0 { Display::Flex } else { Display::None };
 }
