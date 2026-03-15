@@ -33,13 +33,16 @@ impl CityHappiness {
         self.boost = boost;
         self.boost_expires_day = current_day + duration_days;
     }
-    
+
+    /// Returns the active temporary boost, or 0.0 if expired.
+    pub fn effective_boost(&self, current_day: f32) -> f32 {
+        if current_day < self.boost_expires_day { self.boost } else { 0.0 }
+    }
+
+    /// Returns the effective displayed happiness value including any active boost.
+    #[allow(dead_code)]
     pub fn current_value(&self, current_day: f32) -> f32 {
-        if current_day >= self.boost_expires_day {
-            self.value
-        } else {
-            (self.value + self.boost).clamp(0.0, 1.0)
-        }
+        (self.value + self.effective_boost(current_day)).clamp(0.0, 1.0)
     }
 }
 
@@ -55,10 +58,13 @@ fn calculate_citizen_happiness(
 fn update_city_happiness(
     citizens: Query<&CitizenHappiness>,
     mut city_happiness: ResMut<CityHappiness>,
-    _time: Res<GameTime>,
+    game_time: Res<GameTime>,
+    policies: Res<crate::policies::ActivePolicies>,
 ) {
     if !citizens.is_empty() {
         let avg: f32 = citizens.iter().map(|h| h.value).sum::<f32>() / citizens.iter().count() as f32;
-        city_happiness.value = avg.clamp(0.0, 1.0);
+        // Apply temporary boost (from events) and persistent policy impact
+        let effective = avg + city_happiness.effective_boost(game_time.current_day()) + policies.happiness_impact();
+        city_happiness.value = effective.clamp(0.0, 1.0);
     }
 }

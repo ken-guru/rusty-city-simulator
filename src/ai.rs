@@ -51,6 +51,7 @@ fn run_citizen_ai(
     game_time: Res<GameTime>,
     hovered: Res<HoveredEntity>,
     debug: Res<DebugMode>,
+    policies: Res<crate::policies::ActivePolicies>,
 ) {
     let mut rng = rand::rng();
     let delta = time.delta_secs() * game_time.time_scale;
@@ -79,7 +80,7 @@ fn run_citizen_ai(
             continue;
         }
 
-        let activity = pick_activity(&citizen);
+        let activity = pick_activity(&citizen, policies.park_visit_multiplier());
         citizen.current_activity = activity;
 
         // Build a candidate list of positions for the chosen activity.
@@ -145,14 +146,14 @@ fn run_citizen_ai(
     }
 }
 
-fn pick_activity(citizen: &Citizen) -> ActivityType {
+fn pick_activity(citizen: &Citizen, park_multiplier: f32) -> ActivityType {
     // Score each need; highest urgency wins
     let hunger_urgency   = citizen.hunger;                                           // 1.0 = starving
     let energy_urgency   = 1.0 - citizen.energy;                                    // 1.0 = exhausted
     let social_urgency   = citizen.social;                                           // 1.0 = lonely
     let work_urgency     = if citizen.age >= 18.0 && citizen.age <= 65.0 { 0.4 } else { 0.0 };
-    // Visit park when both tired and lonely — restorative + social
-    let park_urgency     = ((1.0 - citizen.energy) + citizen.social) * 0.35;
+    // Visit park when both tired and lonely — restorative + social; boosted by Park Day policy
+    let park_urgency     = ((1.0 - citizen.energy) + citizen.social) * 0.35 * park_multiplier;
 
     let scores: [(ActivityType, f32); 5] = [
         (ActivityType::Eating,      hunger_urgency),

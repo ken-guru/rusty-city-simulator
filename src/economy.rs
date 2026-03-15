@@ -68,6 +68,7 @@ fn update_economy(
     game_time: Res<GameTime>,
     citizen_query: Query<&crate::entities::Citizen>,
     travel_stats: Res<CityTravelStats>,
+    policies: Res<crate::policies::ActivePolicies>,
 ) {
     let current_day = game_time.current_day();
     if current_day - economy.last_update_day < 1.0 {
@@ -76,12 +77,12 @@ fn update_economy(
     let days_elapsed = (current_day - economy.last_update_day).max(0.0);
     economy.last_update_day = current_day;
 
-    // -- Income --
+    // -- Income (multiplied by Overtime policy) --
     let citizen_count = citizen_query.iter().count() as f32;
     let shop_count = world.buildings.iter()
         .filter(|b| b.building_type == BuildingType::Shop)
         .count() as f32;
-    economy.daily_income = citizen_count * 100.0 + shop_count * 50.0;
+    economy.daily_income = (citizen_count * 100.0 + shop_count * 50.0) * policies.income_multiplier();
 
     // -- Expenses --
     let building_count = world.buildings.len();

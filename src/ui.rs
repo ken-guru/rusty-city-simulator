@@ -1,5 +1,6 @@
 use crate::economy::{Economy, DebugMode};
 use crate::entities::*;
+use crate::events::{EventModalState, EventOptionChosen};
 use crate::hovered::HoveredEntity;
 use crate::roads::{ConstructionLog, ConstructionQueue, ProjectStatus, RoadNetwork};
 use crate::save::{save_game, sync_citizens_to_world, SaveRequestEvent};
@@ -166,6 +167,22 @@ struct ToastText;
 #[derive(Component)]
 pub struct NewsFeedPanel;
 
+/// Marks the event choice modal overlay.
+#[derive(Component)]
+struct EventModal;
+
+/// Marks an option button inside the event modal.
+#[derive(Component, Clone)]
+struct EventOptionButton(usize);
+
+/// Marks the policy toggle button.
+#[derive(Component, Clone, Copy)]
+pub enum PolicyButton {
+    ParkDay,
+    Overtime,
+    OpenCity,
+}
+
 #[derive(Resource, Default)]
 struct NewsPanelVisible(bool);
 
@@ -236,6 +253,9 @@ impl Plugin for UIPlugin {
                     sync_policies_panel_visibility.run_if(in_state(AppState::InGame)),
                     update_policies_panel.run_if(in_state(AppState::InGame)),
                     update_citizen_detail_panel.run_if(in_state(AppState::InGame)),
+                    sync_event_modal.run_if(in_state(AppState::InGame)),
+                    handle_event_option_click.run_if(in_state(AppState::InGame)),
+                    handle_policy_button_click.run_if(in_state(AppState::InGame)),
                 ),
             )
             // Run the actual exit at the very end of the frame so any
@@ -1753,7 +1773,7 @@ fn toggle_stats_panel(
 fn sync_stats_panel_visibility(
     visible: Res<StatsPanelVisible>,
     mut commands: Commands,
-    mut panel_query: Query<Entity, With<StatsPanel>>,
+    panel_query: Query<Entity, With<StatsPanel>>,
 ) {
     if !visible.is_changed() { return; }
     if visible.0 {
@@ -1836,7 +1856,7 @@ fn toggle_policies_panel(
 fn sync_policies_panel_visibility(
     visible: Res<PoliciesPanelVisible>,
     mut commands: Commands,
-    mut panel_query: Query<Entity, With<PoliciesPanel>>,
+    panel_query: Query<Entity, With<PoliciesPanel>>,
 ) {
     if !visible.is_changed() { return; }
     if visible.0 {
@@ -1874,7 +1894,7 @@ fn update_policies_panel(
 ) {
     if !policies.is_changed() { return; }
     let Ok(panel) = panel_query.single() else { return; };
-    
+
     commands.entity(panel).despawn_children();
     commands.entity(panel).with_children(|parent| {
         parent.spawn((
@@ -1882,28 +1902,17 @@ fn update_policies_panel(
             TextFont { font_size: 14.0, ..Default::default() },
             TextColor(Color::srgb(0.9, 0.85, 0.5)),
         ));
-        
-        let park_status = if policies.park_day { "✓ ON" } else { "✗ OFF" };
-        parent.spawn((
-            Text::new(format!("Park Day {}\nCitizens visit parks 2× more\nHappiness +10%", park_status)),
-            TextFont { font_size: 11.0, ..Default::default() },
-            TextColor(Color::srgb(0.8, 0.8, 0.8)),
-        ));
-        
-        let overtime_status = if policies.overtime { "✓ ON" } else { "✗ OFF" };
-        parent.spawn((
-            Text::new(format!("Overtime {}\nWorkers stay longer\nIncome +20%, Happiness -15%", overtime_status)),
-            TextFont { font_size: 11.0, ..Default::default() },
-            TextColor(Color::srgb(0.8, 0.8, 0.8)),
-        ));
-        
-        let open_status = if policies.open_city { "✓ ON" } else { "✗ OFF" };
-        parent.spawn((
-            Text::new(format!("Open City {}\nMigration +50% more frequent\nHappiness +5%", open_status)),
-            TextFont { font_size: 11.0, ..Default::default() },
-            TextColor(Color::srgb(0.8, 0.8, 0.8)),
-        ));
-        
+
+        spawn_policy_row(parent, "🌳 Park Day",
+            "Citizens visit parks 2× more | Happiness +10%",
+            policies.park_day, PolicyButton::ParkDay);
+        spawn_policy_row(parent, "⏰ Overtime",
+            "Income +20% | Happiness -15%",
+            policies.overtime, PolicyButton::Overtime);
+        spawn_policy_row(parent, "🏙️ Open City",
+            "Migration events +50% | Happiness +5%",
+            policies.open_city, PolicyButton::OpenCity);
+
         let happiness_delta = policies.happiness_impact();
         let delta_text = if happiness_delta > 0.0 {
             format!("+{:.0}%", happiness_delta * 100.0)
@@ -1970,6 +1979,176 @@ fn update_citizen_detail_panel(
                     TextColor(Color::srgb(0.7, 0.7, 0.7)),
                 ));
             });
+        }
+    }
+}
+
+// ─── Policy row helper ────────────────────────────────────────────────────────
+
+fn spawn_policy_row(
+    parent: &mut ChildSpawnerCommands,
+    title: &str,
+    description: &str,
+    is_active: bool,
+    button: PolicyButton,
+) {
+    let btn_color = if is_active {
+        Color::srgb(0.15, 0.45, 0.15)
+    } else {
+        Color::srgb(0.25, 0.25, 0.25)
+    };
+    let status = if is_active { "ON ✓" } else { "OFF" };
+
+    parent.spawn((
+        Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            ..default()
+        },
+    )).with_children(|row| {
+        row.spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                ..default()
+            },
+            Button,
+            BackgroundColor(btn_color),
+            button,
+        )).with_children(|btn| {
+            btn.spawn((
+                Text::new(status),
+                TextFont { font_size: 11.0, ..Default::default() },
+                TextColor(Color::WHITE),
+            ));
+        });
+        row.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|col| {
+            col.spawn((
+                Text::new(title),
+                TextFont { font_size: 11.0, ..Default::default() },
+                TextColor(Color::srgb(0.9, 0.9, 0.7)),
+            ));
+            col.spawn((
+                Text::new(description),
+                TextFont { font_size: 10.0, ..Default::default() },
+                TextColor(Color::srgb(0.6, 0.6, 0.6)),
+            ));
+        });
+    });
+}
+
+// ─── Policy button click handler ──────────────────────────────────────────────
+
+fn handle_policy_button_click(
+    buttons: Query<(&PolicyButton, &Interaction), Changed<Interaction>>,
+    mut policies: ResMut<crate::policies::ActivePolicies>,
+) {
+    for (btn, interaction) in buttons.iter() {
+        if *interaction == Interaction::Pressed {
+            match btn {
+                PolicyButton::ParkDay  => policies.park_day  = !policies.park_day,
+                PolicyButton::Overtime => policies.overtime  = !policies.overtime,
+                PolicyButton::OpenCity => policies.open_city = !policies.open_city,
+            }
+        }
+    }
+}
+
+// ─── Event modal ──────────────────────────────────────────────────────────────
+
+/// Rebuilds the event modal when `EventModalState` changes.
+fn sync_event_modal(
+    mut commands: Commands,
+    modal_state: Res<EventModalState>,
+    modal_query: Query<Entity, With<EventModal>>,
+) {
+    if !modal_state.is_changed() { return; }
+
+    // Despawn old modal
+    for entity in modal_query.iter() {
+        commands.entity(entity).despawn();
+    }
+
+    let Some(ref event) = modal_state.active_event else { return };
+
+    // Spawn modal overlay (centered, semi-transparent dark backdrop)
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Percent(25.0),
+            top: Val::Percent(25.0),
+            width: Val::Percent(50.0),
+            height: Val::Auto,
+            flex_direction: FlexDirection::Column,
+            padding: UiRect::all(Val::Px(20.0)),
+            row_gap: Val::Px(12.0),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.05, 0.05, 0.1, 0.97)),
+        EventModal,
+        // High z-index so it renders above everything else
+        ZIndex(100),
+    )).with_children(|parent| {
+        // Title
+        parent.spawn((
+            Text::new(&event.title),
+            TextFont { font_size: 18.0, ..Default::default() },
+            TextColor(Color::srgb(0.95, 0.85, 0.4)),
+        ));
+
+        // Description
+        parent.spawn((
+            Text::new(&event.description),
+            TextFont { font_size: 13.0, ..Default::default() },
+            TextColor(Color::srgb(0.85, 0.85, 0.85)),
+        ));
+
+        // Option buttons
+        for (idx, option) in event.options.iter().enumerate() {
+            parent.spawn((
+                Node {
+                    padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                    ..default()
+                },
+                Button,
+                BackgroundColor(Color::srgba(0.15, 0.25, 0.4, 0.95)),
+                EventOptionButton(idx),
+            )).with_children(|btn| {
+                btn.spawn((
+                    Text::new(&option.label),
+                    TextFont { font_size: 12.0, ..Default::default() },
+                    TextColor(Color::WHITE),
+                ));
+            });
+        }
+    });
+}
+
+/// Handles clicks on event option buttons.
+fn handle_event_option_click(
+    mut buttons: Query<(&EventOptionButton, &Interaction, &mut BackgroundColor), Changed<Interaction>>,
+    mut modal_state: ResMut<EventModalState>,
+    mut chosen_writer: MessageWriter<EventOptionChosen>,
+) {
+    for (opt_btn, interaction, mut bg) in buttons.iter_mut() {
+        match interaction {
+            Interaction::Pressed => {
+                if let Some(ref event) = modal_state.active_event {
+                    if let Some(option) = event.options.get(opt_btn.0) {
+                        chosen_writer.write(EventOptionChosen {
+                            consequence: option.consequence.clone(),
+                        });
+                    }
+                }
+                // Dismiss the modal
+                modal_state.active_event = None;
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(Color::srgba(0.2, 0.35, 0.55, 0.95));
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(Color::srgba(0.15, 0.25, 0.4, 0.95));
+            }
         }
     }
 }

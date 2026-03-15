@@ -5,15 +5,23 @@ use rand::RngExt;
 use crate::AppState;
 use crate::time::GameTime;
 
+/// Message fired when the player selects an option in the event modal.
+#[derive(Message, Clone)]
+pub struct EventOptionChosen {
+    pub consequence: EventConsequence,
+}
+
 pub struct EventsPlugin;
 
 impl Plugin for EventsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RandomEventQueue>()
            .init_resource::<EventModalState>()
+           .add_message::<EventOptionChosen>()
            .add_systems(Update, (
                spawn_random_events,
                check_trigger_random_event,
+               apply_event_consequences,
            ).run_if(in_state(AppState::InGame)));
     }
 }
@@ -24,7 +32,11 @@ pub struct EventConsequence {
     pub happiness_delta: f32,
     pub happiness_duration_days: f32,
     pub citizen_delta: i32,
+    /// Reserved: future events can spawn a building of this type.
+    #[allow(dead_code)]
     pub building_to_spawn: Option<crate::entities::BuildingType>,
+    /// Reserved: future events can destroy a specific building by id.
+    #[allow(dead_code)]
     pub building_to_destroy: Option<String>,
 }
 
@@ -50,6 +62,8 @@ pub struct RandomEventQueue {
 #[derive(Resource, Default)]
 pub struct EventModalState {
     pub active_event: Option<CityEvent>,
+    /// Reserved for future hover highlighting of option buttons.
+    #[allow(dead_code)]
     pub hovered_option: Option<usize>,
 }
 
@@ -82,14 +96,19 @@ fn spawn_random_events(
 fn check_trigger_random_event(
     mut event_queue: ResMut<RandomEventQueue>,
     mut modal_state: ResMut<EventModalState>,
-    _time: Res<GameTime>,
+    game_time: Res<GameTime>,
+    real_time: Res<Time>,
+    policies: Res<crate::policies::ActivePolicies>,
 ) {
     if modal_state.active_event.is_some() {
         return;
     }
-    
-    event_queue.cooldown_days -= 0.01;
-    
+
+    // Advance cooldown using real elapsed time scaled by game speed
+    let delta_days = real_time.delta_secs() * game_time.time_scale / game_time.day_length_secs;
+    // Open City policy shortens the cooldown, making events arrive sooner
+    event_queue.cooldown_days -= delta_days * policies.migration_frequency_multiplier();
+
     if event_queue.cooldown_days <= 0.0 {
         if let Some(event) = event_queue.trigger_random_event() {
             modal_state.active_event = Some(event);
@@ -176,4 +195,37 @@ pub fn create_random_events() -> Vec<CityEvent> {
             ],
         },
     ]
+}
+
+/// Applies the consequence of a chosen event option.
+fn apply_event_consequences(
+    mut events: MessageReader<EventOptionChosen>,
+    mut economy: ResMut<crate::economy::Economy>,
+    mut city_happiness: ResMut<crate::happiness::CityHappiness>,
+    game_time: Res<GameTime>,
+    mut news: ResMut<crate::news::CityNewsLog>,
+) {
+    for chosen in events.read() {
+        let c = &chosen.consequence;
+
+        if c.balance_delta != 0.0 {
+            economy.balance += c.balance_delta;
+            let sign = if c.balance_delta > 0.0 { "+" } else { "" };
+            news.push(game_time.current_day(), "💰", format!("City event: balance changed by {sign}${:.0}", c.balance_delta));
+        }
+
+        if c.happiness_delta != 0.0 && c.happiness_duration_days > 0.0 {
+            city_happiness.apply_boost(c.happiness_delta, c.happiness_duration_days, game_time.current_day());
+            let sign = if c.happiness_delta > 0.0 { "+" } else { "" };
+            news.push(game_time.current_day(), "😊", format!("City happiness {sign}{:.0}% for {:.0} days", c.happiness_delta * 100.0, c.happiness_duration_days));
+        }
+
+        // citizen_delta (positive = spawn citizens) is handled by ui.rs which
+        // has access to Commands — signal via news if needed.
+        if c.citizen_delta > 0 {
+            news.push(game_time.current_day(), "👥", format!("{} new citizens are moving in!", c.citizen_delta));
+        } else if c.citizen_delta < 0 {
+            news.push(game_time.current_day(), "👤", format!("{} citizens left the city.", -c.citizen_delta));
+        }
+    }
 }
