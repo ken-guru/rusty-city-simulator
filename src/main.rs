@@ -6,7 +6,9 @@ mod aging;
 mod ai;
 mod economy;
 mod entities;
+mod events;
 mod grid;
+mod happiness;
 mod hovered;
 mod housing;
 mod movement;
@@ -29,6 +31,8 @@ pub use economy::DebugMode;
 pub use city_name::GameName;
 use economy::EconomyPlugin;
 use entities::*;
+use events::EventsPlugin;
+use happiness::HappinessPlugin;
 use hovered::HoveredEntity;
 use housing::HousingPlugin;
 use movement::MovementPlugin;
@@ -97,6 +101,13 @@ impl ActiveRoute {
     }
 }
 
+/// Tracks building placement mode for manual construction.
+#[derive(Resource, Default)]
+pub struct BuildMode {
+    pub active: bool,
+    pub selected_type: Option<BuildingType>,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
@@ -113,6 +124,8 @@ fn main() {
         .add_plugins(UIPlugin)
         .add_plugins(SaveLoadPlugin)
         .add_plugins(StartScreenPlugin)
+        .add_plugins(EventsPlugin)
+        .add_plugins(HappinessPlugin)
         .insert_resource(CityWorld::new())
         .insert_resource(GameState::default())
         .insert_resource(BuildingSelection::default())
@@ -123,6 +136,10 @@ fn main() {
         .add_plugins(MilestonesPlugin)
         .add_plugins(NewsPlugin)
         .insert_resource(GameName::default())
+        .insert_resource(BuildMode::default())
+        .insert_resource(happiness::CityHappiness::default())
+        .insert_resource(events::RandomEventQueue::default())
+        .insert_resource(events::EventModalState::default())
         // Camera is always present so UI renders on both StartScreen and InGame.
         .add_systems(Startup, (spawn_camera, sprites::setup_sprites))
         // Game world entities are spawned when entering InGame.
@@ -192,6 +209,10 @@ fn cleanup_ingame(
     commands.insert_resource(news::CityNewsLog::default());
     commands.insert_resource(housing::HousingCooldown::default());
     commands.insert_resource(movement::CityTravelStats::default());
+    commands.insert_resource(BuildMode::default());
+    commands.insert_resource(happiness::CityHappiness::default());
+    commands.insert_resource(events::RandomEventQueue::default());
+    commands.insert_resource(events::EventModalState::default());
     // Reset log header flag so a new session header is written if debug logging fires again.
     debug.log_header_written = false;
 }
@@ -324,6 +345,7 @@ fn setup(
             MeshMaterial2d(materials.add(color)),
             Transform::from_xyz(citizen.position.x, citizen.position.y, 1.0),
             citizen.clone(),
+            happiness::CitizenHappiness::default(),
         ));
     }
 }

@@ -139,6 +139,7 @@ fn spawn_newborn(
             MeshMaterial2d(materials.add(color)),
             Transform::from_xyz(event.position.x, event.position.y, 1.0),
             citizen,
+            crate::happiness::CitizenHappiness::default(),
         ));
 
         info!("A baby was born: {}", event.name);
