@@ -33,7 +33,13 @@ impl Plugin for HousingPlugin {
 
 /// Returns true if the given building can gain one more floor without violating the 5-floor
 /// height difference rule relative to neighbours. Parks and roads are ignored.
+/// An absolute maximum of MAX_FLOORS is also enforced.
+const MAX_FLOORS: u32 = 12;
+
 fn can_add_floor(building: &Building, all_buildings: &[Building]) -> bool {
+    if building.floors >= MAX_FLOORS {
+        return false;
+    }
     let neighbour_radius = CELL_SIZE * 3.0;
     let min_neighbour_floors = all_buildings
         .iter()

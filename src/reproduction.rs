@@ -25,8 +25,18 @@ const FIRST_NAMES_MALE:   [&str; 10] = ["Noah","Liam","Oliver","Elijah","James",
 const FIRST_NAMES_FEMALE: [&str; 10] = ["Emma","Olivia","Ava","Isabella","Sophia","Charlotte","Mia","Amelia","Harper","Evelyn"];
 const LAST_NAMES:         [&str; 8]  = ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis"];
 
+/// Birth rate coefficient: expected births per female per game-day = BIRTH_RATE_COEFF × day_length_secs.
+/// At 120s/day: 0.001 × 120 = 0.12 births/female/day (≈1 birth per ~8 game-days per eligible female).
+const BIRTH_RATE_COEFF: f32 = 0.001;
+
+/// Minimum game-days between births for the same female.
+const BIRTH_COOLDOWN_DAYS: f32 = 365.0;
+
+/// Hard cap on total citizen count to prevent ECS saturation at very long run times.
+const MAX_POPULATION: usize = 1000;
+
 fn check_reproduction(
-    citizens: Query<&Citizen>,
+    mut citizens: Query<&mut Citizen>,
     mut world: ResMut<CityWorld>,
     mut birth_events: MessageWriter<BirthEvent>,
     time: Res<Time>,
@@ -34,71 +44,59 @@ fn check_reproduction(
 ) {
     let mut rng = rand::rng();
     let delta = time.delta_secs() * game_time.time_scale;
+    let current_day = game_time.current_day();
 
-    // Collect eligible adults
-    let females: Vec<Citizen> = citizens.iter()
-        .filter(|c| matches!(c.gender, Gender::Female) && c.can_reproduce())
-        .cloned()
-        .collect();
-
-    let males: Vec<Citizen> = citizens.iter()
-        .filter(|c| matches!(c.gender, Gender::Male) && c.can_reproduce())
-        .cloned()
-        .collect();
-
-    if females.is_empty() || males.is_empty() {
+    // Hard population cap.
+    if world.citizens.len() >= MAX_POPULATION {
         return;
     }
 
-    // Limit population growth: only allow birth if there's housing capacity
-    let total_home_capacity: usize = world.buildings.iter()
-        .filter(|b| b.building_type == BuildingType::Home)
-        .map(|b| b.capacity_residents)
-        .sum();
-    let total_residents: usize = world.buildings.iter()
-        .filter(|b| b.building_type == BuildingType::Home)
-        .map(|b| b.resident_ids.len())
-        .sum();
-
-    if total_residents >= total_home_capacity {
-        return; // no room
+    let males_eligible = citizens.iter()
+        .any(|c| matches!(c.gender, Gender::Male) && c.can_reproduce());
+    if !males_eligible {
+        return;
     }
 
-    for female in &females {
-        // Low-probability birth check per frame (~once every ~60s per eligible woman at 1x)
-        let birth_chance = delta * 0.016;
-        if !rng.random_bool(birth_chance.clamp(0.0, 1.0) as f64) {
-            continue;
-        }
+    for mut female in citizens.iter_mut() {
+        if !matches!(female.gender, Gender::Female) { continue; }
+        if !female.can_reproduce() { continue; }
+
+        // Per-female cooldown: wait at least BIRTH_COOLDOWN_DAYS between births.
+        if current_day - female.last_birth_day < BIRTH_COOLDOWN_DAYS { continue; }
+
+        // Per-frame birth probability scales with time so rate stays constant across speeds.
+        let birth_chance = (delta * BIRTH_RATE_COEFF).clamp(0.0, 1.0);
+        if !rng.random_bool(birth_chance as f64) { continue; }
+
+        // Find a home with an available slot — if none exists, no birth happens (no homeless).
+        let home = world.buildings.iter_mut()
+            .find(|b| b.building_type == BuildingType::Home
+                   && b.resident_ids.len() < b.capacity_residents);
+
+        let Some(home_building) = home else { continue }; // no room → skip
+
+        let home_id = home_building.id.clone();
+        let birth_pos = home_building.position + Vec2::new(
+            rng.random_range(-15.0..15.0),
+            rng.random_range(-15.0..15.0),
+        );
+        // Reserve the slot immediately so subsequent females in this frame see it occupied.
+        home_building.resident_ids.push(Uuid::new_v4().to_string()); // placeholder
 
         let gender = if rng.random_bool(0.5) { Gender::Male } else { Gender::Female };
         let name = {
             let first = match gender {
-                Gender::Male => FIRST_NAMES_MALE[rng.random_range(0..FIRST_NAMES_MALE.len())],
+                Gender::Male   => FIRST_NAMES_MALE[rng.random_range(0..FIRST_NAMES_MALE.len())],
                 Gender::Female => FIRST_NAMES_FEMALE[rng.random_range(0..FIRST_NAMES_FEMALE.len())],
             };
             let last = LAST_NAMES[rng.random_range(0..LAST_NAMES.len())];
-            format!("{} {}", first, last)
+            format!("{first} {last}")
         };
 
-        // Find a home with space
-        let home = world.buildings.iter_mut()
-            .find(|b| b.building_type == BuildingType::Home && b.resident_ids.len() < b.capacity_residents);
+        // Mark this female as having given birth today.
+        female.last_birth_day = current_day;
 
-        let (home_id, birth_pos) = if let Some(b) = home {
-            let id = b.id.clone();
-            let pos = b.position + Vec2::new(
-                rng.random_range(-15.0..15.0),
-                rng.random_range(-15.0..15.0),
-            );
-            // Reserve the slot now
-            b.resident_ids.push(Uuid::new_v4().to_string()); // placeholder, updated after spawn
-            (Some(id), pos)
-        } else {
-            (None, female.position)
-        };
-
-        birth_events.write(BirthEvent { position: birth_pos, gender, name, home_building_id: home_id });
+        birth_events.write(BirthEvent { position: birth_pos, gender, name, home_building_id: Some(home_id) });
     }
 }
 

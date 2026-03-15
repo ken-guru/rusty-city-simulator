@@ -75,6 +75,9 @@ pub struct Citizen {
     /// Cumulative distance traveled this session (transient — not saved).
     #[serde(skip, default)]
     pub total_distance_traveled: f32,
+    /// Game-day when this female last gave birth (transient — not saved; used for birth cooldown).
+    #[serde(skip, default)]
+    pub last_birth_day: f32,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -110,6 +113,7 @@ impl Citizen {
             last_road_node: None,
             park_timer: 0.0,
             total_distance_traveled: 0.0,
+            last_birth_day: -999.0, // Sufficiently far in the past to allow first birth
         }
     }
 
