@@ -26,7 +26,7 @@ impl Default for DebugMode {
         Self {
             economy_logging: false,
             log_header_written: false,
-            log_file_path: "economy_debug.log".to_string(),
+            log_file_path: "saves/economy_debug.log".to_string(),
         }
     }
 }

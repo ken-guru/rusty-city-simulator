@@ -385,7 +385,7 @@ impl RoadNetwork {
             .min_by(|a, b| {
                 let da = (*a - entrance_world).length();
                 let db = (*b - entrance_world).length();
-                da.partial_cmp(&db).unwrap()
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
             })
             .copied()
         else {
@@ -537,7 +537,7 @@ impl RoadNetwork {
             candidates.sort_by(|a, b| {
                 let da = (*a - origin).length();
                 let db = (*b - origin).length();
-                da.partial_cmp(&db).unwrap()
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
             });
 
             for target in candidates.iter().take(3) {

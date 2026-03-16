@@ -162,8 +162,18 @@ pub fn sync_citizens_to_world(world: &mut CityWorld, ecs_citizens: &[Citizen]) {
 
 // ─── Functions used by the start screen ──────────────────────────────────────
 
+/// Maximum save-file size accepted by `load_save`. Files larger than this are
+/// rejected before parsing to prevent memory exhaustion from crafted inputs.
+const MAX_SAVE_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
+
 /// Deserialise a save file from `path`.
 pub fn load_save(path: &Path) -> Result<GameSave, Box<dyn std::error::Error>> {
+    let size = fs::metadata(path)?.len();
+    if size > MAX_SAVE_BYTES {
+        return Err(format!(
+            "save file is too large ({size} bytes; limit is {MAX_SAVE_BYTES})"
+        ).into());
+    }
     let json = fs::read_to_string(path)?;
     let save: GameSave = serde_json::from_str(&json)?;
     Ok(save)

@@ -174,7 +174,7 @@ fn pick_activity(citizen: &Citizen, park_multiplier: f32) -> ActivityType {
 
     scores
         .iter()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(act, _)| *act)
         .unwrap_or(ActivityType::Idle)
 }
@@ -247,7 +247,7 @@ fn satisfy_needs_at_destination(
         if *activity != ActivityType::Socializing || !at_dest { continue; }
         let nearest = snapshot.iter()
             .filter(|(oe, _, _, opos, _, _, _, _)| *oe != *e && opos.distance(*pos) < 200.0)
-            .min_by(|a, b| a.3.distance(*pos).partial_cmp(&b.3.distance(*pos)).unwrap());
+            .min_by(|a, b| a.3.distance(*pos).partial_cmp(&b.3.distance(*pos)).unwrap_or(std::cmp::Ordering::Equal));
         if let Some((other_e, other_id, other_name, _, _, _, other_partner_id, other_age)) = nearest {
             rel_pairs.push((
                 *e, id.clone(), name.clone(),
@@ -338,16 +338,18 @@ fn satisfy_needs_at_destination(
     for update in updates {
         let Ok((_, mut citizen)) = citizens.get_mut(update.entity) else { continue };
 
-        let existing_idx = citizen.relationships.iter().position(|r| r.citizen_id == update.with_id);
-        if existing_idx.is_none() {
-            citizen.relationships.push(crate::entities::RelationshipEntry {
-                citizen_id: update.with_id.clone(),
-                name: update.with_name.clone(),
-                kind: crate::entities::RelationshipKind::Acquaintance,
-                strength: 0.0,
-            });
-        }
-        let idx = citizen.relationships.iter().position(|r| r.citizen_id == update.with_id).unwrap();
+        let idx = match citizen.relationships.iter().position(|r| r.citizen_id == update.with_id) {
+            Some(i) => i,
+            None => {
+                citizen.relationships.push(crate::entities::RelationshipEntry {
+                    citizen_id: update.with_id.clone(),
+                    name: update.with_name.clone(),
+                    kind: crate::entities::RelationshipKind::Acquaintance,
+                    strength: 0.0,
+                });
+                citizen.relationships.len() - 1
+            }
+        };
         citizen.relationships[idx].strength += 0.5 * delta_secs;
         let strength = citizen.relationships[idx].strength;
         let kind = citizen.relationships[idx].kind.clone();
