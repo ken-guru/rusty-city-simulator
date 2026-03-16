@@ -32,6 +32,7 @@ pub enum SegmentType {
     PlayerSuggested,
 }
 
+/// A directed connection between two world-space positions in the road network.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RoadSegment {
     /// Runtime-only ID for entity tracking. Not stored in saves; regenerated on load.
@@ -74,6 +75,7 @@ impl RoadSegment {
 
 // ─── Network resource ───────────────────────────────────────────────────────
 
+/// The complete road graph for the city; the single authoritative source for all pathfinding.
 #[derive(Resource, Clone, Default, Serialize, Deserialize)]
 pub struct RoadNetwork {
     pub segments: Vec<RoadSegment>,
@@ -99,6 +101,7 @@ pub struct ConstructionProject {
 }
 
 impl ConstructionProject {
+    /// Total number of road segments this project intends to build.
     pub fn total_segments(&self) -> usize {
         self.waypoints.len().saturating_sub(1)
     }

@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::AppState;
 
+/// Bevy plugin that registers `HistoryTracker` and the daily snapshot system.
 pub struct HistoryPlugin;
 
 impl Plugin for HistoryPlugin {
@@ -15,6 +16,7 @@ impl Plugin for HistoryPlugin {
     }
 }
 
+/// A single end-of-day data point stored in `HistoryTracker`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DaySnapshot {
     pub day: f32,
@@ -24,14 +26,18 @@ pub struct DaySnapshot {
     pub happiness: f32,
 }
 
+/// Rolling window of daily city snapshots used to render the history graph in the sidebar.
 #[derive(Resource, Default, Serialize, Deserialize, Clone)]
 pub struct HistoryTracker {
+    /// Ordered ring-buffer of snapshots, oldest at front, newest at back.
     pub snapshots: VecDeque<DaySnapshot>,
 }
 
 impl HistoryTracker {
+    /// Maximum number of snapshots retained; older entries are dropped when exceeded.
     pub const MAX_SNAPSHOTS: usize = 30;
-    
+
+    /// Append `snapshot`, evicting the oldest entry when the window is full.
     pub fn add_snapshot(&mut self, snapshot: DaySnapshot) {
         self.snapshots.push_back(snapshot);
         // Keep the newest MAX_SNAPSHOTS entries: pop the oldest from the front.

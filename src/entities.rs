@@ -30,12 +30,14 @@ impl Direction {
     }
 }
 
+/// Gender of a citizen; used for reproduction pairing and name generation.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum Gender {
     Male,
     Female,
 }
 
+/// Primary function of a building, determining its capacity and economic contribution.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum BuildingType {
     Home,
@@ -44,6 +46,8 @@ pub enum BuildingType {
     Public,
 }
 
+/// An individual city resident. Attached as an ECS component during gameplay and
+/// serialised inside `CityWorld::citizens` for save/load.
 #[derive(Clone, Component, Serialize, Deserialize)]
 pub struct Citizen {
     pub id: String,
@@ -51,7 +55,9 @@ pub struct Citizen {
     pub gender: Gender,
     pub age: f32, // in years
     pub position: Vec2,
+    /// ID of the building where this citizen lives; `None` if unhoused.
     pub home_building_id: Option<String>,
+    /// ID of the building where this citizen works; `None` if unemployed.
     pub workplace_building_id: Option<String>,
 
     // Needs (0.0 to 1.0, where 1.0 is fully satisfied)
@@ -62,6 +68,7 @@ pub struct Citizen {
     pub reproduction_urge: f32, // desire to reproduce
 
     // State
+    /// Current task driving AI decision-making and movement each frame.
     pub current_activity: ActivityType,
     /// Cleared on load (reset to None); not persisted.
     #[serde(skip, default)]
@@ -83,9 +90,11 @@ pub struct Citizen {
     #[serde(skip, default)]
     pub last_birth_day: f32,
     #[serde(default)]
+    /// All social connections this citizen has formed with others.
     pub relationships: Vec<RelationshipEntry>,
 }
 
+/// The nature of a social bond between two citizens.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum RelationshipKind {
     Acquaintance,
@@ -93,14 +102,17 @@ pub enum RelationshipKind {
     Partner,
 }
 
+/// A record of a social bond this citizen holds with one specific other citizen.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RelationshipEntry {
     pub citizen_id: String,
     pub name: String,
     pub kind: RelationshipKind,
+    /// Bond strength (0–1); grows through repeated social interactions.
     pub strength: f32,
 }
 
+/// What a citizen is currently doing; drives AI decision-making and animation state.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ActivityType {
     Idle,
@@ -113,6 +125,7 @@ pub enum ActivityType {
 }
 
 impl Citizen {
+    /// Create a new citizen with sensible starter needs, the given name/gender, and the provided world position.
     pub fn new(name: String, gender: Gender, position: Vec2) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -139,10 +152,12 @@ impl Citizen {
         }
     }
 
+    /// Returns `true` when this citizen's age and `reproduction_urge` meet the thresholds for reproduction.
     pub fn can_reproduce(&self) -> bool {
         self.age >= 18.0 && self.age <= 60.0 && self.reproduction_urge > 0.7
     }
 
+    /// Returns a static label for this citizen's life stage (e.g. `"child"`, `"adult"`, `"elder"`).
     pub fn get_age_group(&self) -> &'static str {
         match self.age {
             a if a <= 2.0 => "infant",
@@ -154,18 +169,25 @@ impl Citizen {
     }
 }
 
+/// A city structure occupying one building-grid cell. Component on building entities and
+/// serialised inside `CityWorld::buildings` for save/load.
 #[derive(Clone, Component, Serialize, Deserialize)]
 pub struct Building {
     pub id: String,
     pub building_type: BuildingType,
     pub position: Vec2,
     pub size: Vec2,
+    /// IDs of citizens currently residing here (up to `capacity_residents`).
     pub resident_ids: Vec<String>,
+    /// IDs of citizens currently employed here (up to `capacity_workers`).
     pub worker_ids: Vec<String>,
     pub capacity_residents: usize,
     pub capacity_workers: usize,
+    /// Current number of floors; each additional floor increases capacities.
     pub floors: u32,
+    /// Resident capacity before floor bonuses are applied.
     pub base_capacity_residents: usize,
+    /// Worker capacity before floor bonuses are applied.
     pub base_capacity_workers: usize,
     /// The one corridor cell this building connects to for road access.
     #[serde(default)]
@@ -179,6 +201,7 @@ pub struct Building {
 }
 
 impl Building {
+    /// Create a new building at `position` with the given type, world-space `size`, and base capacities.
     pub fn new(
         building_type: BuildingType,
         position: Vec2,
@@ -229,6 +252,7 @@ impl Building {
 
 const SHOP_NAMES: &[&str] = &["Market", "Bakery", "Emporium", "Corner Shop", "General Store", "Provisions"];
 
+/// Generate a human-readable display name for a building of the given type, distinguished by `index`.
 pub fn generate_building_name(building_type: BuildingType, index: usize) -> String {
     match building_type {
         BuildingType::Home   => format!("Residence #{}", index + 1),

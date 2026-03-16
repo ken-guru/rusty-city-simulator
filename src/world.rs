@@ -28,6 +28,8 @@ pub struct ParkCorridorMarker {
     pub is_ns: bool,
 }
 
+/// The serialisable city snapshot: all citizens, buildings, and spatial bookkeeping.
+/// Used as a Bevy resource during gameplay and as the root of each save file.
 #[derive(Resource, Clone, Serialize, Deserialize)]
 pub struct CityWorld {
     pub citizens: Vec<Citizen>,
@@ -49,6 +51,8 @@ pub struct CityWorld {
 }
 
 impl CityWorld {
+    /// Construct the initial city layout: 8 buildings arranged in two rows with
+    /// pre-assigned citizens filling all home slots.
     pub fn new() -> Self {
         let mut rng = rand::rng();
         let mut buildings = Vec::new();

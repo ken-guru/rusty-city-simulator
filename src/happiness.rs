@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::AppState;
 use crate::time::GameTime;
 
+/// Bevy plugin registering citizen and city happiness resources and update systems.
 pub struct HappinessPlugin;
 
 impl Plugin for HappinessPlugin {
@@ -20,19 +21,26 @@ impl Plugin for HappinessPlugin {
     }
 }
 
+/// Per-citizen happiness component; derived each frame from the citizen's need levels.
 #[derive(Component, Default, Serialize, Deserialize, Clone)]
 pub struct CitizenHappiness {
+    /// Happiness score (0–1); 1 means all needs fully met.
     pub value: f32,
 }
 
+/// City-wide happiness resource; blends all citizen scores plus temporary event boosts.
 #[derive(Resource, Default, Serialize, Deserialize, Clone)]
 pub struct CityHappiness {
+    /// Baseline aggregate happiness (0–1); average of all `CitizenHappiness` values plus policy impact.
     pub value: f32,
+    /// Magnitude of the currently active temporary boost (from city events).
     pub boost: f32,
+    /// The game-day on which the active `boost` expires.
     pub boost_expires_day: f32,
 }
 
 impl CityHappiness {
+    /// Set a temporary happiness `boost` that expires `duration_days` game-days from `current_day`.
     pub fn apply_boost(&mut self, boost: f32, duration_days: f32, current_day: f32) {
         self.boost = boost;
         self.boost_expires_day = current_day + duration_days;

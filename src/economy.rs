@@ -31,18 +31,26 @@ impl Default for DebugMode {
     }
 }
 
+/// City treasury and daily income/expense tracker. Persisted to save files.
 #[derive(Resource, Clone, Serialize, Deserialize, Default)]
 pub struct Economy {
+    /// Current balance in game currency; starts at 200 000 on a new game.
     pub balance: f32,
+    /// Income accumulated so far in the current day-tick (reset each day).
     pub daily_income: f32,
+    /// Expenses accumulated so far in the current day-tick (reset each day).
     pub daily_expenses: f32,
+    /// Income total from the most recently completed day (used for UI display).
     pub last_income: f32,
+    /// Expense total from the most recently completed day (used for UI display).
     pub last_expenses: f32,
+    /// Running total of all construction costs charged since the game started.
     pub total_construction_cost: f32,
     last_update_day: f32,
 }
 
 impl Economy {
+    /// Create an `Economy` with the standard starting balance of 200 000.
     pub fn new() -> Self {
         Economy {
             balance: 200_000.0,
@@ -69,6 +77,7 @@ impl Economy {
     }
 }
 
+/// Bevy plugin that inserts `Economy` and registers the daily ledger update system.
 pub struct EconomyPlugin;
 
 impl Plugin for EconomyPlugin {

@@ -25,6 +25,7 @@ const INCOMPAT_FILE: &str = "saves/.incompatible.json";
 
 // ─── Events ──────────────────────────────────────────────────────────────────
 
+/// Fired (by UI button or F5) to trigger an immediate save of the current game state.
 #[derive(Message, Default)]
 pub struct SaveRequestEvent;
 
@@ -36,6 +37,7 @@ pub struct PendingLoad(pub Option<PathBuf>);
 
 // ─── On-disk format ──────────────────────────────────────────────────────────
 
+/// Complete on-disk snapshot of a city; the root object in every `.json` save file.
 #[derive(Serialize, Deserialize)]
 pub struct GameSave {
     /// Version of the game that created this save.
@@ -65,6 +67,7 @@ fn default_version() -> String {
     "0.0.0".to_string() // old saves without the field
 }
 
+/// Serialisable subset of `GameTime` stored in each save file.
 #[derive(Serialize, Deserialize)]
 pub struct GameTimeSave {
     pub elapsed_secs: f32,
@@ -303,6 +306,7 @@ fn save_incompatible_list(list: &[String]) -> Result<(), Box<dyn std::error::Err
 
 // ─── Bevy Plugin ─────────────────────────────────────────────────────────────
 
+/// Bevy plugin that registers `SaveRequestEvent`, `PendingLoad`, and the F5/UI save handler.
 pub struct SaveLoadPlugin;
 
 impl Plugin for SaveLoadPlugin {

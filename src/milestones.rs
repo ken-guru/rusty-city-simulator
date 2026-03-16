@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 use crate::AppState;
 
+/// Bevy plugin that registers `MilestoneTracker`, `ToastQueue`, and their update systems.
 pub struct MilestonesPlugin;
 
 impl Plugin for MilestonesPlugin {
@@ -18,6 +19,7 @@ impl Plugin for MilestonesPlugin {
     }
 }
 
+/// Tracks which one-shot city milestones have already been awarded, preventing duplicate toasts.
 #[derive(Resource, Default)]
 pub struct MilestoneTracker {
     pub pop_25: bool,
@@ -35,21 +37,27 @@ pub struct MilestoneTracker {
     pub first_couple: bool,
 }
 
+/// A brief notification banner displayed on screen for `DISPLAY_DURATION` seconds.
 #[derive(Clone)]
 pub struct ToastNotification {
     pub text: String,
     pub timer: f32,
 }
 
+/// FIFO queue of `ToastNotification`s; at most one toast is shown at a time.
 #[derive(Resource, Default)]
 pub struct ToastQueue {
+    /// Toasts waiting to be displayed, in arrival order.
     pub pending: VecDeque<ToastNotification>,
+    /// The toast currently on screen (if any).
     pub active: Option<ToastNotification>,
 }
 
 impl ToastQueue {
+    /// Real-time seconds each toast stays on screen before being dismissed.
     pub const DISPLAY_DURATION: f32 = 5.0;
 
+    /// Enqueue a new toast message; it will be shown after any currently active one expires.
     pub fn push(&mut self, text: impl Into<String>) {
         self.pending.push_back(ToastNotification {
             text: text.into(),
@@ -58,6 +66,7 @@ impl ToastQueue {
     }
 }
 
+/// Bevy system: evaluates milestone conditions each frame and emits toasts/news on first trigger.
 pub fn check_milestones(
     citizens: Query<&crate::entities::Citizen>,
     world: Res<crate::world::CityWorld>,
@@ -98,6 +107,7 @@ pub fn check_milestones(
     if has_multifloor { milestone!(tracker.first_multifloor, format!("{}'s first multi-storey building!", city)); }
 }
 
+/// Bevy system: advances the active toast timer and promotes the next pending toast when one expires.
 pub fn tick_toasts(
     mut toasts: ResMut<ToastQueue>,
     time: Res<Time>,

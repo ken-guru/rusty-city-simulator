@@ -12,6 +12,7 @@ use crate::city_name::GameName;
 use crate::time::simulation_running;
 use crate::economy::DebugMode;
 
+/// Message sent when a new citizen should be spawned (birth or immigration).
 #[derive(Message)]
 pub struct BirthEvent {
     pub position: Vec2,
@@ -28,6 +29,7 @@ pub struct SpawnImmigrantsMessage {
     pub count: u32,
 }
 
+/// Bevy plugin registering all reproduction-related resources, messages, and systems.
 pub struct ReproductionPlugin;
 
 impl Plugin for ReproductionPlugin {

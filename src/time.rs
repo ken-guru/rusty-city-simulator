@@ -14,14 +14,17 @@ pub fn simulation_running(
     game_time.time_scale != 0.0 && modal.active_event.is_none()
 }
 
+/// The game's virtual clock, driven by Bevy's real-time `Time` resource scaled by `time_scale`.
 #[derive(Resource)]
 pub struct GameTime {
+    /// Total virtual game-time elapsed in seconds (affected by `time_scale`).
     pub elapsed_secs: f32,
     pub day_length_secs: f32, // game seconds per in-game day
     pub time_scale: f32, // 0.0 = paused, 1.0 = normal, 2.0 = 2x speed
 }
 
 impl GameTime {
+    /// Create a `GameTime` with default settings: time starts at 0, one day = 120 real seconds.
     pub fn new() -> Self {
         Self {
             elapsed_secs: 0.0,
@@ -30,15 +33,18 @@ impl GameTime {
         }
     }
 
+    /// Fractional in-game day number since the simulation started (e.g. 1.5 = midday of day 2).
     pub fn current_day(&self) -> f32 {
         self.elapsed_secs / self.day_length_secs
     }
 
+    /// Current in-game hour of the day (0.0–23.99…), wrapping every `day_length_secs`.
     pub fn current_hour(&self) -> f32 {
         (self.elapsed_secs % self.day_length_secs) / self.day_length_secs * 24.0
     }
 }
 
+/// Bevy plugin that inserts `GameTime` and registers the clock-advance and keyboard speed-control systems.
 pub struct GameTimePlugin;
 
 impl Plugin for GameTimePlugin {
