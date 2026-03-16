@@ -1992,7 +1992,7 @@ fn handle_event_option_click(
                 }
                 // Dismiss the modal
                 modal_state.active_event = None;
-                modal_state.opened_at_real_secs = None;
+                modal_state.open_duration_secs = 0.0;
             }
             Interaction::Hovered => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.35, 0.55, 0.95));

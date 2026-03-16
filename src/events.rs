@@ -75,9 +75,10 @@ impl Default for RandomEventQueue {
 #[derive(Resource, Default)]
 pub struct EventModalState {
     pub active_event: Option<CityEvent>,
-    /// Real-time timestamp (seconds since startup) when the modal was opened.
-    /// Used to auto-resolve the dialog if the player is idle.
-    pub opened_at_real_secs: Option<f32>,
+    /// Accumulated real-world seconds since the modal was opened.
+    /// Incremented each frame using `Time<Real>` so it is unaffected by
+    /// game speed, pausing, or virtual-time scaling.
+    pub open_duration_secs: f32,
     /// Reserved for future hover highlighting of option buttons.
     #[allow(dead_code)]
     pub hovered_option: Option<usize>,
@@ -132,7 +133,7 @@ fn check_trigger_random_event(
     if event_queue.cooldown_days <= 0.0 {
         if let Some(event) = event_queue.trigger_random_event() {
             crate::economy::log_event_modal(&debug, &event.title, game_time.current_day());
-            modal_state.opened_at_real_secs = Some(real_time.elapsed_secs());
+            modal_state.open_duration_secs = 0.0;
             modal_state.active_event = Some(event);
             let mut rng = rand::rng();
             event_queue.cooldown_days = rng.random_range(RandomEventQueue::COOLDOWN_MIN..RandomEventQueue::COOLDOWN_MAX);
@@ -145,14 +146,15 @@ fn check_trigger_random_event(
 fn auto_resolve_event_modal(
     mut modal_state: ResMut<EventModalState>,
     mut chosen: MessageWriter<EventOptionChosen>,
-    real_time: Res<Time>,
+    real_time: Res<Time<bevy::time::Real>>,
     mut news: ResMut<crate::news::CityNewsLog>,
     game_time: Res<GameTime>,
     debug: Res<DebugMode>,
 ) {
-    let Some(opened_at) = modal_state.opened_at_real_secs else { return };
-    let elapsed = real_time.elapsed_secs() - opened_at;
-    if elapsed < AUTO_RESOLVE_SECS { return; }
+    if modal_state.active_event.is_none() { return; }
+
+    modal_state.open_duration_secs += real_time.delta_secs();
+    if modal_state.open_duration_secs < AUTO_RESOLVE_SECS { return; }
 
     let Some(ref event) = modal_state.active_event.clone() else { return };
     if let Some(first_option) = event.options.first() {
@@ -167,7 +169,7 @@ fn auto_resolve_event_modal(
         );
     }
     modal_state.active_event = None;
-    modal_state.opened_at_real_secs = None;
+    modal_state.open_duration_secs = 0.0;
 }
 
 pub fn create_random_events() -> Vec<CityEvent> {
