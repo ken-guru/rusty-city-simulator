@@ -3,7 +3,7 @@ use crate::entities::*;
 use crate::grid::CELL_SIZE;
 use crate::hovered::HoveredEntity;
 use crate::roads::RoadNetwork;
-use crate::time::GameTime;
+use crate::time::{simulation_running, GameTime};
 use crate::world::{park_positions, CityWorld};
 use bevy::prelude::*;
 use rand::RngExt;
@@ -14,7 +14,12 @@ pub struct NeedsDecayPlugin;
 
 impl Plugin for NeedsDecayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (decay_needs, run_citizen_ai, satisfy_needs_at_destination).run_if(in_state(crate::AppState::InGame)));
+        app.add_systems(
+            Update,
+            (decay_needs, run_citizen_ai, satisfy_needs_at_destination)
+                .run_if(in_state(crate::AppState::InGame))
+                .run_if(simulation_running),
+        );
     }
 }
 

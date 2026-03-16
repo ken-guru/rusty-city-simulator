@@ -1,5 +1,6 @@
+use crate::economy::DebugMode;
 use crate::news::CityNewsLog;
-use crate::time::GameTime;
+use crate::time::{simulation_running, GameTime};
 use bevy::prelude::*;
 use crate::entities::*;
 use crate::world::CityWorld;
@@ -9,7 +10,13 @@ pub struct AgingPlugin;
 
 impl Plugin for AgingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (age_citizens, check_citizen_death).chain().run_if(in_state(crate::AppState::InGame)));
+        app.add_systems(
+            Update,
+            (age_citizens, check_citizen_death)
+                .chain()
+                .run_if(in_state(crate::AppState::InGame))
+                .run_if(simulation_running),
+        );
     }
 }
 
@@ -20,9 +27,6 @@ fn age_citizens(
     time: Res<Time>,
     game_time: Res<GameTime>,
 ) {
-    if game_time.time_scale == 0.0 {
-        return;
-    }
     let delta_years = time.delta_secs() * game_time.time_scale * YEARS_PER_SECOND;
 
     for mut citizen in citizens.iter_mut() {
@@ -43,10 +47,8 @@ fn check_citizen_death(
     time: Res<Time>,
     game_time: Res<GameTime>,
     mut news: ResMut<CityNewsLog>,
+    debug: Res<DebugMode>,
 ) {
-    if game_time.time_scale == 0.0 {
-        return;
-    }
     let delta = time.delta_secs() * game_time.time_scale;
     let current_day = game_time.current_day();
 
@@ -73,6 +75,7 @@ fn check_citizen_death(
             }
         }
         news.push(current_day, "🕯", format!("{} passed away at age {}", name, age as u32));
+        crate::economy::log_citizen_death(&debug, &name, age, current_day);
         commands.entity(entity).despawn();
     }
 }

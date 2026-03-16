@@ -1,5 +1,16 @@
 use bevy::prelude::*;
 
+/// Run condition: returns `true` when the simulation should be ticking.
+/// False when manually paused (time_scale == 0) or an event modal is blocking input.
+/// Import this and attach `.run_if(simulation_running)` to any system that must
+/// not advance while the game is frozen.
+pub fn simulation_running(
+    game_time: Res<GameTime>,
+    modal: Res<crate::events::EventModalState>,
+) -> bool {
+    game_time.time_scale != 0.0 && modal.active_event.is_none()
+}
+
 #[derive(Resource)]
 pub struct GameTime {
     pub elapsed_secs: f32,

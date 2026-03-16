@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use rand::RngExt;
 
 use crate::AppState;
+use crate::economy::DebugMode;
 use crate::time::GameTime;
 
 /// Message fired when the player selects an option in the event modal.
@@ -21,6 +22,7 @@ impl Plugin for EventsPlugin {
            .add_systems(Update, (
                spawn_random_events,
                check_trigger_random_event,
+               auto_resolve_event_modal,
                apply_event_consequences,
            ).run_if(in_state(AppState::InGame)));
     }
@@ -73,10 +75,16 @@ impl Default for RandomEventQueue {
 #[derive(Resource, Default)]
 pub struct EventModalState {
     pub active_event: Option<CityEvent>,
+    /// Real-time timestamp (seconds since startup) when the modal was opened.
+    /// Used to auto-resolve the dialog if the player is idle.
+    pub opened_at_real_secs: Option<f32>,
     /// Reserved for future hover highlighting of option buttons.
     #[allow(dead_code)]
     pub hovered_option: Option<usize>,
 }
+
+/// After this many real-world seconds with no response, auto-select option 0.
+const AUTO_RESOLVE_SECS: f32 = 60.0;
 
 impl RandomEventQueue {
     pub const COOLDOWN_MIN: f32 = 10.0;
@@ -110,6 +118,7 @@ fn check_trigger_random_event(
     game_time: Res<GameTime>,
     real_time: Res<Time>,
     policies: Res<crate::policies::ActivePolicies>,
+    debug: Res<DebugMode>,
 ) {
     if modal_state.active_event.is_some() {
         return;
@@ -122,11 +131,43 @@ fn check_trigger_random_event(
 
     if event_queue.cooldown_days <= 0.0 {
         if let Some(event) = event_queue.trigger_random_event() {
+            crate::economy::log_event_modal(&debug, &event.title, game_time.current_day());
+            modal_state.opened_at_real_secs = Some(real_time.elapsed_secs());
             modal_state.active_event = Some(event);
             let mut rng = rand::rng();
             event_queue.cooldown_days = rng.random_range(RandomEventQueue::COOLDOWN_MIN..RandomEventQueue::COOLDOWN_MAX);
         }
     }
+}
+
+/// If a modal has been open for longer than AUTO_RESOLVE_SECS of real time with no
+/// player response, automatically choose option 0 (the first, typically "safe" choice).
+fn auto_resolve_event_modal(
+    mut modal_state: ResMut<EventModalState>,
+    mut chosen: MessageWriter<EventOptionChosen>,
+    real_time: Res<Time>,
+    mut news: ResMut<crate::news::CityNewsLog>,
+    game_time: Res<GameTime>,
+    debug: Res<DebugMode>,
+) {
+    let Some(opened_at) = modal_state.opened_at_real_secs else { return };
+    let elapsed = real_time.elapsed_secs() - opened_at;
+    if elapsed < AUTO_RESOLVE_SECS { return; }
+
+    let Some(ref event) = modal_state.active_event.clone() else { return };
+    if let Some(first_option) = event.options.first() {
+        chosen.write(EventOptionChosen { consequence: first_option.consequence.clone() });
+        crate::economy::log_event_resolved(
+            &debug, &event.title, &first_option.label, true, game_time.current_day()
+        );
+        news.push(
+            game_time.current_day(),
+            "⏱",
+            format!("\"{}\" auto-resolved: \"{}\"", event.title, first_option.label),
+        );
+    }
+    modal_state.active_event = None;
+    modal_state.opened_at_real_secs = None;
 }
 
 pub fn create_random_events() -> Vec<CityEvent> {

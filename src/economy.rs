@@ -8,11 +8,24 @@ use crate::roads::{RoadNetwork, SegmentType};
 use crate::time::GameTime;
 
 /// Toggleable debug flags — toggled from the start screen.
-#[derive(Resource, Default, Clone)]
+#[derive(Resource, Clone)]
 pub struct DebugMode {
     pub economy_logging: bool,
     /// Whether the session header has been written to the log file this run.
     pub log_header_written: bool,
+    /// Path of the current session's debug log file.
+    /// Generated on first enable as `saves/debug_YYYYMMDD_HHMMSS.log`.
+    pub log_file_path: String,
+}
+
+impl Default for DebugMode {
+    fn default() -> Self {
+        Self {
+            economy_logging: false,
+            log_header_written: false,
+            log_file_path: "economy_debug.log".to_string(),
+        }
+    }
 }
 
 #[derive(Resource, Clone, Serialize, Deserialize, Default)]
@@ -130,12 +143,24 @@ fn update_economy(
     if debug.economy_logging {
         if !debug.log_header_written {
             debug.log_header_written = true;
-            let now = std::time::SystemTime::now()
+            // Generate a timestamped log file for this session so each run is isolated.
+            let now_sys = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            let _ = append_log(&format!(
-                "\n=== SESSION STARTED (unix: {now}) ===\n\
+            // Format as YYYYMMDD_HHMMSS from the unix timestamp.
+            let secs_in_day = now_sys % 86400;
+            let days_since_epoch = now_sys / 86400;
+            // Simple calendar calculation (good enough for a filename).
+            let (year, month, day) = days_to_ymd_for_log(days_since_epoch);
+            let hh = secs_in_day / 3600;
+            let mm = (secs_in_day % 3600) / 60;
+            let ss = secs_in_day % 60;
+            debug.log_file_path = format!(
+                "saves/debug_{year:04}{month:02}{day:02}_{hh:02}{mm:02}{ss:02}.log"
+            );
+            let _ = append_log(&debug.log_file_path, &format!(
+                "\n=== SESSION STARTED (unix: {now_sys}) ===\n\
                  Columns: day | balance | citizens(idle) | shops | income \
                  | bldg_cost(n_bldgs) | road_cost(road/path/desire) \
                  | park(cells/corridors) | avg_daily_travel_px | net | elapsed\n"
@@ -153,7 +178,7 @@ fn update_economy(
         // Max floors in city
         let max_floors = world.buildings.iter().map(|b| b.floors).max().unwrap_or(1);
 
-        let _ = append_log(&format!(
+        let _ = append_log(&debug.log_file_path, &format!(
             "DAY {:.1} | bal={:.0} | ecs={} world={} idle={} \
              | shops={} homes={} offices={} max_floors={} \
              | inc={:.0} | bldg={:.0}({}) | road={:.0}(R:{}/P:{}/D:{}/PK:{}/PL:{}) \
@@ -201,39 +226,65 @@ fn average_travel_distance(world: &CityWorld) -> f32 {
     if count > 0 { total / count as f32 } else { 0.0 }
 }
 
-fn append_log(msg: &str) -> std::io::Result<()> {
+fn append_log(path: &str, msg: &str) -> std::io::Result<()> {
+    // Ensure the parent directory exists (e.g. "saves/").
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("economy_debug.log")?;
+        .open(path)?;
     file.write_all(msg.as_bytes())
+}
+
+/// Convert Unix days since epoch to (year, month, day). Used for log file naming.
+fn days_to_ymd_for_log(mut days: u64) -> (u32, u32, u32) {
+    let mut year = 1970u32;
+    loop {
+        let days_in_year = if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) { 366 } else { 365 };
+        if days < days_in_year { break; }
+        days -= days_in_year;
+        year += 1;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let month_days = [31u64, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 1u32;
+    for &md in &month_days {
+        if days < md { break; }
+        days -= md;
+        month += 1;
+    }
+    (year, month, days as u32 + 1)
 }
 
 /// Call this from housing.rs when charging construction, if debug mode is on.
 pub fn log_construction(debug: &mut DebugMode, description: &str, amount: f32) {
     if debug.economy_logging {
-        let _ = append_log(&format!("[CONSTRUCTION] {description}: -{amount:.0}\n"));
+        let _ = append_log(&debug.log_file_path.clone(), &format!("[CONSTRUCTION] {description}: -{amount:.0}\n"));
     }
 }
 
 /// Log a road evolution event (desire→path, path→road, degradations).
 pub fn log_road_event(debug: &DebugMode, description: &str) {
     if debug.economy_logging {
-        let _ = append_log(&format!("[ROAD] {description}\n"));
+        let _ = append_log(&debug.log_file_path, &format!("[ROAD] {description}\n"));
     }
 }
 
 /// Log a pathfinding failure for a citizen (when no route could be found).
 pub fn log_pathfind_fail(debug: &DebugMode, citizen_name: &str, activity: &str) {
     if debug.economy_logging {
-        let _ = append_log(&format!("[PATHFIND_FAIL] {citizen_name} → {activity}: no route\n"));
+        let _ = append_log(&debug.log_file_path, &format!("[PATHFIND_FAIL] {citizen_name} → {activity}: no route\n"));
     }
 }
 
 /// Log a park creation event.
 pub fn log_park_event(debug: &DebugMode, description: &str) {
     if debug.economy_logging {
-        let _ = append_log(&format!("[PARK] {description}\n"));
+        let _ = append_log(&debug.log_file_path, &format!("[PARK] {description}\n"));
     }
 }
 
@@ -241,7 +292,60 @@ pub fn log_park_event(debug: &DebugMode, description: &str) {
 #[allow(dead_code)]
 pub fn log_sim_event(debug: &DebugMode, description: &str) {
     if debug.economy_logging {
-        let _ = append_log(&format!("[SIM] {description}\n"));
+        let _ = append_log(&debug.log_file_path, &format!("[SIM] {description}\n"));
+    }
+}
+
+/// Log a citizen death.
+pub fn log_citizen_death(debug: &DebugMode, name: &str, age: f32, day: f32) {
+    if debug.economy_logging {
+        let _ = append_log(&debug.log_file_path, &format!("[DEATH] {name} (age {:.0}) on day {day:.1}\n", age));
+    }
+}
+
+/// Log a citizen birth or immigration.
+pub fn log_citizen_birth(debug: &DebugMode, name: &str, day: f32) {
+    if debug.economy_logging {
+        let _ = append_log(&debug.log_file_path, &format!("[BIRTH] {name} on day {day:.1}\n"));
+    }
+}
+
+/// Log when an event modal is shown to the player.
+pub fn log_event_modal(debug: &DebugMode, title: &str, day: f32) {
+    if debug.economy_logging {
+        let _ = append_log(&debug.log_file_path, &format!("[EVENT] shown: \"{title}\" on day {day:.1}\n"));
+    }
+}
+
+/// Log when an event modal is resolved (player choice or auto-resolve).
+pub fn log_event_resolved(debug: &DebugMode, title: &str, option_label: &str, auto: bool, day: f32) {
+    if debug.economy_logging {
+        let auto_str = if auto { " [AUTO]" } else { "" };
+        let _ = append_log(&debug.log_file_path, &format!(
+            "[EVENT] resolved{auto_str}: \"{title}\" → \"{option_label}\" on day {day:.1}\n"
+        ));
+    }
+}
+
+/// Log when a new building is placed.
+pub fn log_building_placed(debug: &DebugMode, btype: &str, day: f32) {
+    if debug.economy_logging {
+        let _ = append_log(&debug.log_file_path, &format!("[BUILDING] {btype} placed on day {day:.1}\n"));
+    }
+}
+
+/// Log the result of connecting a new building to the road network.
+pub fn log_road_connect(debug: &DebugMode, building_desc: &str, n_segments: usize, day: f32) {
+    if debug.economy_logging {
+        if n_segments > 0 {
+            let _ = append_log(&debug.log_file_path, &format!(
+                "[ROAD_CONNECT] {building_desc}: {n_segments} segment(s) on day {day:.1}\n"
+            ));
+        } else {
+            let _ = append_log(&debug.log_file_path, &format!(
+                "[ROAD_CONNECT] {building_desc}: BFS failed — no route to road network on day {day:.1}\n"
+            ));
+        }
     }
 }
 

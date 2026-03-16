@@ -43,6 +43,12 @@ pub struct RoadSegment {
     /// Game-day when seg_type last changed (used for time-based upgrades).
     #[serde(default)]
     pub type_changed_day: f32,
+    /// Game-day when this segment was first created. New segments are protected from
+    /// degradation for FRESHNESS_GRACE_DAYS so building roads don't immediately turn
+    /// into paths before citizens establish a travel pattern. Old saves default to 0.0
+    /// which makes those segments immediately eligible for degradation as before.
+    #[serde(default)]
+    pub created_day: f32,
 }
 
 fn new_segment_id() -> String {
@@ -50,15 +56,16 @@ fn new_segment_id() -> String {
 }
 
 impl RoadSegment {
-    pub fn new(start: Vec2, end: Vec2, seg_type: SegmentType) -> Self {
+    pub fn new(start: Vec2, end: Vec2, seg_type: SegmentType, created_day: f32) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             start,
             end,
             seg_type,
             usage: 0.0,
-            last_used_day: 0.0,
-            type_changed_day: 0.0,
+            last_used_day: created_day,
+            type_changed_day: created_day,
+            created_day,
         }
     }
 }
@@ -146,6 +153,11 @@ const DESIRE_THRESHOLD: f32 = 5.0;
 /// regardless of usage count, representing gradual city infrastructure investment.
 const PATH_TO_ROAD_AGE_DAYS: f32 = 90.0;
 
+/// Road and Path segments created within this many game-days are immune to degradation.
+/// This prevents freshly built building roads from downgrading before enough citizens
+/// have established regular travel patterns.
+const FRESHNESS_GRACE_DAYS: f32 = 120.0;
+
 impl RoadNetwork {
     /// Add a road segment between two positions (skips duplicates and very short segments).
     /// Add a road segment between two positions. Returns `true` if a new segment was
@@ -159,10 +171,7 @@ impl RoadNetwork {
                 || (nodes_close(s.start, end) && nodes_close(s.end, start))
         });
         if !already_exists {
-            let mut seg = RoadSegment::new(start, end, seg_type);
-            seg.last_used_day = current_day;
-            seg.type_changed_day = current_day;
-            self.segments.push(seg);
+            self.segments.push(RoadSegment::new(start, end, seg_type, current_day));
             true
         } else {
             false
@@ -269,6 +278,7 @@ impl RoadNetwork {
         current_day: f32,
         _all_buildings: &[Building],
         _crossroad_cells: &mut HashSet<(i32, i32)>,
+        debug: &crate::economy::DebugMode,
     ) {
         let entrance = building.entrance_pos();
 
@@ -279,6 +289,8 @@ impl RoadNetwork {
             .flat_map(|s| [s.start, s.end])
             .collect();
 
+        let seg_count_before = self.segments.len();
+
         // Entry segment: building centre → entrance corridor cell centre.
         self.connect(building.position, entrance, SegmentType::Road, current_day);
 
@@ -286,7 +298,7 @@ impl RoadNetwork {
         // existing road node. Lay road segments along every cell in the path.
         let entrance_cell = world_to_cell(entrance);
         let mut primary_target: Option<Vec2> = None;
-        if let Some(path) = bfs_to_road_node(&existing_nodes, entrance_cell) {
+        let bfs_succeeded = if let Some(path) = bfs_to_road_node(&existing_nodes, entrance_cell) {
             let mut prev_pos = entrance;
             for &(cc, cr) in path.iter().skip(1) {
                 let here = cell_to_world(cc, cr);
@@ -298,7 +310,10 @@ impl RoadNetwork {
                     break;
                 }
             }
-        }
+            true
+        } else {
+            false
+        };
 
         // ~60% chance: attempt a second connection to a different nearby road node,
         // creating a cross-link between two branches of the network.
@@ -306,6 +321,14 @@ impl RoadNetwork {
         if rng.random_bool(0.60) {
             self.try_second_connection(building.position, entrance_cell, primary_target, current_day);
         }
+
+        let new_segments = self.segments.len() - seg_count_before;
+        crate::economy::log_road_connect(
+            debug,
+            &building.name,
+            if bfs_succeeded { new_segments } else { 0 },
+            current_day,
+        );
     }
 
     /// Try to connect the building's entrance to a SECOND road node (different from
@@ -1153,20 +1176,25 @@ fn evolve_roads(
         }
 
         // Degrade via disuse (ParkPath segments never degrade).
-        match seg.seg_type {
-            SegmentType::Road if days_unused > ROAD_DEGRADE_DAYS => {
-                seg.seg_type = SegmentType::Path;
-                seg.type_changed_day = now;
-                crate::economy::log_road_event(&debug, &format!(
-                    "road→path via disuse (unused={:.0}d, day={:.1})", days_unused, now));
+        // Segments that are younger than FRESHNESS_GRACE_DAYS are immune so that
+        // newly built building roads don't downgrade before traffic is established.
+        let is_fresh = (now - seg.created_day) < FRESHNESS_GRACE_DAYS;
+        if !is_fresh {
+            match seg.seg_type {
+                SegmentType::Road if days_unused > ROAD_DEGRADE_DAYS => {
+                    seg.seg_type = SegmentType::Path;
+                    seg.type_changed_day = now;
+                    crate::economy::log_road_event(&debug, &format!(
+                        "road→path via disuse (unused={:.0}d, day={:.1})", days_unused, now));
+                }
+                SegmentType::Path if days_unused > PATH_DEGRADE_DAYS => {
+                    seg.seg_type = SegmentType::Desire;
+                    seg.type_changed_day = now;
+                    crate::economy::log_road_event(&debug, &format!(
+                        "path→desire via disuse (unused={:.0}d, day={:.1})", days_unused, now));
+                }
+                _ => {}
             }
-            SegmentType::Path if days_unused > PATH_DEGRADE_DAYS => {
-                seg.seg_type = SegmentType::Desire;
-                seg.type_changed_day = now;
-                crate::economy::log_road_event(&debug, &format!(
-                    "path→desire via disuse (unused={:.0}d, day={:.1})", days_unused, now));
-            }
-            _ => {}
         }
     }
 
@@ -1416,11 +1444,11 @@ mod tests {
         let c = Vec2::new(360.0, 120.0); // corridor cell (3,1)
         network.segments.push(RoadSegment {
             id: "ab".into(), start: a, end: b, seg_type: SegmentType::Road,
-            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0, created_day: 0.0,
         });
         network.segments.push(RoadSegment {
             id: "bc".into(), start: b, end: c, seg_type: SegmentType::Road,
-            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0, created_day: 0.0,
         });
         // Direct path A→C doesn't exist, and B is a building so can't transit.
         // A is start_node, C is end_node, B would be the only intermediate.
@@ -1437,7 +1465,7 @@ mod tests {
         let b = Vec2::new(240.0, 0.0);   // building cell (2,0) — destination
         network.segments.push(RoadSegment {
             id: "ab".into(), start: a, end: b, seg_type: SegmentType::Road,
-            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0, created_day: 0.0,
         });
         // start ≈ a (corridor), end = b (building).
         // start_node = a, end_node = b → direct single-hop.

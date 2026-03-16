@@ -1,6 +1,6 @@
 use crate::entities::*;
 use crate::roads::RoadNetwork;
-use crate::time::GameTime;
+use crate::time::{simulation_running, GameTime};
 use bevy::prelude::*;
 
 pub struct MovementPlugin;
@@ -23,7 +23,8 @@ impl Plugin for MovementPlugin {
         app.init_resource::<CityTravelStats>()
             .add_systems(Update, (simple_movement, sync_citizen_transforms, update_travel_stats)
                 .chain()
-                .run_if(in_state(crate::AppState::InGame)));
+                .run_if(in_state(crate::AppState::InGame))
+                .run_if(simulation_running));
     }
 }
 

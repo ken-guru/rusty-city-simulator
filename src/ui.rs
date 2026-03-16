@@ -1934,6 +1934,8 @@ fn handle_event_option_click(
     mut buttons: Query<(&EventOptionButton, &Interaction, &mut BackgroundColor), Changed<Interaction>>,
     mut modal_state: ResMut<EventModalState>,
     mut chosen_writer: MessageWriter<EventOptionChosen>,
+    debug: Res<crate::economy::DebugMode>,
+    game_time: Res<crate::time::GameTime>,
 ) {
     for (opt_btn, interaction, mut bg) in buttons.iter_mut() {
         match interaction {
@@ -1943,10 +1945,14 @@ fn handle_event_option_click(
                         chosen_writer.write(EventOptionChosen {
                             consequence: option.consequence.clone(),
                         });
+                        crate::economy::log_event_resolved(
+                            &debug, &event.title, &option.label, false, game_time.current_day()
+                        );
                     }
                 }
                 // Dismiss the modal
                 modal_state.active_event = None;
+                modal_state.opened_at_real_secs = None;
             }
             Interaction::Hovered => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.35, 0.55, 0.95));

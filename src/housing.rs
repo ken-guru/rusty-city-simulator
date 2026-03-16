@@ -1,4 +1,4 @@
-use crate::economy::{Economy, DebugMode, log_construction};
+use crate::economy::{Economy, DebugMode, log_construction, log_building_placed};
 use crate::entities::*;
 use crate::grid::{cell_to_world, is_building_cell, world_to_cell, CELL_SIZE};
 use crate::roads::RoadNetwork;
@@ -154,6 +154,7 @@ fn check_housing_pressure(
             building.founded_day = current_day;
             world.buildings.push(building.clone());
             log_construction(&mut debug, "new Home building", 5_000.0);
+            log_building_placed(&debug, "Home", current_day);
             economy.charge_construction(5_000.0);
             building_events.write(NewBuildingEvent { building });
         }
@@ -174,6 +175,7 @@ fn check_housing_pressure(
             world.buildings.push(building.clone());
             cooldown.last_office_day = current_day;
             log_construction(&mut debug, "new Office building", 5_000.0);
+            log_building_placed(&debug, "Office", current_day);
             economy.charge_construction(5_000.0);
             building_events.write(NewBuildingEvent { building });
         }
@@ -188,6 +190,7 @@ fn check_housing_pressure(
             world.buildings.push(building.clone());
             cooldown.last_shop_day = current_day;
             log_construction(&mut debug, "new Shop building", 5_000.0);
+            log_building_placed(&debug, "Shop", current_day);
             economy.charge_construction(5_000.0);
             building_events.write(NewBuildingEvent { building });
         }
@@ -351,6 +354,7 @@ fn spawn_building(
             game_time.current_day(),
             &buildings_snapshot,
             &mut world.crossroad_cells,
+            &debug,
         );
 
         // Detect any cells that became fully enclosed and should become parks.

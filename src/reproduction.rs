@@ -5,6 +5,8 @@ use rand::RngExt;
 use uuid::Uuid;
 use crate::news::CityNewsLog;
 use crate::city_name::GameName;
+use crate::time::simulation_running;
+use crate::economy::DebugMode;
 
 #[derive(Message)]
 pub struct BirthEvent {
@@ -34,7 +36,7 @@ impl Plugin for ReproductionPlugin {
                check_ghost_city_recovery,
                spawn_immigrants,
                spawn_newborn,
-           ).chain().run_if(in_state(crate::AppState::InGame)));
+           ).chain().run_if(in_state(crate::AppState::InGame)).run_if(simulation_running));
     }
 }
 
@@ -126,6 +128,8 @@ fn spawn_newborn(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut birth_events: MessageReader<BirthEvent>,
     mut world: ResMut<CityWorld>,
+    debug: Res<DebugMode>,
+    game_time: Res<crate::time::GameTime>,
 ) {
     for event in birth_events.read() {
         let color = match event.gender {
@@ -148,6 +152,8 @@ fn spawn_newborn(
         }
 
         world.citizens.push(citizen.clone());
+
+        crate::economy::log_citizen_birth(&debug, &event.name, game_time.current_day());
 
         commands.spawn((
             Mesh2d(meshes.add(Circle::new(6.0))),
@@ -179,8 +185,6 @@ fn check_ghost_city_recovery(
     game_time: Res<crate::time::GameTime>,
     time: Res<Time>,
 ) {
-    if game_time.time_scale == 0.0 { return; }
-
     let current_day = game_time.current_day();
     let ecs_count = citizens.iter().count();
 
