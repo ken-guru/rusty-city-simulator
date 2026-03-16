@@ -16,16 +16,18 @@ use crate::world::CityWorld;
 const BUS_SPEED: f32 = 180.0;
 /// Real seconds the bus dwells at each stop.
 const DWELL_SECS: f32 = 2.0;
-/// Minimum daily trips between a building pair before a route is considered.
-const ROUTE_SPAWN_THRESHOLD: f32 = 20.0;
+/// Minimum accumulated daily trips between a building pair before a route is considered.
+/// Uses exponential-decay accumulation: steady-state = trips_per_day / 0.15, so a
+/// threshold of 3.0 requires about 0.45 real trips/day between a pair.
+const ROUTE_SPAWN_THRESHOLD: f32 = 3.0;
 /// Consecutive game-days above threshold before a new route is spawned.
-const ROUTE_SPAWN_DAYS: f32 = 5.0;
+/// With ROUTE_CHECK_INTERVAL = 2.0, a single positive evaluation pass suffices.
+const ROUTE_SPAWN_DAYS: f32 = 1.0;
 /// Daily riders below this for 15 consecutive days causes route removal.
-const MIN_DAILY_RIDERS: f32 = 2.0;
+const MIN_DAILY_RIDERS: f32 = 0.5;
 /// Game-days between route evaluation passes.
-const ROUTE_CHECK_INTERVAL: f32 = 5.0;
-/// Bus coverage radius around a stop (world pixels).
-const STOP_RADIUS: f32 = 120.0;
+const ROUTE_CHECK_INTERVAL: f32 = 2.0;
+
 
 // ─── Data structures ─────────────────────────────────────────────────────────
 
@@ -98,6 +100,25 @@ impl TransitNetwork {
     pub fn route_count(&self) -> usize {
         self.routes.len()
     }
+
+    /// Record a completed citizen trip between two buildings.
+    /// Called from `ai.rs` at the moment a citizen picks a new activity (i.e. just finished
+    /// arriving at their destination), avoiding the race condition with `run_citizen_ai`.
+    pub fn record_trip(&mut self, origin_id: &str, dest_id: &str) {
+        if origin_id == dest_id { return; }
+        let key = canonical_pair_key(origin_id, dest_id);
+        let record = self.pair_counts.entry(key).or_default();
+        record.daily_trips += 1.0;
+        debug!("[TRANSIT] trip {} → {}, accumulated={:.2}", origin_id, dest_id, record.daily_trips);
+    }
+}
+
+/// Marker component placed on every active bus visual entity.
+/// One entity per `BusRoute`; despawned when the route is removed.
+#[derive(Component)]
+pub struct BusMarker {
+    /// The `BusRoute::id` this visual represents.
+    pub route_id: String,
 }
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
@@ -108,10 +129,10 @@ pub struct TransitPlugin;
 impl Plugin for TransitPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TransitNetwork>()
+            // Simulation-dependent systems (pause when time_scale == 0 or modal is open).
             .add_systems(
                 Update,
                 (
-                    track_citizen_trips,
                     decay_pair_counts,
                     evaluate_routes,
                     update_buses,
@@ -119,54 +140,25 @@ impl Plugin for TransitPlugin {
                 )
                     .run_if(in_state(crate::AppState::InGame))
                     .run_if(simulation_running),
+            )
+            // Visual sync runs every frame in-game (buses should appear even when paused).
+            .add_systems(
+                Update,
+                sync_bus_visuals.run_if(in_state(crate::AppState::InGame)),
             );
     }
 }
 
 // ─── Systems ─────────────────────────────────────────────────────────────────
 
-/// When a citizen arrives at a destination, record the origin-destination pair
-/// in the transit demand matrix so `evaluate_routes` can spawn routes later.
-fn track_citizen_trips(
-    mut citizens: Query<&mut Citizen>,
-    world: Res<CityWorld>,
-    mut network: ResMut<TransitNetwork>,
-) {
-    for mut citizen in citizens.iter_mut() {
-        // A trip is completed when the citizen has an origin and has arrived
-        // (no waypoints, no target) at a building.
-        if citizen.trip_origin_building_id.is_none() { continue; }
-        if citizen.target_position.is_some() || !citizen.waypoints.is_empty() { continue; }
+/// NOTE: Trip recording is intentionally done in `ai.rs` (`run_citizen_ai`) rather than
+/// here to avoid a race condition.  When a citizen finishes a trip (waypoints empty,
+/// target_position None) the AI system in `NeedsDecayPlugin` runs *before* any transit
+/// system because `NeedsDecayPlugin` is registered first in `main.rs`.  If we tried to
+/// detect arrivals here, the AI would have already assigned new waypoints by the time
+/// this system runs, making arrivals invisible.  Instead, `run_citizen_ai` calls
+/// `TransitNetwork::record_trip` right before it picks a new activity.
 
-        // Find the building the citizen is currently near.
-        let dest_building = world.buildings.iter().find(|b| {
-            (b.position - citizen.position).length() < STOP_RADIUS
-        });
-
-        let Some(dest) = dest_building else {
-            // Not at any building yet; keep waiting.
-            continue;
-        };
-
-        let origin_id = match citizen.trip_origin_building_id.take() {
-            Some(id) => id,
-            None => continue,
-        };
-
-        // Skip trivial same-building trips.
-        if origin_id == dest.id { continue; }
-
-        // Canonical key: always sort alphabetically so A→B and B→A share a record.
-        let key = canonical_pair_key(&origin_id, &dest.id);
-        let record = network.pair_counts.entry(key).or_default();
-        record.daily_trips += 1.0;
-    }
-}
-
-/// Record the origin building ID whenever a citizen picks a new destination.
-/// Called from ai.rs indirectly: we scan for citizens that just got new waypoints.
-/// Actually implemented here as a separate pass: any citizen that just got waypoints
-/// and has no origin recorded yet gets their current building set as origin.
 fn decay_pair_counts(
     mut network: ResMut<TransitNetwork>,
     game_time: Res<GameTime>,
@@ -205,10 +197,22 @@ fn evaluate_routes(
     mut network: ResMut<TransitNetwork>,
     world: Res<CityWorld>,
     game_time: Res<GameTime>,
+    mut news: ResMut<crate::news::CityNewsLog>,
 ) {
     let current_day = game_time.current_day();
     if current_day - network.last_route_check_day < ROUTE_CHECK_INTERVAL { return; }
     network.last_route_check_day = current_day;
+
+    // Log current demand state for debugging.
+    if !network.pair_counts.is_empty() {
+        let top = network.pair_counts.iter()
+            .max_by(|a, b| a.1.daily_trips.partial_cmp(&b.1.daily_trips).unwrap_or(std::cmp::Ordering::Equal));
+        if let Some((key, rec)) = top {
+            info!("[TRANSIT] day={:.1} evaluate — top pair '{}' trips={:.2} over={:.1}", current_day, key, rec.daily_trips, rec.days_over_threshold);
+        }
+    } else {
+        debug!("[TRANSIT] day={:.1} evaluate — no pair counts yet", current_day);
+    }
 
     // ── Remove under-used routes ──────────────────────────────────────────────
     // Grace period: don't remove routes younger than 20 game-days.
@@ -266,7 +270,7 @@ fn evaluate_routes(
 
     // Limit to 1 new route per evaluation pass to avoid flooding.
     if let Some((a_id, b_id)) = to_spawn.into_iter().next() {
-        spawn_route(&mut network, &world, &a_id, &b_id, current_day);
+        spawn_route(&mut network, &world, &a_id, &b_id, current_day, &mut news);
     }
 }
 
@@ -385,6 +389,7 @@ fn spawn_route(
     a_id: &str,
     b_id: &str,
     current_day: f32,
+    news: &mut crate::news::CityNewsLog,
 ) {
     let building_a = world.buildings.iter().find(|b| b.id == a_id);
     let building_b = world.buildings.iter().find(|b| b.id == b_id);
@@ -417,10 +422,9 @@ fn spawn_route(
         stops: vec![stop_a, stop_b],
     };
 
-    info!(
-        "[TRANSIT] New bus route spawned between {} and {}",
-        ba.name, bb.name
-    );
+    let msg = format!("Bus route established: {} ↔ {}", ba.name, bb.name);
+    info!("[TRANSIT] New bus route spawned between {} and {}", ba.name, bb.name);
+    news.push(current_day, "🚌", msg);
     network.routes.push(route);
 }
 
@@ -453,5 +457,43 @@ fn next_stop_index_value(route: &BusRoute) -> usize {
         if route.stop_index + 1 < n { route.stop_index + 1 } else { n.saturating_sub(2) }
     } else {
         if route.stop_index > 0 { route.stop_index - 1 } else { 1.min(n - 1) }
+    }
+}
+
+/// Keeps bus visual entities (colored rectangles) in sync with `TransitNetwork.routes`.
+/// Runs every frame in InGame so buses are visible even while paused.
+fn sync_bus_visuals(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    network: Res<TransitNetwork>,
+    mut bus_entities: Query<(Entity, &BusMarker, &mut Transform)>,
+) {
+    use std::collections::HashSet;
+
+    // Update existing bus entities; collect which routes are already represented.
+    let mut represented: HashSet<String> = HashSet::new();
+    for (entity, marker, mut transform) in bus_entities.iter_mut() {
+        if let Some(route) = network.routes.iter().find(|r| r.id == marker.route_id) {
+            transform.translation.x = route.bus_position.x;
+            transform.translation.y = route.bus_position.y;
+            represented.insert(marker.route_id.clone());
+        } else {
+            // Route was removed — despawn the visual.
+            commands.entity(entity).despawn();
+        }
+    }
+
+    // Spawn visuals for any routes that don't have one yet.
+    for route in &network.routes {
+        if represented.contains(&route.id) { continue; }
+        let mesh = meshes.add(Rectangle::new(28.0, 14.0));
+        let mat  = materials.add(Color::srgb(1.0, 0.55, 0.05)); // orange bus
+        commands.spawn((
+            Mesh2d(mesh),
+            MeshMaterial2d(mat),
+            Transform::from_xyz(route.bus_position.x, route.bus_position.y, 2.5),
+            BusMarker { route_id: route.id.clone() },
+        ));
     }
 }

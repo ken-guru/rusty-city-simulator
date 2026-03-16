@@ -222,6 +222,7 @@ fn cleanup_ingame(
     log_highlights: Query<Entity, With<ui::LogHighlightMarker>>,
     floor_labels: Query<Entity, With<ui::FloorLabel>>,
     ground_tiles: Query<Entity, With<GroundTileMarker>>,
+    bus_visuals: Query<Entity, With<transit::BusMarker>>,
     mut road_entities: ResMut<RoadEntities>,
     mut debug: ResMut<DebugMode>,
 ) {
@@ -239,6 +240,7 @@ fn cleanup_ingame(
         .chain(log_highlights.iter())
         .chain(floor_labels.iter())
         .chain(ground_tiles.iter())
+        .chain(bus_visuals.iter())
     {
         commands.entity(entity).despawn();
     }

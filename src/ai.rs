@@ -8,6 +8,7 @@ use crate::grid::CELL_SIZE;
 use crate::hovered::HoveredEntity;
 use crate::roads::RoadNetwork;
 use crate::time::{simulation_running, GameTime};
+use crate::transit::TransitNetwork;
 use crate::world::{park_positions, CityWorld};
 use bevy::prelude::*;
 use rand::RngExt;
@@ -61,6 +62,7 @@ fn run_citizen_ai(
     hovered: Res<HoveredEntity>,
     debug: Res<DebugMode>,
     policies: Res<crate::policies::ActivePolicies>,
+    mut transit_network: ResMut<TransitNetwork>,
 ) {
     let mut rng = rand::rng();
     let delta = time.delta_secs() * game_time.time_scale;
@@ -98,6 +100,20 @@ fn run_citizen_ai(
             continue;
         }
 
+        // ── Transit demand tracking ──────────────────────────────────────────
+        // Record completed trip here (before picking the next activity) to avoid the
+        // race condition that would occur if we did it in a separate system: by the time
+        // a separate system ran, this same function would have already assigned new
+        // waypoints, making the "citizen is at rest" check always false.
+        if let Some(origin_id) = citizen.trip_origin_building_id.take() {
+            let near = world.buildings.iter()
+                .find(|b| (b.position - citizen.position).length() < 120.0);
+            if let Some(dest) = near {
+                transit_network.record_trip(&origin_id, &dest.id);
+            }
+            // origin is cleared via .take() regardless of whether we found a building
+        }
+
         let activity = pick_activity(&citizen, policies.park_visit_multiplier());
         citizen.current_activity = activity;
 
@@ -131,12 +147,11 @@ fn run_citizen_ai(
                     waypoints.reverse();
                     citizen.waypoints = waypoints;
                     citizen.target_position = None;
-                    // Record the building the citizen is departing from for transit demand tracking.
-                    if citizen.trip_origin_building_id.is_none() {
-                        citizen.trip_origin_building_id = world.buildings.iter()
-                            .find(|b| (b.position - citizen.position).length() < 120.0)
-                            .map(|b| b.id.clone());
-                    }
+                    // Always update the departure building so the next trip is recorded
+                    // against the correct origin (even if a previous origin was stale).
+                    citizen.trip_origin_building_id = world.buildings.iter()
+                        .find(|b| (b.position - citizen.position).length() < 120.0)
+                        .map(|b| b.id.clone());
                     routed = true;
                     break;
                 }

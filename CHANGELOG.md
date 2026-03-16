@@ -5,6 +5,35 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.12.1] — 2026-03-16
+
+### Fixed
+
+#### Transit system fully repaired
+
+- **Root cause #1 — race condition eliminated**: `track_citizen_trips` (a separate
+  system) ran after `run_citizen_ai` in many frames. The AI immediately assigns new
+  waypoints the moment a citizen goes idle, so the "citizen is at rest" window was
+  invisible to the transit system. Trip recording now happens inside `run_citizen_ai`
+  itself (via `TransitNetwork::record_trip`), right before the next activity is
+  picked. This guarantees trips are always captured.
+- **Root cause #2 — stale origin fixed**: The old code only set `trip_origin_building_id`
+  when it was `None`, meaning a stale origin from a non-building destination (park,
+  road wander) was never updated. The origin is now always overwritten when a citizen
+  starts a new routed trip.
+- **Root cause #3 — thresholds lowered**: `ROUTE_SPAWN_THRESHOLD` reduced from 20 → 3,
+  `ROUTE_SPAWN_DAYS` from 5 → 1, `ROUTE_CHECK_INTERVAL` from 5 → 2 game-days. Routes
+  now spawn once a building pair sustains modest demand.
+- **Root cause #4 — buses are now visible**: Added `sync_bus_visuals` system and
+  `BusMarker` component. An orange rectangle is spawned for each active bus route and
+  its position is updated every frame. Bus entities are cleaned up when returning to
+  the main menu.
+- Added news log entry when a route is first established ("Bus route established: A ↔ B").
+- Added `info!` diagnostic log in `evaluate_routes` showing top demand pair and trip
+  counts each evaluation pass.
+
+---
+
 ## [0.12.0] — 2026-03-16
 
 ### Added
