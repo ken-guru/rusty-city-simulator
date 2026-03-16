@@ -1,10 +1,8 @@
 //! Procedurally-generated pixel-art sprites for each building type.
 //!
-//! Home / Shop:  12 × 12 px art → `custom_size` 60 × 60  (5× scale)
-//! Office:       16 × 16 px art → `custom_size` 80 × 80  (5× scale)
-//!
-//! Three variants per building type give individual character while keeping
-//! the dominant colour palette (orange-brown homes, blue offices, gold shops).
+//! Buildings use a 3×3 nine-tile grid (each tile 4×4 px → custom_size 1/3 of building).
+//! Three color variants × nine tile positions × three pattern variants.
+//! Ground uses 8×8 tiles at 80×80 world units (6 variants: 4 grass + 2 dirt).
 
 use bevy::prelude::*;
 use bevy::asset::RenderAssetUsages;
@@ -14,15 +12,15 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 #[derive(Resource)]
 pub struct SpriteAssets {
-    pub homes:   Vec<Handle<Image>>,   // 3 variants
-    pub offices: Vec<Handle<Image>>,   // 3 variants
-    pub shops:   Vec<Handle<Image>>,   // 3 variants
-    pub park:    Handle<Image>,        // single park sprite
-    /// Park corridor with N-S walking path (horizontal corridor cell between two E-W parks).
+    /// Building tiles: [color_variant 0..3][tile_pos 0..9][pattern_variant 0..3]
+    pub home_tiles: Vec<Vec<Vec<Handle<Image>>>>,
+    pub office_tiles: Vec<Vec<Vec<Handle<Image>>>>,
+    pub shop_tiles: Vec<Vec<Vec<Handle<Image>>>>,
+    /// Ground tile variants: [variant 0..6]
+    pub ground_tiles: Vec<Handle<Image>>,
+    pub park: Handle<Image>,
     pub park_corridor_ns: Handle<Image>,
-    /// Park corridor with E-W walking path (vertical corridor cell between two N-S parks).
     pub park_corridor_ew: Handle<Image>,
-    /// Cross-path corridor at the intersection of 4 adjacent park cells (odd,odd cell).
     pub park_corridor_cross: Handle<Image>,
 }
 
@@ -31,6 +29,14 @@ impl SpriteAssets {
     pub fn variant_for(pos: Vec2, num_variants: usize) -> usize {
         let hash = (pos.x as i32).wrapping_mul(31).wrapping_add(pos.y as i32).unsigned_abs();
         hash as usize % num_variants
+    }
+
+    /// Choose a pattern variant per tile (different hash offset per tile so each tile on a building can differ).
+    pub fn tile_pattern_variant(building_pos: Vec2, tile_index: usize, num_variants: usize) -> usize {
+        let hash = (building_pos.x as i32).wrapping_mul(31)
+            .wrapping_add(building_pos.y as i32)
+            .wrapping_add((tile_index as i32).wrapping_mul(97));
+        hash.unsigned_abs() as usize % num_variants
     }
 }
 
@@ -45,16 +51,29 @@ impl Plugin for SpritesPlugin {
 }
 
 pub fn setup_sprites(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let homes: Vec<Handle<Image>> = (0..3).map(|v| images.add(home_sprite(v))).collect();
-    let offices: Vec<Handle<Image>> = (0..3).map(|v| images.add(office_sprite(v))).collect();
-    let shops: Vec<Handle<Image>> = (0..3).map(|v| images.add(shop_sprite(v))).collect();
+    let home_tiles: Vec<Vec<Vec<Handle<Image>>>> = (0..3).map(|cv| {
+        (0..9).map(|tp| {
+            (0..3).map(|pv| images.add(home_tile_image(cv, tp, pv))).collect()
+        }).collect()
+    }).collect();
+    let office_tiles: Vec<Vec<Vec<Handle<Image>>>> = (0..3).map(|cv| {
+        (0..9).map(|tp| {
+            (0..3).map(|pv| images.add(office_tile_image(cv, tp, pv))).collect()
+        }).collect()
+    }).collect();
+    let shop_tiles: Vec<Vec<Vec<Handle<Image>>>> = (0..3).map(|cv| {
+        (0..9).map(|tp| {
+            (0..3).map(|pv| images.add(shop_tile_image(cv, tp, pv))).collect()
+        }).collect()
+    }).collect();
+    let ground_tiles: Vec<Handle<Image>> = (0..6).map(|v| images.add(ground_tile_image(v))).collect();
     let park = images.add(park_sprite());
     let park_corridor_ns = images.add(park_corridor_ns_sprite());
     let park_corridor_ew = images.add(park_corridor_ew_sprite());
     let park_corridor_cross = images.add(park_corridor_cross_sprite());
     commands.insert_resource(SpriteAssets {
-        homes, offices, shops, park,
-        park_corridor_ns, park_corridor_ew, park_corridor_cross,
+        home_tiles, office_tiles, shop_tiles, ground_tiles,
+        park, park_corridor_ns, park_corridor_ew, park_corridor_cross,
     });
 }
 
@@ -66,14 +85,13 @@ fn build_image(width: u32, height: u32, pixels: &[u8], palette: &[[u8; 4]]) -> I
     for &idx in pixels {
         data.extend_from_slice(&palette[idx as usize]);
     }
-    let img = Image::new(
+    Image::new(
         Extent3d { width, height, depth_or_array_layers: 1 },
         TextureDimension::D2,
         data,
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
-    );
-    img
+    )
 }
 
 // ─── Colour helpers ───────────────────────────────────────────────────────────
@@ -81,410 +99,316 @@ fn build_image(width: u32, height: u32, pixels: &[u8], palette: &[[u8; 4]]) -> I
 const fn px(r: u8, g: u8, b: u8) -> [u8; 4] { [r, g, b, 255] }
 const CLEAR: [u8; 4] = [0, 0, 0, 0];
 
-// ─── Home sprites (12×12) ────────────────────────────────────────────────────
+// ─── Home tiles (4×4) ────────────────────────────────────────────────────────
 //
-// palette indices:
-//  0  transparent
-//  1  roof main
-//  2  roof eave / shadow
-//  3  wall
-//  4  wall shadow
-//  5  window glass
-//  6  door
-//  7  foundation
+// Tile layout (3×3 grid positions):
+// [0]NW  [1]N   [2]NE
+// [3]W   [4]C   [5]E
+// [6]SW  [7]S   [8]SE
+//
+// Palette indices 0-5:
+//  0  wall main color (unused as dummy, same as wall)
+//  1  wall main color
+//  2  roof/top accent
+//  3  shadow/dark left-bottom edge
+//  4  window glass
+//  5  foundation/door
 
-/// All three home variants share the same pixel pattern; only the palette changes.
-#[rustfmt::skip]
-const HOME_PIXELS: [u8; 144] = [
-    // row 0
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    // row 1 – roof peak
-    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-    // row 2
-    0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0,
-    // row 3
-    0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0,
-    // row 4 – eave
-    0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0,
-    // row 5 – wall top
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    // row 6 – windows
-    0, 3, 5, 5, 3, 3, 3, 3, 5, 5, 3, 0,
-    // row 7 – windows
-    0, 3, 5, 5, 3, 3, 3, 3, 5, 5, 3, 0,
-    // row 8 – wall mid
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    // row 9 – door
-    0, 3, 4, 6, 6, 6, 6, 6, 4, 3, 3, 0,
-    // row 10 – door
-    0, 3, 4, 6, 6, 6, 6, 6, 4, 3, 3, 0,
-    // row 11 – foundation
-    0, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 0,
-];
-
-/// Variant B: shifted windows left + chimney pixel.
-#[rustfmt::skip]
-const HOME_PIXELS_B: [u8; 144] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0,
-    0, 0, 2, 0, 1, 1, 1, 1, 1, 0, 0, 0,  // chimney at col 2
-    0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0,
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 5, 5, 5, 3, 3, 3, 3, 3, 3, 0,  // one wide window
-    0, 3, 5, 5, 5, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 3, 6, 6, 6, 6, 6, 3, 3, 3, 0,
-    0, 3, 3, 6, 6, 6, 6, 6, 3, 3, 3, 0,
-    0, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 0,
-];
-
-/// Variant C: two small windows + wider door.
-#[rustfmt::skip]
-const HOME_PIXELS_C: [u8; 144] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0,  // wider peak
-    0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0,
-    0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0,
-    0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0,
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 5, 3, 3, 3, 3, 3, 3, 5, 3, 0,  // one pixel windows (attic style)
-    0, 3, 5, 3, 3, 3, 3, 3, 3, 5, 3, 0,
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 3, 4, 6, 6, 6, 6, 4, 3, 3, 0,
-    0, 3, 3, 4, 6, 6, 6, 6, 4, 3, 3, 0,
-    0, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 0,
-];
-
-fn home_palette(variant: usize) -> [[u8; 4]; 8] {
-    let transparent = CLEAR;
-    let glass   = px(140, 200, 220);
-    let door    = px( 80,  45,  15);
-    let found   = px(155, 105,  50);
-    match variant {
-        0 => [
-            transparent,
-            px(145,  80,  25), // roof – warm brown
-            px(105,  55,  15), // eave
-            px(215, 145,  75), // wall – orange-tan
-            px(175, 115,  55), // wall shadow
-            glass, door, found,
-        ],
-        1 => [
-            transparent,
-            px(130,  35,  25), // roof – clay red
-            px( 95,  25,  15), // eave
-            px(225, 155,  85), // wall – lighter tan
-            px(185, 125,  65),
-            glass, door, found,
-        ],
-        _ => [
-            transparent,
-            px( 85,  85,  90), // roof – slate grey
-            px( 60,  60,  65),
-            px(200, 135,  70), // wall – amber
-            px(165, 110,  55),
-            glass, door, found,
-        ],
+fn home_tile_palette(color_var: usize) -> [[u8; 4]; 6] {
+    let glass = px(140, 200, 220);
+    match color_var {
+        0 => [px(215,145,75), px(215,145,75), px(145,80,25), px(65,40,15), glass, px(110,70,35)],
+        1 => [px(225,155,85), px(225,155,85), px(130,35,25), px(70,20,10), glass, px(115,75,40)],
+        _ => [px(195,175,155),px(195,175,155),px(120,100,80),px(75,60,45), glass, px(100,85,70)],
     }
 }
 
-fn home_sprite(variant: usize) -> Image {
-    let pal = home_palette(variant);
-    let pixels = match variant {
-        0 => HOME_PIXELS.as_ref(),
-        1 => HOME_PIXELS_B.as_ref(),
-        _ => HOME_PIXELS_C.as_ref(),
-    };
-    build_image(12, 12, pixels, &pal)
+#[rustfmt::skip]
+const HOME_TILE_PIXELS: [[[u8; 16]; 3]; 9] = [
+    // tile 0: NW corner
+    [[2,2,1,1, 3,2,1,1, 3,1,1,1, 3,1,1,1],
+     [2,2,2,1, 2,3,2,1, 3,1,1,1, 3,1,1,1],
+     [1,2,2,2, 3,1,2,1, 3,1,1,1, 3,1,1,1]],
+    // tile 1: N center
+    [[2,2,2,2, 2,2,2,2, 1,1,1,1, 1,1,1,1],
+     [2,2,2,2, 2,4,4,2, 2,4,4,2, 1,1,1,1],
+     [1,2,2,1, 2,2,2,2, 1,1,2,1, 1,1,1,1]],
+    // tile 2: NE corner
+    [[1,1,2,2, 1,1,2,3, 1,1,1,3, 1,1,1,3],
+     [1,2,2,2, 1,2,3,2, 1,1,1,3, 1,1,1,3],
+     [2,2,2,1, 1,2,2,3, 1,1,1,3, 1,1,1,3]],
+    // tile 3: W side
+    [[3,1,1,1, 3,4,4,1, 3,4,4,1, 3,1,1,1],
+     [3,1,1,1, 3,4,1,1, 3,4,1,1, 3,1,1,1],
+     [3,1,1,1, 3,1,1,1, 3,1,1,1, 3,1,1,1]],
+    // tile 4: C center
+    [[1,1,1,1, 4,1,1,4, 4,1,1,4, 1,1,1,1],
+     [1,1,1,1, 1,4,4,1, 1,4,4,1, 1,1,1,1],
+     [1,1,1,1, 1,1,1,1, 1,2,1,1, 1,1,1,1]],
+    // tile 5: E side
+    [[1,1,1,3, 1,4,4,3, 1,4,4,3, 1,1,1,3],
+     [1,1,1,3, 1,1,4,3, 1,1,4,3, 1,1,1,3],
+     [1,1,1,3, 1,1,1,3, 1,1,1,3, 1,1,1,3]],
+    // tile 6: SW corner
+    [[3,1,1,1, 3,1,1,1, 3,5,5,5, 3,5,5,5],
+     [3,1,1,1, 3,5,1,1, 3,5,5,5, 3,5,5,5],
+     [3,1,1,1, 3,1,1,1, 3,1,5,5, 5,5,5,5]],
+    // tile 7: S center
+    [[1,5,5,1, 1,5,5,1, 1,5,5,1, 5,5,5,5],
+     [1,1,1,1, 1,1,1,1, 5,5,5,5, 5,5,5,5],
+     [1,5,5,1, 5,5,5,5, 5,5,5,5, 5,5,5,5]],
+    // tile 8: SE corner
+    [[1,1,1,3, 1,1,1,3, 5,5,5,3, 5,5,5,3],
+     [1,1,1,3, 1,5,1,3, 5,5,5,3, 5,5,5,3],
+     [1,1,1,3, 1,1,1,3, 1,5,5,3, 5,5,5,3]],
+];
+
+fn home_tile_image(color_var: usize, tile_pos: usize, pattern_var: usize) -> Image {
+    let palette = home_tile_palette(color_var);
+    build_image(4, 4, &HOME_TILE_PIXELS[tile_pos][pattern_var], &palette)
 }
 
-// ─── Office sprites (16×16) ──────────────────────────────────────────────────
+// ─── Office tiles (4×4) ──────────────────────────────────────────────────────
 //
-// palette:  0 transparent  1 top band  2 facade  3 window  4 frame  5 base
+// Palette indices 0-5:
+//  0  concrete (= index 1)
+//  1  concrete (gray)
+//  2  glass (blue-tinted)
+//  3  shadow edge
+//  4  metal frame
+//  5  light plinth/floor-plate
 
-#[rustfmt::skip]
-const OFFICE_PIXELS_A: [u8; 256] = [
-    // row 0
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    // row 1 – cornice
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    // row 2
-    0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0,
-    // row 3 – window row 1
-    0, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 0,
-    // row 4
-    0, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 0,
-    // row 5 – floor separator
-    0, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 0,
-    // row 6 – window row 2
-    0, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 0,
-    // row 7
-    0, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 0,
-    // row 8 – floor separator
-    0, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 0,
-    // row 9 – window row 3
-    0, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 0,
-    // row 10
-    0, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 0,
-    // row 11 – floor separator
-    0, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 0,
-    // row 12 – wall base
-    0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0,
-    // row 13 – entrance
-    0, 5, 5, 5, 3, 3, 3, 3, 3, 3, 3, 3, 5, 5, 5, 0,
-    // row 14 – entrance
-    0, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 0,
-    // row 15 – foundation
-    0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 0,
-];
-
-/// Variant B: wider windows, 2-row panes.
-#[rustfmt::skip]
-const OFFICE_PIXELS_B: [u8; 256] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, // double cornice
-    0, 2, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 2, 0, // narrow windows
-    0, 2, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 2, 0,
-    0, 2, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 2, 0,
-    0, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 0,
-    0, 2, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 2, 0,
-    0, 2, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 2, 0,
-    0, 2, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 2, 0,
-    0, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 0,
-    0, 2, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 2, 0,
-    0, 2, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 2, 0,
-    0, 5, 5, 2, 2, 2, 2, 2, 2, 2, 2, 2, 5, 5, 5, 0,
-    0, 5, 5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 5, 5, 0,
-    0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 0,
-];
-
-/// Variant C: curved top (arched cornice via colour variation).
-#[rustfmt::skip]
-const OFFICE_PIXELS_C: [u8; 256] = [
-    0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, // arched top
-    0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0,
-    0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0,
-    0, 2, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 2, 0, 0,
-    0, 2, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 2, 0, 0,
-    0, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2, 0, 0,
-    0, 2, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 2, 0, 0,
-    0, 2, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 2, 0, 0,
-    0, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2, 0, 0,
-    0, 2, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 2, 0, 0,
-    0, 2, 2, 3, 3, 4, 3, 3, 4, 3, 3, 4, 2, 2, 0, 0,
-    0, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2, 0, 0,
-    0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0,
-    0, 5, 5, 5, 3, 3, 3, 3, 3, 3, 3, 5, 5, 5, 0, 0,
-    0, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 0, 0,
-    0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 0, 0,
-];
-
-fn office_palette(variant: usize) -> [[u8; 4]; 6] {
-    let glass = px(175, 215, 245);
-    let base  = px( 50,  75, 115);
-    match variant {
-        0 => [
-            CLEAR,
-            px( 35,  55,  95), // cornice – dark navy
-            px( 65, 100, 160), // facade – mid blue
-            glass,
-            px( 45,  70, 110), // frame
-            base,
-        ],
-        1 => [
-            CLEAR,
-            px( 55,  80, 115),
-            px( 90, 125, 175), // lighter steel blue
-            px(195, 230, 250),
-            px( 65,  95, 135),
-            px( 60,  88, 130),
-        ],
-        _ => [
-            CLEAR,
-            px( 25,  45,  80), // dark charcoal-blue
-            px( 50,  75, 120),
-            px(155, 195, 230),
-            px( 35,  58,  95),
-            px( 35,  55,  90),
-        ],
+fn office_tile_palette(color_var: usize) -> [[u8; 4]; 6] {
+    match color_var {
+        0 => [px(175,175,180), px(175,175,180), px(120,170,215), px(55,55,60),  px(145,145,150), px(210,210,215)],
+        1 => [px(165,165,170), px(165,165,170), px(100,155,210), px(50,50,55),  px(140,140,145), px(200,200,205)],
+        _ => [px(155,155,145), px(155,155,145), px(135,185,180), px(60,55,50),  px(140,135,130), px(205,200,195)],
     }
 }
 
-fn office_sprite(variant: usize) -> Image {
-    let pal = office_palette(variant);
-    let pixels = match variant {
-        0 => OFFICE_PIXELS_A.as_ref(),
-        1 => OFFICE_PIXELS_B.as_ref(),
-        _ => OFFICE_PIXELS_C.as_ref(),
-    };
-    build_image(16, 16, pixels, &pal)
+#[rustfmt::skip]
+const OFFICE_TILE_PIXELS: [[[u8; 16]; 3]; 9] = [
+    // tile 0: NW corner
+    [[3,1,2,2, 3,1,2,2, 3,1,2,2, 3,1,2,2],
+     [3,1,1,2, 3,4,2,2, 3,1,2,2, 3,1,2,2],
+     [3,1,2,5, 3,1,2,2, 3,1,2,2, 3,1,2,2]],
+    // tile 1: N top
+    [[1,1,1,1, 5,5,5,5, 2,2,2,2, 2,2,2,2],
+     [1,1,1,1, 1,5,5,1, 2,2,2,2, 2,2,2,2],
+     [4,4,4,4, 4,4,4,4, 2,2,2,2, 2,2,2,2]],
+    // tile 2: NE corner
+    [[2,2,1,3, 2,2,1,3, 2,2,1,3, 2,2,1,3],
+     [2,2,1,3, 2,2,4,3, 2,2,1,3, 2,2,1,3],
+     [5,2,1,3, 2,2,1,3, 2,2,1,3, 2,2,1,3]],
+    // tile 3: W side
+    [[3,2,2,2, 3,2,2,2, 3,2,2,2, 3,2,2,2],
+     [3,2,4,2, 3,2,4,2, 3,2,4,2, 3,2,4,2],
+     [3,2,2,2, 3,5,2,2, 3,2,2,2, 3,2,5,2]],
+    // tile 4: C center
+    [[2,2,2,2, 2,2,2,2, 2,2,2,2, 2,2,2,2],
+     [4,4,4,4, 2,2,2,2, 2,2,2,2, 4,4,4,4],
+     [2,5,2,2, 2,2,2,2, 2,2,5,2, 2,2,2,2]],
+    // tile 5: E side
+    [[2,2,2,3, 2,2,2,3, 2,2,2,3, 2,2,2,3],
+     [2,4,2,3, 2,4,2,3, 2,4,2,3, 2,4,2,3],
+     [2,2,2,3, 2,2,5,3, 2,2,2,3, 2,5,2,3]],
+    // tile 6: SW corner
+    [[3,2,2,2, 3,2,2,2, 3,1,1,1, 3,5,5,5],
+     [3,2,2,2, 3,2,4,2, 3,1,1,1, 3,5,5,5],
+     [3,2,5,2, 3,2,2,2, 3,1,1,1, 3,5,5,5]],
+    // tile 7: S bottom (entrance)
+    [[2,2,2,2, 2,2,2,2, 1,1,1,1, 5,5,5,5],
+     [2,2,2,2, 1,2,2,1, 1,1,1,1, 5,5,5,5],
+     [2,2,2,2, 2,2,2,2, 5,1,1,5, 5,5,5,5]],
+    // tile 8: SE corner
+    [[2,2,1,3, 2,2,1,3, 1,1,1,3, 5,5,5,3],
+     [2,2,1,3, 2,4,1,3, 1,1,1,3, 5,5,5,3],
+     [2,5,1,3, 2,2,1,3, 1,1,1,3, 5,5,5,3]],
+];
+
+fn office_tile_image(color_var: usize, tile_pos: usize, pattern_var: usize) -> Image {
+    let palette = office_tile_palette(color_var);
+    build_image(4, 4, &OFFICE_TILE_PIXELS[tile_pos][pattern_var], &palette)
 }
 
-// ─── Shop sprites (12×12) ────────────────────────────────────────────────────
+// ─── Shop tiles (4×4) ────────────────────────────────────────────────────────
 //
-// palette:  0 transparent  1 sign  2 awning  3 wall  4 glass  5 door  6 base
+// Palette indices 0-5:
+//  0  awning/sign color
+//  1  brick/wall
+//  2  mortar line (lighter)
+//  3  window glass
+//  4  shadow/dark edge
+//  5  foundation/step
 
-/// Standard shop: sign + awning + two display windows + central door.
-#[rustfmt::skip]
-const SHOP_PIXELS_A: [u8; 144] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    // row 1 – sign board
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    // row 2 – sign board
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    // row 3 – awning
-    0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0,
-    // row 4 – awning
-    0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0,
-    // row 5 – awning fringe
-    0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0,
-    // row 6 – wall
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    // row 7 – display windows
-    0, 3, 4, 4, 4, 3, 3, 4, 4, 4, 3, 0,
-    // row 8 – display windows
-    0, 3, 4, 4, 4, 3, 3, 4, 4, 4, 3, 0,
-    // row 9 – wall
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    // row 10 – door
-    0, 3, 3, 5, 5, 5, 5, 5, 3, 3, 3, 0,
-    // row 11 – foundation
-    0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0,
-];
-
-/// Variant B: sign + awning, wide single display window.
-#[rustfmt::skip]
-const SHOP_PIXELS_B: [u8; 144] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0,
-    0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0,  // fringe on row 4 instead
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0,  // one wide window
-    0, 3, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0,
-    0, 3, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0,
-    0, 3, 3, 5, 5, 5, 5, 5, 3, 3, 3, 0,
-    0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0,
-];
-
-/// Variant C: taller storefront, three small windows.
-#[rustfmt::skip]
-const SHOP_PIXELS_C: [u8; 144] = [
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,  // sign takes 3 rows
-    0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0,
-    0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0,
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 4, 3, 4, 3, 4, 3, 4, 3, 3, 0,  // four 1-wide windows
-    0, 3, 4, 3, 4, 3, 4, 3, 4, 3, 3, 0,
-    0, 3, 4, 3, 4, 3, 4, 3, 4, 3, 3, 0,
-    0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0,
-    0, 3, 3, 5, 5, 5, 5, 5, 3, 3, 3, 0,
-    0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0,
-];
-
-fn shop_palette(variant: usize) -> [[u8; 4]; 7] {
-    let wall    = px(210, 175,  80); // golden-yellow – matches 0.8, 0.8, 0.2
-    let glass   = px(160, 210, 160);
-    let door    = px( 80,  55,  15);
-    let base    = px(170, 140,  60);
-    match variant {
-        0 => [
-            CLEAR,
-            px(245, 215,  50), // sign – bright yellow
-            px(200,  70,  50), // awning – red-orange
-            wall, glass, door, base,
-        ],
-        1 => [
-            CLEAR,
-            px(230, 230, 230), // sign – white
-            px( 55, 100, 180), // awning – blue
-            px(220, 185,  90), glass, door, base,
-        ],
-        _ => [
-            CLEAR,
-            px(255, 160,  30), // sign – amber
-            px( 60, 140,  70), // awning – green
-            px(200, 165,  70), glass, door, base,
-        ],
+fn shop_tile_palette(color_var: usize) -> [[u8; 4]; 6] {
+    let glass = px(160, 215, 195);
+    match color_var {
+        0 => [px(185,65,35),  px(195,145,85), px(215,175,120), glass, px(100,45,20), px(160,130,95)],
+        1 => [px(45,115,65),  px(185,135,75), px(205,165,115), glass, px(90,40,15),  px(150,120,85)],
+        _ => [px(165,130,30), px(180,155,120),px(200,180,145), glass, px(90,75,40),  px(155,130,100)],
     }
 }
 
-fn shop_sprite(variant: usize) -> Image {
-    let pal = shop_palette(variant);
-    let pixels = match variant {
-        0 => SHOP_PIXELS_A.as_ref(),
-        1 => SHOP_PIXELS_B.as_ref(),
-        _ => SHOP_PIXELS_C.as_ref(),
-    };
-    build_image(12, 12, pixels, &pal)
+#[rustfmt::skip]
+const SHOP_TILE_PIXELS: [[[u8; 16]; 3]; 9] = [
+    // tile 0: NW corner
+    [[0,0,4,4, 0,0,4,1, 4,1,1,1, 4,1,1,1],
+     [0,0,0,4, 0,0,4,1, 4,4,1,1, 4,1,2,1],
+     [0,0,4,4, 0,4,1,1, 4,1,2,1, 4,1,1,1]],
+    // tile 1: N center (sign/fascia)
+    [[0,0,0,0, 0,0,0,0, 4,4,4,4, 1,1,1,1],
+     [0,0,0,0, 0,2,2,0, 4,4,4,4, 1,1,1,1],
+     [0,0,0,0, 4,2,2,4, 4,4,4,4, 1,1,1,1]],
+    // tile 2: NE corner
+    [[4,4,0,0, 1,4,0,0, 1,1,1,4, 1,1,1,4],
+     [4,0,0,0, 1,4,0,0, 1,2,4,4, 1,1,1,4],
+     [4,4,0,0, 1,1,4,0, 1,1,1,4, 1,2,1,4]],
+    // tile 3: W side
+    [[4,1,1,1, 4,3,3,1, 4,3,3,1, 4,1,1,1],
+     [4,1,2,1, 4,2,1,1, 4,1,2,1, 4,2,1,1],
+     [4,1,1,1, 4,3,1,1, 4,3,1,1, 4,1,1,1]],
+    // tile 4: C center (display window)
+    [[2,2,2,2, 3,3,3,3, 3,3,3,3, 2,2,2,2],
+     [2,2,2,2, 3,3,2,3, 3,3,2,3, 2,2,2,2],
+     [1,2,1,2, 3,2,3,2, 3,2,3,2, 1,2,1,2]],
+    // tile 5: E side
+    [[1,1,1,4, 1,3,3,4, 1,3,3,4, 1,1,1,4],
+     [1,2,1,4, 1,1,2,4, 1,2,1,4, 1,1,1,4],
+     [1,1,1,4, 1,1,3,4, 1,1,3,4, 1,2,1,4]],
+    // tile 6: SW corner
+    [[4,1,1,1, 4,1,1,1, 4,5,5,5, 4,5,5,5],
+     [4,1,1,1, 4,2,1,1, 4,5,5,5, 4,5,5,5],
+     [4,1,1,1, 4,1,1,1, 4,5,1,5, 4,5,5,5]],
+    // tile 7: S center (entrance)
+    [[1,5,5,1, 1,5,5,1, 1,5,5,1, 5,5,5,5],
+     [1,1,1,1, 5,5,5,5, 5,5,5,5, 5,5,5,5],
+     [1,5,5,1, 5,5,5,5, 5,5,5,5, 5,5,5,5]],
+    // tile 8: SE corner
+    [[1,1,1,4, 1,1,1,4, 5,5,5,4, 5,5,5,4],
+     [1,2,1,4, 1,1,1,4, 5,5,5,4, 5,5,5,4],
+     [1,1,1,4, 1,1,2,4, 5,1,5,4, 5,5,5,4]],
+];
+
+fn shop_tile_image(color_var: usize, tile_pos: usize, pattern_var: usize) -> Image {
+    let palette = shop_tile_palette(color_var);
+    build_image(4, 4, &SHOP_TILE_PIXELS[tile_pos][pattern_var], &palette)
+}
+
+// ─── Ground tiles (8×8) ──────────────────────────────────────────────────────
+//
+// Palette: 0 base grass  1 light grass  2 dark grass
+//          3 light dirt  4 medium dirt  5 pebble/gray  6 flower pixel
+
+fn ground_palette() -> [[u8; 4]; 7] {
+    [px(60,115,55), px(90,145,75), px(45,90,40),
+     px(175,145,95), px(140,110,65), px(130,125,120), px(245,215,215)]
+}
+
+#[rustfmt::skip]
+const GROUND_PIXELS: [[u8; 64]; 6] = [
+    // variant 0: base grass with scattered lighter blades
+    [0,0,0,0,0,0,0,0,
+     0,0,1,0,0,0,1,0,
+     0,0,0,0,0,0,0,0,
+     0,0,0,0,1,0,0,0,
+     0,0,0,0,0,0,0,0,
+     0,1,0,0,0,0,0,0,
+     0,0,0,0,0,0,1,0,
+     0,0,0,0,0,0,0,0],
+    // variant 1: slightly darker with clumps
+    [2,0,0,0,0,0,2,0,
+     0,0,0,0,0,0,0,0,
+     0,0,0,0,2,0,0,0,
+     0,0,2,0,0,0,0,0,
+     0,0,0,0,0,0,0,2,
+     0,0,0,0,0,0,0,0,
+     0,2,0,0,0,0,0,0,
+     0,0,0,0,0,2,0,0],
+    // variant 2: lighter green, more variation
+    [1,1,0,1,0,1,1,0,
+     0,0,0,0,0,0,0,1,
+     1,0,0,0,0,0,0,0,
+     0,0,1,0,0,0,1,0,
+     0,0,0,0,0,0,0,0,
+     0,1,0,0,1,0,0,0,
+     0,0,0,0,0,0,0,1,
+     1,0,0,1,0,0,0,0],
+    // variant 3: grass with flower pixel
+    [0,0,0,0,0,0,0,0,
+     0,0,1,0,0,0,0,0,
+     0,0,0,0,0,0,1,0,
+     0,0,0,0,6,0,0,0,
+     0,1,0,0,0,0,0,0,
+     0,0,0,0,0,1,0,0,
+     0,0,0,0,0,0,0,0,
+     0,0,1,0,0,0,0,0],
+    // variant 4: dirt with pebbles
+    [3,3,4,3,3,3,4,3,
+     3,3,3,3,3,3,3,3,
+     3,4,3,3,3,4,3,3,
+     3,3,3,5,3,3,3,3,
+     3,3,3,3,3,3,3,4,
+     3,4,3,3,3,3,3,3,
+     3,3,3,3,4,3,3,3,
+     3,3,3,3,3,3,5,3],
+    // variant 5: lighter dirt with crack
+    [3,3,3,3,3,3,3,3,
+     3,3,3,3,4,3,3,3,
+     3,3,3,3,4,3,3,3,
+     3,3,3,4,3,3,3,3,
+     3,3,4,3,3,3,3,3,
+     3,3,4,3,3,3,3,3,
+     3,3,3,3,3,5,3,3,
+     3,3,3,3,3,3,3,3],
+];
+
+fn ground_tile_image(variant: usize) -> Image {
+    build_image(8, 8, &GROUND_PIXELS[variant], &ground_palette())
 }
 
 // ─── Park sprite (12×12) ─────────────────────────────────────────────────────
-//
-// palette:  0 transparent  1 light grass  2 dark grass  3 tree foliage
-//           4 tree trunk / bench  5 path stone
 
 #[rustfmt::skip]
 const PARK_PIXELS: [u8; 144] = [
-    // row 0
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    // row 1 – grass border
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    // row 2 – tree tops (corners)
     0, 1, 3, 3, 1, 2, 2, 1, 3, 3, 1, 0,
-    // row 3 – tree tops
     0, 1, 3, 3, 1, 2, 2, 1, 3, 3, 1, 0,
-    // row 4 – trunks + path
     0, 1, 4, 4, 1, 5, 5, 1, 4, 4, 1, 0,
-    // row 5 – path
     0, 1, 1, 1, 5, 5, 5, 5, 1, 1, 1, 0,
-    // row 6 – bench + path
     0, 2, 4, 4, 5, 5, 5, 5, 4, 4, 2, 0,
-    // row 7 – bench + path
     0, 2, 4, 4, 5, 5, 5, 5, 4, 4, 2, 0,
-    // row 8 – path
     0, 1, 1, 1, 5, 5, 5, 5, 1, 1, 1, 0,
-    // row 9 – trunks
     0, 1, 4, 4, 1, 2, 2, 1, 4, 4, 1, 0,
-    // row 10 – grass border
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    // row 11
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 fn park_sprite() -> Image {
     let palette: [[u8; 4]; 6] = [
         CLEAR,
-        px( 95, 165,  65),  // 1 light grass
-        px( 65, 120,  40),  // 2 dark grass
-        px( 45, 110,  30),  // 3 tree foliage
-        px(100,  65,  20),  // 4 trunk / bench wood
-        px(190, 175, 145),  // 5 path stone
+        px( 95, 165,  65),
+        px( 65, 120,  40),
+        px( 45, 110,  30),
+        px(100,  65,  20),
+        px(190, 175, 145),
     ];
     build_image(12, 12, &PARK_PIXELS, &palette)
 }
 
 // ─── Park corridor sprites ────────────────────────────────────────────────────
-//
-// Palette: 0 transparent  1 light grass  2 dark grass  5 path stone
 
 #[rustfmt::skip]
 const PARK_CORRIDOR_NS_PIXELS: [u8; 144] = [
-    // Outer cols 0-3: dark/light grass  |  cols 4-7: stone path  |  cols 8-11: light/dark grass
     2, 1, 1, 2, 6, 5, 5, 6, 2, 1, 1, 2,
     1, 1, 2, 1, 5, 5, 5, 5, 1, 2, 1, 1,
     1, 2, 1, 1, 6, 5, 5, 6, 1, 1, 2, 1,
-    2, 1, 1, 1, 5, 7, 7, 5, 1, 1, 1, 2,  // footprints row
+    2, 1, 1, 1, 5, 7, 7, 5, 1, 1, 1, 2,
     1, 1, 1, 2, 6, 5, 5, 6, 2, 1, 1, 1,
     1, 1, 2, 1, 5, 5, 5, 5, 1, 2, 1, 1,
     2, 1, 1, 1, 6, 5, 5, 6, 1, 1, 1, 2,
-    1, 2, 1, 1, 5, 7, 7, 5, 1, 1, 2, 1,  // footprints row
+    1, 2, 1, 1, 5, 7, 7, 5, 1, 1, 2, 1,
     1, 1, 1, 2, 6, 5, 5, 6, 2, 1, 1, 1,
     1, 1, 2, 1, 5, 5, 5, 5, 1, 2, 1, 1,
     2, 1, 1, 1, 6, 5, 5, 6, 1, 1, 1, 2,
@@ -497,10 +421,10 @@ const PARK_CORRIDOR_EW_PIXELS: [u8; 144] = [
     1, 1, 2, 1, 1, 2, 2, 1, 1, 2, 1, 1,
     1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1,
     2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,
-    6, 5, 6, 5, 6, 5, 7, 5, 6, 5, 6, 5,  // path edge + footprints
-    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,  // path centre
-    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,  // path centre
-    6, 5, 6, 5, 7, 5, 6, 5, 7, 5, 6, 5,  // path edge + footprints
+    6, 5, 6, 5, 6, 5, 7, 5, 6, 5, 6, 5,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    6, 5, 6, 5, 7, 5, 6, 5, 7, 5, 6, 5,
     2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,
     1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1,
     1, 1, 2, 1, 1, 2, 2, 1, 1, 2, 1, 1,
@@ -510,13 +434,13 @@ const PARK_CORRIDOR_EW_PIXELS: [u8; 144] = [
 fn park_corridor_ns_sprite() -> Image {
     let palette: [[u8; 4]; 8] = [
         CLEAR,
-        px( 95, 165,  65),  // 1 light grass
-        px( 65, 120,  40),  // 2 dark grass
-        px( 45, 110,  30),  // 3 (unused)
-        px(100,  65,  20),  // 4 (unused)
-        px(190, 175, 145),  // 5 path stone
-        px(155, 142, 110),  // 6 path edge (darker stone)
-        px(210, 200, 165),  // 7 footprint (lighter stone)
+        px( 95, 165,  65),
+        px( 65, 120,  40),
+        px( 45, 110,  30),
+        px(100,  65,  20),
+        px(190, 175, 145),
+        px(155, 142, 110),
+        px(210, 200, 165),
     ];
     build_image(12, 12, &PARK_CORRIDOR_NS_PIXELS, &palette)
 }
@@ -524,36 +448,27 @@ fn park_corridor_ns_sprite() -> Image {
 fn park_corridor_ew_sprite() -> Image {
     let palette: [[u8; 4]; 8] = [
         CLEAR,
-        px( 95, 165,  65),  // 1 light grass
-        px( 65, 120,  40),  // 2 dark grass
-        px( 45, 110,  30),  // 3 (unused)
-        px(100,  65,  20),  // 4 (unused)
-        px(190, 175, 145),  // 5 path stone
-        px(155, 142, 110),  // 6 path edge (darker stone)
-        px(210, 200, 165),  // 7 footprint (lighter stone)
+        px( 95, 165,  65),
+        px( 65, 120,  40),
+        px( 45, 110,  30),
+        px(100,  65,  20),
+        px(190, 175, 145),
+        px(155, 142, 110),
+        px(210, 200, 165),
     ];
     build_image(12, 12, &PARK_CORRIDOR_EW_PIXELS, &palette)
 }
 
-// ─── Park corridor cross sprite (12×12) ──────────────────────────────────────
-//
-// A "+" shaped intersection: vertical stone path in columns 4-7,
-// horizontal path in rows 4-7, grass in the 4 corner quadrants.
-// Palette same as the other corridor sprites.
-
 #[rustfmt::skip]
 const PARK_CORRIDOR_CROSS_PIXELS: [u8; 144] = [
-    // rows 0-3: grass corners with vertical path column in middle
     2, 1, 1, 2, 6, 5, 5, 6, 2, 1, 1, 2,
     1, 1, 2, 1, 5, 5, 5, 5, 1, 2, 1, 1,
     1, 2, 1, 1, 6, 5, 5, 6, 1, 1, 2, 1,
     2, 1, 1, 1, 5, 7, 7, 5, 1, 1, 1, 2,
-    // rows 4-7: full-width horizontal path (overrides grass corners)
     6, 5, 6, 5, 6, 5, 5, 6, 5, 6, 5, 6,
     5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
     5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
     6, 5, 6, 5, 7, 5, 5, 7, 5, 6, 5, 6,
-    // rows 8-11: grass corners with vertical path column in middle
     2, 1, 1, 1, 6, 5, 5, 6, 1, 1, 1, 2,
     1, 1, 2, 1, 5, 5, 5, 5, 1, 2, 1, 1,
     1, 2, 1, 1, 6, 5, 5, 6, 1, 1, 2, 1,
@@ -563,13 +478,13 @@ const PARK_CORRIDOR_CROSS_PIXELS: [u8; 144] = [
 fn park_corridor_cross_sprite() -> Image {
     let palette: [[u8; 4]; 8] = [
         CLEAR,
-        px( 95, 165,  65),  // 1 light grass
-        px( 65, 120,  40),  // 2 dark grass
-        px( 45, 110,  30),  // 3 (unused)
-        px(100,  65,  20),  // 4 (unused)
-        px(190, 175, 145),  // 5 path stone
-        px(155, 142, 110),  // 6 path edge (darker stone)
-        px(210, 200, 165),  // 7 footprint (lighter stone)
+        px( 95, 165,  65),
+        px( 65, 120,  40),
+        px( 45, 110,  30),
+        px(100,  65,  20),
+        px(190, 175, 145),
+        px(155, 142, 110),
+        px(210, 200, 165),
     ];
     build_image(12, 12, &PARK_CORRIDOR_CROSS_PIXELS, &palette)
 }

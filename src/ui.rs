@@ -513,35 +513,6 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
         ));
     });
 
-    // Legend (bottom left, above toolbar)
-    commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(270.0),
-            bottom: Val::Px(70.0),
-            flex_direction: FlexDirection::Column,
-            ..Default::default()
-        })
-        .with_children(|parent| {
-            let speed_hint = if debug.economy_logging {
-                "1/2/3/4/5/6/7/8: Speed (0.5x/1x/2x/4x/8x/16x/32x/64x)  |  F5: Save"
-            } else {
-                "1/2/3/4: Speed (0.5x/1x/2x/4x)  |  F5: Save"
-            };
-            parent.spawn((
-                Text::new(format!(
-                    "* Blue: Male   * Pink: Female\n\
-                     # Brown: Home   # Blue: Office   # Yellow: Shop   # Green: Park\n\
-                     WASD/Arrows: Pan  |  Right-click drag: Pan\n\
-                     Scroll/Pinch: Zoom  |  Space: Pause\n\
-                     {}",
-                    speed_hint
-                )),
-                TextFont { font_size: 12.0, ..Default::default() },
-                TextColor(Color::srgb(0.55, 0.55, 0.55)),
-            ));
-        });
-
     // Toolbar (bottom, full width)
     commands
         .spawn((

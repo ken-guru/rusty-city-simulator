@@ -48,6 +48,14 @@ use start_screen::StartScreenPlugin;
 use time::GameTimePlugin;
 use ui::{HoveredLogItem, HoveredQueueItem, UIPlugin};
 use world::*;
+
+const SIDEBAR_WIDTH: f32 = 260.0;
+const TOOLBAR_HEIGHT: f32 = 56.0;
+const GROUND_TILE_SIZE: f32 = 80.0;
+const GROUND_TILES_PER_AXIS: i32 = 28;
+
+#[derive(Component)]
+struct GroundTileMarker;
 use milestones::MilestonesPlugin;
 use news::NewsPlugin;
 
@@ -173,8 +181,6 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
 }
 
-/// Despawn all in-game entities and reset simulation resources so the start
-/// screen can cleanly start a new or different game afterwards.
 fn cleanup_ingame(
     mut commands: Commands,
     buildings: Query<Entity, With<Building>>,
@@ -186,11 +192,16 @@ fn cleanup_ingame(
     sel_highlights: Query<Entity, With<ui::SelectedBuildingHighlightMarker>>,
     log_highlights: Query<Entity, With<ui::LogHighlightMarker>>,
     floor_labels: Query<Entity, With<ui::FloorLabel>>,
+    ground_tiles: Query<Entity, With<GroundTileMarker>>,
     mut road_entities: ResMut<RoadEntities>,
     mut debug: ResMut<DebugMode>,
 ) {
-    for entity in buildings.iter()
-        .chain(citizens.iter())
+    // Use despawn_recursive for buildings to also remove their 9-tile children.
+    for entity in buildings.iter() {
+        commands.entity(entity).despawn();
+    }
+    // Regular despawn for non-hierarchy entities.
+    for entity in citizens.iter()
         .chain(parks.iter())
         .chain(park_corridors.iter())
         .chain(route_viz.iter())
@@ -198,6 +209,7 @@ fn cleanup_ingame(
         .chain(sel_highlights.iter())
         .chain(log_highlights.iter())
         .chain(floor_labels.iter())
+        .chain(ground_tiles.iter())
     {
         commands.entity(entity).despawn();
     }
@@ -230,7 +242,6 @@ fn cleanup_ingame(
     commands.insert_resource(events::RandomEventQueue::default());
     commands.insert_resource(events::EventModalState::default());
     commands.insert_resource(reproduction::GhostCityTracker::default());
-    // Reset log header flag so a new session header is written if debug logging fires again.
     debug.log_header_written = false;
 }
 
@@ -280,26 +291,55 @@ fn setup(
         }
     }
 
-    // Ground plane
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(8000.0, 8000.0))),
-        MeshMaterial2d(materials.add(Color::srgb(0.08, 0.16, 0.08))),
-        Transform::from_xyz(0.0, 0.0, -1.0),
-    ));
+    // Ground tile grid
+    {
+        let half = (GROUND_TILES_PER_AXIS as f32 * GROUND_TILE_SIZE) / 2.0 - GROUND_TILE_SIZE / 2.0;
+        let weighted = [0usize,0,0,1,1,2,2,3,4,4,5];
+        for row in 0..GROUND_TILES_PER_AXIS {
+            for col in 0..GROUND_TILES_PER_AXIS {
+                let x = col as f32 * GROUND_TILE_SIZE - half;
+                let y = row as f32 * GROUND_TILE_SIZE - half;
+                let h = (col.wrapping_mul(31).wrapping_add(row.wrapping_mul(17))) as usize;
+                let variant = weighted[h % weighted.len()];
+                commands.spawn((
+                    Sprite {
+                        image: sprite_assets.ground_tiles[variant].clone(),
+                        custom_size: Some(Vec2::splat(GROUND_TILE_SIZE)),
+                        ..default()
+                    },
+                    Transform::from_xyz(x, y, -1.0),
+                    GroundTileMarker,
+                ));
+            }
+        }
+    }
 
-    // Spawn buildings using pixel-art sprites.
+    // Spawn buildings using 9-tile sprites.
     for building in &world.buildings {
-        let image = building_sprite(&sprite_assets, building.building_type, building.position);
+        let color_var = SpriteAssets::variant_for(building.position, 3);
+        let tile_size = building.size / 3.0;
         commands.spawn((
-            Sprite {
-                image,
-                custom_size: Some(building.size),
-                ..default()
-            },
             Transform::from_xyz(building.position.x, building.position.y, 0.0),
+            Visibility::Visible,
             building.clone(),
-        ));
-        // Spawn floor label (same logic as housing::spawn_building).
+        ))
+        .with_children(|p| {
+            for tile_pos in 0..9usize {
+                let tile_col = (tile_pos % 3) as f32 - 1.0;
+                let tile_row = (tile_pos / 3) as f32 - 1.0;
+                let offset = Vec2::new(tile_col * tile_size.x, -tile_row * tile_size.y);
+                let pattern_var = SpriteAssets::tile_pattern_variant(building.position, tile_pos, 3);
+                let tile_image = match building.building_type {
+                    BuildingType::Home => sprite_assets.home_tiles[color_var][tile_pos][pattern_var].clone(),
+                    BuildingType::Office => sprite_assets.office_tiles[color_var][tile_pos][pattern_var].clone(),
+                    BuildingType::Shop | BuildingType::Public => sprite_assets.shop_tiles[color_var][tile_pos][pattern_var].clone(),
+                };
+                p.spawn((
+                    Sprite { image: tile_image, custom_size: Some(tile_size), ..default() },
+                    Transform::from_xyz(offset.x, offset.y, 0.0),
+                ));
+            }
+        });
         let label_entity = commands.spawn((
             Sprite {
                 color: Color::srgba(0.0, 0.0, 0.0, 0.75),
@@ -368,24 +408,6 @@ fn setup(
             citizen.clone(),
             happiness::CitizenHappiness::default(),
         ));
-    }
-}
-
-/// Pick a sprite handle for a building, choosing a variant from the position hash.
-pub fn building_sprite(assets: &SpriteAssets, kind: BuildingType, pos: Vec2) -> Handle<Image> {
-    match kind {
-        BuildingType::Home => {
-            let v = SpriteAssets::variant_for(pos, assets.homes.len());
-            assets.homes[v].clone()
-        }
-        BuildingType::Office => {
-            let v = SpriteAssets::variant_for(pos, assets.offices.len());
-            assets.offices[v].clone()
-        }
-        BuildingType::Shop | BuildingType::Public => {
-            let v = SpriteAssets::variant_for(pos, assets.shops.len());
-            assets.shops[v].clone()
-        }
     }
 }
 
@@ -609,6 +631,10 @@ fn auto_zoom_camera(
         .map(|w| (w.width(), w.height()))
         .unwrap_or((1280.0, 720.0));
 
+    // Use the playable viewport area (excluding sidebar and toolbar).
+    let usable_w = vw - SIDEBAR_WIDTH;
+    let usable_h = vh - TOOLBAR_HEIGHT;
+
     // Compute bounding box of all buildings.
     let min_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MAX, f32::min);
     let max_x = world.buildings.iter().map(|b| b.position.x).fold(f32::MIN, f32::max);
@@ -618,18 +644,23 @@ fn auto_zoom_camera(
     let city_w = (max_x - min_x) + margin * 2.0;
     let city_h = (max_y - min_y) + margin * 2.0;
     let target_center = Vec2::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5);
-    let target_zoom = (vw / city_w).min(vh / city_h).clamp(0.05, 2.0);
+    let target_zoom = (usable_w / city_w).min(usable_h / city_h).clamp(0.05, 2.0);
     game_state.min_zoom = (target_zoom * 0.6).max(0.02);
 
     // Check if any building is outside the current viewport (with a small margin).
     let Ok(camera) = camera_query.single() else { return };
     let cam_pos = camera.translation.xy();
+    let zoom = game_state.camera_zoom.max(0.001);
+    let effective_center = Vec2::new(
+        target_center.x - SIDEBAR_WIDTH / 2.0 / zoom,
+        target_center.y - TOOLBAR_HEIGHT / 2.0 / zoom,
+    );
     let scale = 1.0 / game_state.camera_zoom;
-    let half_w = vw * scale * 0.5;
-    let half_h = vh * scale * 0.5;
+    let half_w = usable_w * scale * 0.5;
+    let half_h = usable_h * scale * 0.5;
     const EDGE_MARGIN: f32 = 100.0;
     let any_outside = world.buildings.iter().any(|b| {
-        let rel = b.position - cam_pos;
+        let rel = b.position - effective_center;
         rel.x < -(half_w - EDGE_MARGIN)
             || rel.x > (half_w - EDGE_MARGIN)
             || rel.y < -(half_h - EDGE_MARGIN)
@@ -643,7 +674,7 @@ fn auto_zoom_camera(
     // Adaptive lerp speeds: faster when the correction needed is large.
     let delta = time.delta_secs();
     let zoom_diff = (target_zoom - game_state.camera_zoom).abs();
-    let pan_diff = (target_center - cam_pos).length();
+    let pan_diff = (effective_center - cam_pos).length();
     let zoom_speed = ((0.8 + zoom_diff * 4.0).min(8.0) * delta).clamp(0.0, 1.0);
     let pan_speed  = ((0.5 + pan_diff * 0.001).min(5.0) * delta).clamp(0.0, 1.0);
 
@@ -651,7 +682,7 @@ fn auto_zoom_camera(
     game_state.camera_zoom += (target_zoom - game_state.camera_zoom) * zoom_speed;
     if let Ok(mut cam) = camera_query.single_mut() {
         cam.scale = Vec3::splat(1.0 / game_state.camera_zoom);
-        let new_pos = cam.translation.xy().lerp(target_center, pan_speed);
+        let new_pos = cam.translation.xy().lerp(effective_center, pan_speed);
         cam.translation.x = new_pos.x;
         cam.translation.y = new_pos.y;
     }

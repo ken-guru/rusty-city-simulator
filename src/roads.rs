@@ -1261,12 +1261,20 @@ fn sync_road_entities(
         let angle = delta.y.atan2(delta.x);
         let midpoint = (rs + re) * 0.5;
 
+        // Per-segment brightness variation for a worn/paved look.
+        let seg_hash = {
+            let x = seg.start.x as i32;
+            let y = seg.start.y as i32;
+            x.wrapping_mul(31).wrapping_add(y.wrapping_mul(17)).unsigned_abs()
+        };
+        let brightness = 0.92 + (seg_hash % 100) as f32 / 100.0 * 0.16;
+
         let (width, color) = match seg.seg_type {
-            SegmentType::Road => (20.0_f32, Color::srgb(0.62, 0.59, 0.50)),
-            SegmentType::Path => (12.0_f32, Color::srgb(0.50, 0.36, 0.18)),
-            SegmentType::Desire => (6.0_f32, Color::srgba(0.45, 0.32, 0.16, 0.35)),
+            SegmentType::Road     => (20.0_f32, Color::srgb(0.62 * brightness, 0.59 * brightness, 0.50 * brightness)),
+            SegmentType::Path     => (12.0_f32, Color::srgb(0.50 * brightness, 0.36 * brightness, 0.18 * brightness)),
+            SegmentType::Desire   => (6.0_f32,  Color::srgba(0.45 * brightness, 0.32 * brightness, 0.16 * brightness, 0.35)),
             SegmentType::PlayerSuggested => (20.0_f32, Color::srgb(0.1, 0.8, 0.65)),
-            SegmentType::ParkPath => continue, // visuals handled by ParkCorridorMarker sprite
+            SegmentType::ParkPath => continue,
         };
 
         let mesh = meshes.add(Rectangle::new(length, width));

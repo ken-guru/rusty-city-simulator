@@ -324,23 +324,31 @@ fn spawn_building(
 ) {
     for event in building_events.read() {
         let b = &event.building;
-        let v = SpriteAssets::variant_for(b.position, 3);
-        let image = match b.building_type {
-            BuildingType::Home             => sprite_assets.homes[v].clone(),
-            BuildingType::Office           => sprite_assets.offices[v].clone(),
-            BuildingType::Shop
-            | BuildingType::Public         => sprite_assets.shops[v].clone(),
-        };
+        let color_var = SpriteAssets::variant_for(b.position, 3);
+        let tile_size = b.size / 3.0;
 
         commands.spawn((
-            Sprite {
-                image,
-                custom_size: Some(b.size),
-                ..default()
-            },
             Transform::from_xyz(b.position.x, b.position.y, 0.0),
+            Visibility::Visible,
             b.clone(),
-        ));
+        ))
+        .with_children(|parent| {
+            for tile_pos in 0..9usize {
+                let tile_col = (tile_pos % 3) as f32 - 1.0;
+                let tile_row = (tile_pos / 3) as f32 - 1.0;
+                let offset = Vec2::new(tile_col * tile_size.x, -tile_row * tile_size.y);
+                let pattern_var = SpriteAssets::tile_pattern_variant(b.position, tile_pos, 3);
+                let tile_image = match b.building_type {
+                    BuildingType::Home => sprite_assets.home_tiles[color_var][tile_pos][pattern_var].clone(),
+                    BuildingType::Office => sprite_assets.office_tiles[color_var][tile_pos][pattern_var].clone(),
+                    BuildingType::Shop | BuildingType::Public => sprite_assets.shop_tiles[color_var][tile_pos][pattern_var].clone(),
+                };
+                parent.spawn((
+                    Sprite { image: tile_image, custom_size: Some(tile_size), ..default() },
+                    Transform::from_xyz(offset.x, offset.y, 0.0),
+                ));
+            }
+        });
 
         // Spawn floor label: dark background sprite parent + text child, floating
         // above the building at z=5 so it renders over buildings and citizens.
