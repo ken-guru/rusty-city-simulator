@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.12.2] — 2026-03-16
+
+### Fixed
+
+#### Floor labels now update as buildings grow
+
+- `update_floor_labels` was querying `&mut Text` (Bevy UI component) but floor label
+  children are spawned as `Text2d` (world-space component) — a different type. The
+  query always returned zero results, so floor numbers were frozen at their initial value
+  and never reflected floor additions. Fixed by changing the query to `&mut Text2d` and
+  updating via `text.0 = format!(...)`.
+
+---
+
 ## [0.12.1] — 2026-03-16
 
 ### Fixed

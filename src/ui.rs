@@ -1675,7 +1675,8 @@ fn scroll_panels(
 fn update_floor_labels(
     world: Res<CityWorld>,
     label_query: Query<(Entity, &FloorLabel, &Children)>,
-    mut text_query: Query<(&mut Text, &mut TextColor)>,
+    // Floor label children are world-space Text2d, NOT Bevy-UI Text.
+    mut text_query: Query<(&mut Text2d, &mut TextColor)>,
     mut sprite_query: Query<&mut Sprite, With<FloorLabel>>,
 ) {
     for (entity, label, children) in label_query.iter() {
@@ -1686,10 +1687,10 @@ fn update_floor_labels(
                 let c = text_color.to_srgba();
                 sprite.color = Color::srgba(c.red * 0.3, c.green * 0.3, c.blue * 0.3, 0.82);
             }
-            // Update the text child.
+            // Update the Text2d child (world-space text).
             for child in children.iter() {
                 if let Ok((mut text, mut color)) = text_query.get_mut(child) {
-                    *text = Text::new(format!("F{}", building.floors));
+                    text.0 = format!("F{}", building.floors);
                     color.0 = text_color;
                 }
             }
