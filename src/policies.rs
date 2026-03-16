@@ -57,3 +57,75 @@ fn apply_policy_effects(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn park_visit_multiplier_off() {
+        let p = ActivePolicies { park_day: false, overtime: false, open_city: false };
+        assert!((p.park_visit_multiplier() - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn park_visit_multiplier_on() {
+        let p = ActivePolicies { park_day: true, overtime: false, open_city: false };
+        assert!((p.park_visit_multiplier() - 2.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn income_multiplier_off() {
+        let p = ActivePolicies { park_day: false, overtime: false, open_city: false };
+        assert!((p.income_multiplier() - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn income_multiplier_on() {
+        let p = ActivePolicies { park_day: false, overtime: true, open_city: false };
+        assert!((p.income_multiplier() - 1.2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn migration_multiplier_off() {
+        let p = ActivePolicies { park_day: false, overtime: false, open_city: false };
+        assert!((p.migration_frequency_multiplier() - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn migration_multiplier_on() {
+        let p = ActivePolicies { park_day: false, overtime: false, open_city: true };
+        assert!((p.migration_frequency_multiplier() - 1.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn happiness_impact_no_policies() {
+        let p = ActivePolicies { park_day: false, overtime: false, open_city: false };
+        assert!((p.happiness_impact() - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn happiness_impact_park_day_only() {
+        let p = ActivePolicies { park_day: true, overtime: false, open_city: false };
+        assert!((p.happiness_impact() - 0.1).abs() < 1e-5);
+    }
+
+    #[test]
+    fn happiness_impact_overtime_only() {
+        let p = ActivePolicies { park_day: false, overtime: true, open_city: false };
+        assert!((p.happiness_impact() - (-0.15)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn happiness_impact_open_city_only() {
+        let p = ActivePolicies { park_day: false, overtime: false, open_city: true };
+        assert!((p.happiness_impact() - 0.05).abs() < 1e-5);
+    }
+
+    #[test]
+    fn happiness_impact_all_policies() {
+        let p = ActivePolicies { park_day: true, overtime: true, open_city: true };
+        // 0.1 - 0.15 + 0.05 = 0.0
+        assert!((p.happiness_impact() - 0.0).abs() < 1e-5);
+    }
+}

@@ -243,3 +243,135 @@ pub fn generate_building_name(building_type: BuildingType, index: usize) -> Stri
         BuildingType::Public => "Public Building".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Citizen::get_age_group ───────────────────────────────────────────────
+
+    #[test]
+    fn age_group_infant() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Male, Vec2::ZERO);
+        c.age = 0.0;
+        assert_eq!(c.get_age_group(), "infant");
+        c.age = 2.0;
+        assert_eq!(c.get_age_group(), "infant");
+    }
+
+    #[test]
+    fn age_group_child() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Male, Vec2::ZERO);
+        c.age = 2.1;
+        assert_eq!(c.get_age_group(), "child");
+        c.age = 12.0;
+        assert_eq!(c.get_age_group(), "child");
+    }
+
+    #[test]
+    fn age_group_teen() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Male, Vec2::ZERO);
+        c.age = 12.1;
+        assert_eq!(c.get_age_group(), "teen");
+        c.age = 18.0;
+        assert_eq!(c.get_age_group(), "teen");
+    }
+
+    #[test]
+    fn age_group_adult() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Male, Vec2::ZERO);
+        c.age = 18.1;
+        assert_eq!(c.get_age_group(), "adult");
+        c.age = 60.0;
+        assert_eq!(c.get_age_group(), "adult");
+    }
+
+    #[test]
+    fn age_group_elder() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Male, Vec2::ZERO);
+        c.age = 60.1;
+        assert_eq!(c.get_age_group(), "elder");
+        c.age = 99.0;
+        assert_eq!(c.get_age_group(), "elder");
+    }
+
+    // ── Citizen::can_reproduce ───────────────────────────────────────────────
+
+    #[test]
+    fn can_reproduce_false_below_age_threshold() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Female, Vec2::ZERO);
+        c.age = 17.9;
+        c.reproduction_urge = 1.0;
+        assert!(!c.can_reproduce());
+    }
+
+    #[test]
+    fn can_reproduce_true_at_lower_boundary() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Female, Vec2::ZERO);
+        c.age = 18.0;
+        c.reproduction_urge = 0.8;
+        assert!(c.can_reproduce());
+    }
+
+    #[test]
+    fn can_reproduce_true_at_upper_boundary() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Female, Vec2::ZERO);
+        c.age = 60.0;
+        c.reproduction_urge = 0.8;
+        assert!(c.can_reproduce());
+    }
+
+    #[test]
+    fn can_reproduce_false_above_age_threshold() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Female, Vec2::ZERO);
+        c.age = 60.1;
+        c.reproduction_urge = 1.0;
+        assert!(!c.can_reproduce());
+    }
+
+    #[test]
+    fn can_reproduce_false_when_urge_too_low() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Male, Vec2::ZERO);
+        c.age = 30.0;
+        c.reproduction_urge = 0.69;
+        assert!(!c.can_reproduce());
+    }
+
+    #[test]
+    fn can_reproduce_true_at_urge_threshold() {
+        let mut c = Citizen::new("Test".to_string(), Gender::Male, Vec2::ZERO);
+        c.age = 30.0;
+        // Threshold is > 0.7, so 0.71 is above it
+        c.reproduction_urge = 0.71;
+        assert!(c.can_reproduce());
+    }
+
+    // ── generate_building_name ───────────────────────────────────────────────
+
+    #[test]
+    fn building_name_home_uses_index() {
+        assert_eq!(generate_building_name(BuildingType::Home, 0), "Residence #1");
+        assert_eq!(generate_building_name(BuildingType::Home, 4), "Residence #5");
+    }
+
+    #[test]
+    fn building_name_office_uses_index() {
+        assert_eq!(generate_building_name(BuildingType::Office, 0), "Office Block 1");
+        assert_eq!(generate_building_name(BuildingType::Office, 2), "Office Block 3");
+    }
+
+    #[test]
+    fn building_name_shop_cycles_through_names() {
+        let n = SHOP_NAMES.len();
+        // Index 0 → first name, index n → wraps to first again
+        assert_eq!(generate_building_name(BuildingType::Shop, 0), SHOP_NAMES[0]);
+        assert_eq!(generate_building_name(BuildingType::Shop, n), SHOP_NAMES[0]);
+        assert_eq!(generate_building_name(BuildingType::Shop, 1), SHOP_NAMES[1]);
+    }
+
+    #[test]
+    fn building_name_public_is_constant() {
+        assert_eq!(generate_building_name(BuildingType::Public, 0), "Public Building");
+        assert_eq!(generate_building_name(BuildingType::Public, 99), "Public Building");
+    }
+}

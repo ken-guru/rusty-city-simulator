@@ -362,11 +362,62 @@ mod tests {
     }
 
     #[test]
+    fn daily_net_negative_when_expenses_exceed_income() {
+        let mut e = Economy::new();
+        e.daily_income = 200.0;
+        e.daily_expenses = 500.0;
+        assert!((e.daily_net() - (-300.0)).abs() < 0.01);
+    }
+
+    #[test]
     fn charge_construction_reduces_balance() {
         let mut e = Economy::new();
         let initial = e.balance;
         e.charge_construction(50_000.0);
         assert!((e.balance - (initial - 50_000.0)).abs() < 0.01);
         assert!((e.total_construction_cost - 50_000.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn charge_construction_accumulates_total_cost() {
+        let mut e = Economy::new();
+        e.charge_construction(10_000.0);
+        e.charge_construction(5_000.0);
+        assert!((e.total_construction_cost - 15_000.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn days_to_ymd_for_log_epoch() {
+        assert_eq!(days_to_ymd_for_log(0), (1970, 1, 1));
+    }
+
+    #[test]
+    fn days_to_ymd_for_log_known_date() {
+        // 2024-03-12 corresponds to the same day count used in save.rs tests.
+        let (year, month, _day) = days_to_ymd_for_log(19793);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 3);
+    }
+
+    #[test]
+    fn days_to_ymd_for_log_leap_year_2000() {
+        // 2000-02-29 exists (2000 is a leap year).
+        // Days since epoch to 2000-01-01: 10957
+        // Feb 29 is day 60 of that year → 10957 + 59 = 11016
+        let (year, month, day) = days_to_ymd_for_log(11016);
+        assert_eq!(year, 2000);
+        assert_eq!(month, 2);
+        assert_eq!(day, 29);
+    }
+
+    #[test]
+    fn days_to_ymd_for_log_feb29_in_leap_year() {
+        // 2024 is a regular leap year (divisible by 4, not a century).
+        // Days from epoch to 2024-02-29:
+        //   19723 (days to Jan 1 2024) + 59 (Jan=31 days + 28 days into Feb) = 19782.
+        let (year, month, day) = days_to_ymd_for_log(19782);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 2);
+        assert_eq!(day, 29);
     }
 }

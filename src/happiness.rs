@@ -68,3 +68,57 @@ fn update_city_happiness(
         city_happiness.value = effective.clamp(0.0, 1.0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_boost_sets_boost_and_expiry() {
+        let mut h = CityHappiness::default();
+        h.apply_boost(0.3, 5.0, 10.0);
+        assert!((h.boost - 0.3).abs() < 1e-5);
+        assert!((h.boost_expires_day - 15.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn effective_boost_returns_boost_before_expiry() {
+        let mut h = CityHappiness::default();
+        h.apply_boost(0.2, 10.0, 0.0); // expires at day 10
+        assert!((h.effective_boost(9.9) - 0.2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn effective_boost_returns_zero_at_exact_expiry() {
+        let mut h = CityHappiness::default();
+        h.apply_boost(0.2, 10.0, 0.0); // expires at day 10
+        assert_eq!(h.effective_boost(10.0), 0.0);
+    }
+
+    #[test]
+    fn effective_boost_returns_zero_after_expiry() {
+        let mut h = CityHappiness::default();
+        h.apply_boost(0.5, 3.0, 1.0); // expires at day 4
+        assert_eq!(h.effective_boost(50.0), 0.0);
+    }
+
+    #[test]
+    fn current_value_clamps_above_one() {
+        let h = CityHappiness { value: 0.9, boost: 0.5, boost_expires_day: 999.0 };
+        // 0.9 + 0.5 = 1.4, should clamp to 1.0
+        assert!((h.current_value(1.0) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn current_value_clamps_below_zero() {
+        let h = CityHappiness { value: 0.0, boost: 0.0, boost_expires_day: 0.0 };
+        assert!((h.current_value(1.0) - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn current_value_ignores_expired_boost() {
+        let h = CityHappiness { value: 0.4, boost: 0.5, boost_expires_day: 1.0 };
+        // boost expired at day 1, current_day = 2
+        assert!((h.current_value(2.0) - 0.4).abs() < 1e-5);
+    }
+}

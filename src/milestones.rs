@@ -112,3 +112,79 @@ pub fn tick_toasts(
         toasts.active = toasts.pending.pop_front();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_adds_to_pending() {
+        let mut q = ToastQueue::default();
+        q.push("Hello");
+        assert_eq!(q.pending.len(), 1);
+        assert_eq!(q.pending.front().unwrap().text, "Hello");
+    }
+
+    #[test]
+    fn push_sets_display_duration() {
+        let mut q = ToastQueue::default();
+        q.push("Test");
+        let t = q.pending.front().unwrap();
+        assert!((t.timer - ToastQueue::DISPLAY_DURATION).abs() < 1e-5);
+    }
+
+    #[test]
+    fn multiple_pushes_queue_in_order() {
+        let mut q = ToastQueue::default();
+        q.push("first");
+        q.push("second");
+        q.push("third");
+        let texts: Vec<&str> = q.pending.iter().map(|t| t.text.as_str()).collect();
+        assert_eq!(texts, vec!["first", "second", "third"]);
+    }
+
+    /// Simulates tick_toasts logic without needing a Bevy Time resource.
+    fn manual_tick(toasts: &mut ToastQueue, delta: f32) {
+        if let Some(ref mut active) = toasts.active {
+            active.timer -= delta;
+            if active.timer <= 0.0 {
+                toasts.active = None;
+            }
+        }
+        if toasts.active.is_none() {
+            toasts.active = toasts.pending.pop_front();
+        }
+    }
+
+    #[test]
+    fn tick_promotes_pending_to_active_when_empty() {
+        let mut q = ToastQueue::default();
+        q.push("promoted");
+        assert!(q.active.is_none());
+        manual_tick(&mut q, 0.0);
+        assert!(q.active.is_some());
+        assert_eq!(q.active.as_ref().unwrap().text, "promoted");
+    }
+
+    #[test]
+    fn tick_expires_active_and_promotes_next() {
+        let mut q = ToastQueue::default();
+        q.push("first");
+        q.push("second");
+        manual_tick(&mut q, 0.0); // promotes "first" to active
+        // Expire "first"
+        manual_tick(&mut q, ToastQueue::DISPLAY_DURATION + 0.1);
+        assert!(q.active.is_some());
+        assert_eq!(q.active.as_ref().unwrap().text, "second");
+    }
+
+    #[test]
+    fn tick_sets_active_none_when_pending_empty_and_expired() {
+        let mut q = ToastQueue::default();
+        q.push("only");
+        manual_tick(&mut q, 0.0); // activate
+        manual_tick(&mut q, ToastQueue::DISPLAY_DURATION + 1.0); // expire
+        assert!(q.active.is_none());
+        assert!(q.pending.is_empty());
+    }
+}

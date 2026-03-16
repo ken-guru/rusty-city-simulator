@@ -1477,4 +1477,79 @@ mod tests {
         let result = network.find_road_path(a, b);
         assert!(result.is_some(), "should be able to route TO a building centre");
     }
+
+    // ── ConstructionProject::total_segments ──────────────────────────────────
+
+    #[test]
+    fn total_segments_zero_waypoints() {
+        let p = ConstructionProject { waypoints: vec![], ..Default::default() };
+        assert_eq!(p.total_segments(), 0);
+    }
+
+    #[test]
+    fn total_segments_one_waypoint() {
+        let p = ConstructionProject { waypoints: vec![Vec2::ZERO], ..Default::default() };
+        assert_eq!(p.total_segments(), 0);
+    }
+
+    #[test]
+    fn total_segments_two_waypoints() {
+        let p = ConstructionProject {
+            waypoints: vec![Vec2::ZERO, Vec2::new(120.0, 0.0)],
+            ..Default::default()
+        };
+        assert_eq!(p.total_segments(), 1);
+    }
+
+    #[test]
+    fn total_segments_many_waypoints() {
+        let pts: Vec<Vec2> = (0..5).map(|i| Vec2::new(i as f32 * 120.0, 0.0)).collect();
+        let p = ConstructionProject { waypoints: pts, ..Default::default() };
+        assert_eq!(p.total_segments(), 4);
+    }
+
+    // ── RoadNetwork::nearest_node_to ─────────────────────────────────────────
+
+    #[test]
+    fn nearest_node_returns_none_when_empty() {
+        let network = RoadNetwork::default();
+        assert!(network.nearest_node_to(Vec2::ZERO, 1000.0).is_none());
+    }
+
+    #[test]
+    fn nearest_node_returns_none_beyond_max_dist() {
+        let mut network = RoadNetwork::default();
+        network.segments.push(RoadSegment {
+            id: "s".into(),
+            start: Vec2::new(500.0, 0.0),
+            end:   Vec2::new(620.0, 0.0),
+            seg_type: SegmentType::Road,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0, created_day: 0.0,
+        });
+        assert!(network.nearest_node_to(Vec2::ZERO, 100.0).is_none());
+    }
+
+    #[test]
+    fn nearest_node_finds_closest_of_multiple() {
+        let mut network = RoadNetwork::default();
+        // Far node at (500, 0)
+        network.segments.push(RoadSegment {
+            id: "far".into(),
+            start: Vec2::new(500.0, 0.0),
+            end:   Vec2::new(620.0, 0.0),
+            seg_type: SegmentType::Road,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0, created_day: 0.0,
+        });
+        // Near node at (10, 0)
+        network.segments.push(RoadSegment {
+            id: "near".into(),
+            start: Vec2::new(10.0, 0.0),
+            end:   Vec2::new(130.0, 0.0),
+            seg_type: SegmentType::Road,
+            usage: 0.0, last_used_day: 0.0, type_changed_day: 0.0, created_day: 0.0,
+        });
+        let nearest = network.nearest_node_to(Vec2::ZERO, f32::MAX).unwrap();
+        assert!((nearest - Vec2::new(10.0, 0.0)).length() < 1e-3,
+            "expected nearest (10,0) but got ({:.1},{:.1})", nearest.x, nearest.y);
+    }
 }

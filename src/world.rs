@@ -413,5 +413,86 @@ mod tests {
         let corridors = world.detect_park_corridors(&[(0,0),(2,0),(0,2),(2,2)]);
         assert!(corridors.contains(&(1, 1)), "cross cell (1,1) should be detected");
     }
+
+    // ── detect_park_corridors: cardinal corridor cases ───────────────────────
+
+    #[test]
+    fn horizontal_corridor_detected_between_two_parks() {
+        // Parks at (-2, 0) and (2, 0) share a horizontal corridor at (0+1 = nope)
+        // Actually the horizontal corridor between (-2,0) and (2,0) is at col -1 and 1.
+        // Corridor (1, 0): col=1 odd, row=0 even → horiz corridor.
+        // Needs park at (0,0) and (2,0).
+        let mut world = world_with_occupied(&[]);
+        world.park_cells.insert((0, 0));
+        world.park_cells.insert((2, 0));
+        let corridors = world.detect_park_corridors(&[(0, 0), (2, 0)]);
+        assert!(corridors.contains(&(1, 0)), "horizontal corridor (1,0) should be detected");
+    }
+
+    #[test]
+    fn vertical_corridor_detected_between_two_parks() {
+        // Parks at (0, 0) and (0, 2) share a vertical corridor at (0, 1).
+        // Corridor (0, 1): col=0 even, row=1 odd → vert corridor.
+        let mut world = world_with_occupied(&[]);
+        world.park_cells.insert((0, 0));
+        world.park_cells.insert((0, 2));
+        let corridors = world.detect_park_corridors(&[(0, 0), (0, 2)]);
+        assert!(corridors.contains(&(0, 1)), "vertical corridor (0,1) should be detected");
+    }
+
+    // ── park_positions ───────────────────────────────────────────────────────
+
+    #[test]
+    fn park_positions_returns_correct_world_coords() {
+        let mut world = world_with_occupied(&[]);
+        world.park_cells.insert((0, 0));
+        world.park_cells.insert((2, 0));
+        let positions = park_positions(&world);
+        // (0,0) → world (0,0); (2,0) → world (240, 0)
+        assert!(positions.contains(&cell_to_world(0, 0)));
+        assert!(positions.contains(&cell_to_world(2, 0)));
+        assert_eq!(positions.len(), 2);
+    }
+
+    #[test]
+    fn park_positions_empty_when_no_parks() {
+        let world = world_with_occupied(&[]);
+        assert!(park_positions(&world).is_empty());
+    }
+
+    // ── building_stats ───────────────────────────────────────────────────────
+
+    #[test]
+    fn building_stats_home() {
+        let (size, cap_res, cap_work) = building_stats(BuildingType::Home);
+        assert!((size.x - 90.0).abs() < 1e-5);
+        assert!((size.y - 90.0).abs() < 1e-5);
+        assert_eq!(cap_res, 4);
+        assert_eq!(cap_work, 0);
+    }
+
+    #[test]
+    fn building_stats_office() {
+        let (size, cap_res, cap_work) = building_stats(BuildingType::Office);
+        assert!((size.x - 100.0).abs() < 1e-5);
+        assert_eq!(cap_res, 0);
+        assert_eq!(cap_work, 10);
+    }
+
+    #[test]
+    fn building_stats_shop() {
+        let (size, cap_res, cap_work) = building_stats(BuildingType::Shop);
+        assert!((size.x - 90.0).abs() < 1e-5);
+        assert_eq!(cap_res, 0);
+        assert_eq!(cap_work, 5);
+    }
+
+    #[test]
+    fn building_stats_public() {
+        let (size, cap_res, cap_work) = building_stats(BuildingType::Public);
+        assert!((size.x - 95.0).abs() < 1e-5);
+        assert_eq!(cap_res, 0);
+        assert_eq!(cap_work, 0);
+    }
 }
 

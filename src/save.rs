@@ -341,6 +341,14 @@ fn handle_save_load(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::math::Vec2;
+    use crate::entities::{Citizen, Gender};
+
+    fn make_citizen(id: &str) -> Citizen {
+        let mut c = Citizen::new(id.to_string(), Gender::Male, Vec2::ZERO);
+        c.id = id.to_string();
+        c
+    }
 
     #[test]
     fn days_to_ymd_epoch() {
@@ -375,5 +383,81 @@ mod tests {
     fn format_filename_fallback_on_bad_input() {
         let s = format_filename_as_time("not_a_timestamp.json");
         assert_eq!(s, "not_a_timestamp.json");
+    }
+
+    // ── sync_citizens_to_world ───────────────────────────────────────────────
+
+    fn empty_world() -> CityWorld {
+        CityWorld {
+            citizens: vec![],
+            buildings: vec![],
+            simulation_time: 0.0,
+            occupied_cells: Default::default(),
+            crossroad_cells: Default::default(),
+            park_cells: Default::default(),
+            park_corridor_cells: Default::default(),
+        }
+    }
+
+    #[test]
+    fn sync_appends_new_ecs_citizen() {
+        let mut world = empty_world();
+        let ecs = vec![make_citizen("a1")];
+        sync_citizens_to_world(&mut world, &ecs);
+        assert_eq!(world.citizens.len(), 1);
+        assert_eq!(world.citizens[0].id, "a1");
+    }
+
+    #[test]
+    fn sync_overwrites_existing_citizen_by_id() {
+        let mut world = empty_world();
+        let mut original = make_citizen("a1");
+        original.age = 20.0;
+        world.citizens.push(original);
+
+        let mut updated = make_citizen("a1");
+        updated.age = 30.0;
+        sync_citizens_to_world(&mut world, &[updated]);
+        assert_eq!(world.citizens.len(), 1);
+        assert!((world.citizens[0].age - 30.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn sync_removes_citizens_absent_from_ecs() {
+        let mut world = empty_world();
+        world.citizens.push(make_citizen("dead"));
+        world.citizens.push(make_citizen("alive"));
+
+        let ecs = vec![make_citizen("alive")];
+        sync_citizens_to_world(&mut world, &ecs);
+        assert_eq!(world.citizens.len(), 1);
+        assert_eq!(world.citizens[0].id, "alive");
+    }
+
+    #[test]
+    fn sync_with_empty_ecs_clears_world_citizens() {
+        let mut world = empty_world();
+        world.citizens.push(make_citizen("a"));
+        world.citizens.push(make_citizen("b"));
+        sync_citizens_to_world(&mut world, &[]);
+        assert!(world.citizens.is_empty());
+    }
+
+    #[test]
+    fn sync_handles_mix_of_new_updated_and_removed() {
+        let mut world = empty_world();
+        world.citizens.push(make_citizen("keep"));
+        world.citizens.push(make_citizen("remove"));
+
+        let mut updated_keep = make_citizen("keep");
+        updated_keep.age = 99.0;
+        let ecs = vec![updated_keep, make_citizen("new")];
+        sync_citizens_to_world(&mut world, &ecs);
+
+        assert_eq!(world.citizens.len(), 2);
+        let keep = world.citizens.iter().find(|c| c.id == "keep").unwrap();
+        assert!((keep.age - 99.0).abs() < 1e-5);
+        assert!(world.citizens.iter().any(|c| c.id == "new"));
+        assert!(!world.citizens.iter().any(|c| c.id == "remove"));
     }
 }
