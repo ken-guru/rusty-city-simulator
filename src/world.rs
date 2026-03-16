@@ -106,7 +106,11 @@ impl CityWorld {
                 Gender::Female => first_names_female[rng.random_range(0..first_names_female.len())],
             };
             let last = last_names[rng.random_range(0..last_names.len())];
-            citizens.push(Citizen::new(format!("{} {}", first, last), gender, Vec2::ZERO));
+            let mut citizen = Citizen::new(format!("{} {}", first, last), gender, Vec2::ZERO);
+            // Spread initial ages across 5–50 to avoid a synchronized die-off at day ~53
+            // (all-age-20 citizens would all hit the death threshold at the same time).
+            citizen.age = rng.random_range(5.0_f32..50.0_f32);
+            citizens.push(citizen);
         }
 
         // Assign citizens to homes up to each building's capacity.

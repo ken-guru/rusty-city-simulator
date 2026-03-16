@@ -55,12 +55,16 @@ const FIRST_NAMES_FEMALE: [&str; 10] = ["Emma","Olivia","Ava","Isabella","Sophia
 const LAST_NAMES:         [&str; 8]  = ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis"];
 
 /// Birth rate coefficient: expected births per female per game-day = BIRTH_RATE_COEFF × day_length_secs.
-/// At 120s/day: 0.002 × 120 = 0.24 births/female/day when eligible.
-const BIRTH_RATE_COEFF: f32 = 0.002;
+/// At 120s/day: 0.003 × 120 = 0.36 births/female/day when eligible.
+const BIRTH_RATE_COEFF: f32 = 0.003;
 
 /// Minimum game-days between births for the same female.
-/// 30 days allows ~3-4 children over a 42-year fertile window (ages 18–60).
-const BIRTH_COOLDOWN_DAYS: f32 = 30.0;
+///
+/// **Units note**: age advances at 1 game-year per game-day (`YEARS_PER_SECOND = 1/120`),
+/// so the fertile window (ages 18–60) spans **42 game-days**. With a 10-day cooldown:
+///   mean inter-birth interval = cooldown(10) + mean_wait(1/0.36 ≈ 2.8) ≈ 12.8 days
+///   births per female lifetime = 42 / 12.8 ≈ 3.3  (above replacement rate of ~2)
+const BIRTH_COOLDOWN_DAYS: f32 = 10.0;
 
 /// Hard cap on total citizen count to prevent ECS saturation at very long run times.
 const MAX_POPULATION: usize = 1000;
