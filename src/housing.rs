@@ -36,6 +36,11 @@ impl Plugin for HousingPlugin {
 /// An absolute maximum of MAX_FLOORS is also enforced.
 const MAX_FLOORS: u32 = 12;
 
+/// City must have at least this many home buildings before floor additions are preferred.
+/// Below this count, new buildings are always built instead of adding floors so the city
+/// spreads out first and doesn't stack everything on a handful of early structures.
+const MIN_HOME_BUILDINGS_FOR_VERTICAL: usize = 10;
+
 fn can_add_floor(building: &Building, all_buildings: &[Building]) -> bool {
     if building.floors >= MAX_FLOORS {
         return false;
@@ -98,19 +103,25 @@ fn check_housing_pressure(
     {
         let mut rng = rand::rng();
 
+        let home_count = world.buildings.iter()
+            .filter(|b| b.building_type == BuildingType::Home)
+            .count();
+
         // --- decide: add floor vs build new ---
         let avg_distance = {
             let mut total = 0.0f32;
             let mut n = 0u32;
             for b in &world.buildings {
                 if b.building_type == BuildingType::Home {
-                    total += b.position.length(); // rough distance from city centre
+                    total += b.position.length();
                     n += 1;
                 }
             }
             if n > 0 { total / n as f32 } else { 0.0 }
         };
-        let travel_penalty = avg_distance * 0.5 * 30.0;
+        // Reduced multiplier (was 0.5 * 30.0 = 15) so new buildings remain
+        // competitive at medium city sizes and don't lose immediately to floors.
+        let travel_penalty = avg_distance * 0.5 * 8.0;
         let expand_cost = 5_000.0 + travel_penalty;
 
         // Find cheapest eligible building to add a floor to
@@ -125,7 +136,11 @@ fn check_housing_pressure(
                 .map(|b| b.id.clone())
         };
 
-        let (go_vertical, _chosen_id) = if let Some(ref target_id) = best_floor_target {
+        // Force horizontal growth until the city has enough spread.
+        // After the threshold, use a noisy cost comparison so both options remain viable.
+        let (go_vertical, _chosen_id) = if home_count < MIN_HOME_BUILDINGS_FOR_VERTICAL {
+            (false, None)
+        } else if let Some(ref target_id) = best_floor_target {
             let floor_cost = world.buildings.iter()
                 .find(|b| &b.id == target_id)
                 .map(|b| 2_500.0 + b.floors as f32 * 800.0)
