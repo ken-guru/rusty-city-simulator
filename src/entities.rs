@@ -92,6 +92,17 @@ pub struct Citizen {
     #[serde(default)]
     /// All social connections this citizen has formed with others.
     pub relationships: Vec<RelationshipEntry>,
+
+    // ── Transit fields (all transient — not persisted) ────────────────────────
+    /// The building the citizen departed from; used to record O-D trip pairs for transit.
+    #[serde(skip, default)]
+    pub trip_origin_building_id: Option<String>,
+    /// The bus stop ID this citizen is currently waiting at (if WaitingForBus).
+    #[serde(skip, default)]
+    pub waiting_at_bus_stop_id: Option<String>,
+    /// The bus route ID this citizen is currently riding (if RidingBus).
+    #[serde(skip, default)]
+    pub riding_bus_route_id: Option<String>,
 }
 
 /// The nature of a social bond between two citizens.
@@ -122,6 +133,12 @@ pub enum ActivityType {
     Working,
     Socializing,
     VisitingPark,
+    /// Citizen is at a bus stop waiting for their route's bus to arrive.
+    WaitingForBus,
+    /// Citizen is currently aboard a bus, riding to their destination stop.
+    RidingBus,
+    /// Citizen is participating in a park sports session.
+    PlayingSport,
 }
 
 impl Citizen {
@@ -149,6 +166,9 @@ impl Citizen {
             total_distance_traveled: 0.0,
             last_birth_day: -999.0, // Sufficiently far in the past to allow first birth
             relationships: Vec::new(),
+            trip_origin_building_id: None,
+            waiting_at_bus_stop_id: None,
+            riding_bus_route_id: None,
         }
     }
 

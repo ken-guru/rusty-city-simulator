@@ -84,6 +84,15 @@ fn run_citizen_ai(
             continue;
         }
 
+        // Never override transit or sports activities — those are managed by their
+        // own systems (transit.rs / sports.rs) and will set Idle when done.
+        if matches!(
+            citizen.current_activity,
+            ActivityType::WaitingForBus | ActivityType::RidingBus | ActivityType::PlayingSport
+        ) {
+            continue;
+        }
+
         // Small per-frame probability to re-evaluate (~once every 3s at 1x speed)
         if !rng.random_bool((delta * 0.33).clamp(0.0, 1.0) as f64) {
             continue;
@@ -102,7 +111,8 @@ fn run_citizen_ai(
             ActivityType::Sleeping    => find_home(&world, &citizen.home_building_id).into_iter().collect(),
             ActivityType::Socializing => find_any_building(&world, &citizen.position).into_iter().collect(),
             ActivityType::VisitingPark => nearest_park(&world, &citizen.position).into_iter().collect(),
-            ActivityType::Walking | ActivityType::Idle => vec![],
+            ActivityType::Walking | ActivityType::Idle
+            | ActivityType::WaitingForBus | ActivityType::RidingBus | ActivityType::PlayingSport => vec![],
         };
 
         if !candidates.is_empty() {
@@ -121,6 +131,12 @@ fn run_citizen_ai(
                     waypoints.reverse();
                     citizen.waypoints = waypoints;
                     citizen.target_position = None;
+                    // Record the building the citizen is departing from for transit demand tracking.
+                    if citizen.trip_origin_building_id.is_none() {
+                        citizen.trip_origin_building_id = world.buildings.iter()
+                            .find(|b| (b.position - citizen.position).length() < 120.0)
+                            .map(|b| b.id.clone());
+                    }
                     routed = true;
                     break;
                 }
@@ -163,6 +179,8 @@ fn pick_activity(citizen: &Citizen, park_multiplier: f32) -> ActivityType {
     let work_urgency     = if citizen.age >= 18.0 && citizen.age <= 65.0 { 0.4 } else { 0.0 };
     // Visit park when both tired and lonely — restorative + social; boosted by Park Day policy
     let park_urgency     = ((1.0 - citizen.energy) + citizen.social) * 0.35 * park_multiplier;
+    // PlayingSport is chosen only by the sports plugin; never by pick_activity.
+    // WaitingForBus / RidingBus are set by transit; also not chosen here.
 
     let scores: [(ActivityType, f32); 5] = [
         (ActivityType::Eating,      hunger_urgency),

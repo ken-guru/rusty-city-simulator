@@ -919,6 +919,7 @@ fn handle_pending_quit(
     news_log: Res<crate::news::CityNewsLog>,
     history: Res<crate::history::HistoryTracker>,
     policies: Res<crate::policies::ActivePolicies>,
+    transit_network: Res<crate::transit::TransitNetwork>,
 ) {
     if !pending.active {
         return;
@@ -928,7 +929,7 @@ fn handle_pending_quit(
         let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
         sync_citizens_to_world(&mut world, &ecs_citizens);
 
-        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log, &history, &policies) {
+        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log, &history, &policies, &transit_network) {
             eprintln!("Failed to save before quit: {e}");
         }
     }
@@ -1005,13 +1006,16 @@ fn update_hovered_info(
                 Gender::Female => "F",
             };
             let activity = match c.current_activity {
-                ActivityType::Idle         => "Idle",
-                ActivityType::Walking      => "Walking",
-                ActivityType::Eating       => "Eating",
-                ActivityType::Sleeping     => "Sleeping",
-                ActivityType::Working      => "Working",
-                ActivityType::Socializing  => "Socialising",
-                ActivityType::VisitingPark => "At Park",
+                ActivityType::Idle           => "Idle",
+                ActivityType::Walking        => "Walking",
+                ActivityType::Eating         => "Eating",
+                ActivityType::Sleeping       => "Sleeping",
+                ActivityType::Working        => "Working",
+                ActivityType::Socializing    => "Socialising",
+                ActivityType::VisitingPark   => "At Park",
+                ActivityType::WaitingForBus  => "Waiting for Bus",
+                ActivityType::RidingBus      => "On Bus",
+                ActivityType::PlayingSport   => "Playing Sport",
             };
             text.0 = format!(
                 "{} ({}) -- {}\nAge: {:.1}  [{}]\nActivity: {}\n\
@@ -2063,6 +2067,7 @@ fn update_hud_strip(
     economy: Res<Economy>,
     world: Res<CityWorld>,
     happiness: Res<crate::happiness::CityHappiness>,
+    transit_network: Res<crate::transit::TransitNetwork>,
 ) {
     let Ok(mut text) = text_query.single_mut() else { return; };
     let day = game_time.current_day() as u32;
@@ -2083,9 +2088,16 @@ fn update_hud_strip(
     let pop = world.citizens.len();
     let happiness_pct = (happiness.current_value(game_time.current_day()) * 100.0) as u32;
     let bal_sign = if net >= 0.0 { "+" } else { "" };
+    let buses = transit_network.route_count();
+
+    let bus_str = if buses > 0 {
+        format!("  |  Buses: {buses}")
+    } else {
+        String::new()
+    };
 
     text.0 = format!(
-        "Day {day} | {hour:04.1}h | {speed_str}  |  $ {balance:.0} ({bal_sign}{net:.0}/d)  |  Pop: {pop}  |  Hap: {happiness_pct}%"
+        "Day {day} | {hour:04.1}h | {speed_str}  |  $ {balance:.0} ({bal_sign}{net:.0}/d)  |  Pop: {pop}  |  Hap: {happiness_pct}%{bus_str}"
     );
 }
 

@@ -74,9 +74,6 @@ const BIRTH_RATE_COEFF: f32 = 0.003;
 ///   births per female lifetime = 42 / 12.8 ≈ 3.3  (above replacement rate of ~2)
 const BIRTH_COOLDOWN_DAYS: f32 = 10.0;
 
-/// Hard cap on total citizen count to prevent ECS saturation at very long run times.
-const MAX_POPULATION: usize = 1000;
-
 // ─── Demographic health ──────────────────────────────────────────────────────
 
 /// Minimum number of fertile adults of each gender considered demographically healthy.
@@ -202,8 +199,6 @@ fn tick_immigration_trickle(
     game_time: Res<crate::time::GameTime>,
     game_name: Res<GameName>,
 ) {
-    if world.citizens.len() >= MAX_POPULATION { return; }
-
     let delta_days = time.delta_secs() * game_time.time_scale / game_time.day_length_secs;
     trickle.days_until_next -= delta_days;
     if trickle.days_until_next > 0.0 { return; }
@@ -261,11 +256,6 @@ fn check_reproduction(
     let mut rng = rand::rng();
     let delta = time.delta_secs() * game_time.time_scale;
     let current_day = game_time.current_day();
-
-    // Hard population cap.
-    if world.citizens.len() >= MAX_POPULATION {
-        return;
-    }
 
     let males_eligible = citizens.iter()
         .any(|c| matches!(c.gender, Gender::Male) && c.can_reproduce());

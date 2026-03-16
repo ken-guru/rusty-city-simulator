@@ -12,6 +12,7 @@ use crate::entities::Citizen;
 use crate::economy::Economy;
 use crate::roads::{ConstructionLog, ConstructionQueue, RoadNetwork};
 use crate::time::GameTime;
+use crate::transit::TransitNetwork;
 use crate::version::GAME_VERSION;
 use crate::world::CityWorld;
 use crate::city_name::GameName;
@@ -61,6 +62,9 @@ pub struct GameSave {
     pub history: crate::history::HistoryTracker,
     #[serde(default)]
     pub active_policies: crate::policies::ActivePolicies,
+    /// Transit network state (routes, demand data). Missing in older saves → empty network.
+    #[serde(default)]
+    pub transit_network: TransitNetwork,
 }
 
 fn default_version() -> String {
@@ -106,6 +110,7 @@ pub fn save_game(
     news_log: &CityNewsLog,
     history: &crate::history::HistoryTracker,
     policies: &crate::policies::ActivePolicies,
+    transit_network: &TransitNetwork,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     fs::create_dir_all(SAVES_DIR)?;
 
@@ -127,6 +132,7 @@ pub fn save_game(
         news_log: news_log.clone(),
         history: history.clone(),
         active_policies: *policies,
+        transit_network: transit_network.clone(),
     };
 
     let json = serde_json::to_string(&save)?;
@@ -341,6 +347,7 @@ fn handle_save_load(
     news_log: Res<CityNewsLog>,
     history: Res<crate::history::HistoryTracker>,
     policies: Res<crate::policies::ActivePolicies>,
+    transit_network: Res<TransitNetwork>,
 ) {
     let triggered_by_key = input.just_pressed(KeyCode::F5);
     let triggered_by_ui  = save_events.read().next().is_some();
@@ -349,7 +356,7 @@ fn handle_save_load(
         let ecs_citizens: Vec<Citizen> = citizen_query.iter().cloned().collect();
         sync_citizens_to_world(&mut world, &ecs_citizens);
 
-        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log, &history, &policies) {
+        if let Err(e) = save_game(&world, &game_time, &road_network, &queue, &log, &economy, &game_name, &news_log, &history, &policies, &transit_network) {
             eprintln!("Failed to save game: {e}");
         }
     }

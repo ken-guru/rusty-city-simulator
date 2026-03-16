@@ -20,9 +20,11 @@ mod policies;
 mod reproduction;
 mod roads;
 mod save;
+mod sports;
 mod sprites;
 mod start_screen;
 mod time;
+mod transit;
 mod ui;
 mod version;
 mod world;
@@ -46,9 +48,11 @@ use policies::PoliciesPlugin;
 use reproduction::ReproductionPlugin;
 use roads::{RoadEntities, RoadsPlugin};
 use save::SaveLoadPlugin;
+use sports::SportsPlugin;
 use sprites::{SpriteAssets, SpritesPlugin};
 use start_screen::StartScreenPlugin;
 use time::GameTimePlugin;
+use transit::TransitPlugin;
 use ui::{HoveredLogItem, HoveredQueueItem, UIPlugin};
 use world::*;
 
@@ -158,6 +162,8 @@ fn main() {
         .add_plugins(HappinessPlugin)
         .add_plugins(HistoryPlugin)
         .add_plugins(PoliciesPlugin)
+        .add_plugins(TransitPlugin)
+        .add_plugins(SportsPlugin)
         .insert_resource(CityWorld::new())
         .insert_resource(GameState::default())
         .insert_resource(BuildingSelection::default())
@@ -266,6 +272,8 @@ fn cleanup_ingame(
     commands.insert_resource(events::RandomEventQueue::default());
     commands.insert_resource(events::EventModalState::default());
     commands.insert_resource(reproduction::GhostCityTracker::default());
+    commands.insert_resource(transit::TransitNetwork::default());
+    commands.insert_resource(sports::ParkSportsSchedule::default());
     debug.log_header_written = false;
 }
 
@@ -285,6 +293,7 @@ fn setup(
     mut city_news: ResMut<news::CityNewsLog>,
     mut history: ResMut<history::HistoryTracker>,
     mut policies: ResMut<policies::ActivePolicies>,
+    mut transit_network: ResMut<transit::TransitNetwork>,
 ) {
     // If the start screen queued a save to load, apply it before spawning entities.
     if let Some(path) = pending_load.0.take() {
@@ -301,6 +310,7 @@ fn setup(
                 *city_news = save_data.news_log.clone();
                 *history = save_data.history;
                 *policies = save_data.active_policies;
+                *transit_network = save_data.transit_network;
 
                 // Reset citizen navigation state so stale waypoints/targets from
                 // the saved game don't cause pathfinding issues on re-entry.
