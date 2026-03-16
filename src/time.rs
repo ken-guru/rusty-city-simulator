@@ -34,8 +34,23 @@ impl Plugin for GameTimePlugin {
     }
 }
 
-fn update_game_time(mut game_time: ResMut<GameTime>, time: Res<Time>) {
-    game_time.elapsed_secs += time.delta_secs() * game_time.time_scale;
+fn update_game_time(
+    mut game_time: ResMut<GameTime>,
+    time: Res<Time>,
+    event_modal: Res<crate::events::EventModalState>,
+) {
+    // Auto-pause while an event modal is waiting for player input.
+    // This prevents the city from running unattended (e.g. while the machine
+    // is asleep) and avoids the delta-spike death bug on wake-up.
+    if event_modal.active_event.is_some() {
+        return;
+    }
+
+    // Clamp real-time delta to 0.2 s so a machine wake-up (which reports
+    // the entire sleep duration as one huge frame) can never advance game
+    // time by more than 0.2 × time_scale seconds in a single tick.
+    let safe_delta = time.delta_secs().min(0.2);
+    game_time.elapsed_secs += safe_delta * game_time.time_scale;
 }
 
 fn handle_time_controls(

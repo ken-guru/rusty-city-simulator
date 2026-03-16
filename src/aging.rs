@@ -53,7 +53,9 @@ fn check_citizen_death(
     let mut to_die: Vec<(Entity, String, String, f32)> = Vec::new();
     for (entity, citizen) in citizens.iter() {
         if citizen.age <= 70.0 { continue; }
-        let death_chance = (citizen.age - 70.0).max(0.0) * 0.002 * delta;
+        // Cap per-frame death chance to 5 % so no single tick can wipe
+        // everyone out even if delta is unusually large.
+        let death_chance = ((citizen.age - 70.0).max(0.0) * 0.002 * delta).min(0.05);
         if rand::rng().random::<f32>() < death_chance {
             to_die.push((entity, citizen.id.clone(), citizen.name.clone(), citizen.age));
         }
