@@ -44,9 +44,7 @@ pub struct RoadSegment {
     #[serde(default)]
     pub type_changed_day: f32,
     /// Game-day when this segment was first created. New segments are protected from
-    /// degradation for FRESHNESS_GRACE_DAYS so building roads don't immediately turn
-    /// into paths before citizens establish a travel pattern. Old saves default to 0.0
-    /// which makes those segments immediately eligible for degradation as before.
+    /// degradation for FRESHNESS_GRACE_DAYS. Old saves default to 0.0.
     #[serde(default)]
     pub created_day: f32,
 }
@@ -141,9 +139,10 @@ pub struct ConstructionQueue {
 const PATH_THRESHOLD: f32 = 25.0; // desire → path
 const ROAD_THRESHOLD: f32 = 50.0; // path   → road (via usage, was 80)
 
-// Degradation thresholds (game-days of disuse)
-const ROAD_DEGRADE_DAYS: f32 = 75.0; // road → path (was 45)
-const PATH_DEGRADE_DAYS: f32 = 60.0; // path → desire / removal (was 30)
+// Degradation thresholds (game-days of disuse).
+// Kept high so that roads only degrade if truly abandoned for a long time.
+const ROAD_DEGRADE_DAYS: f32 = 730.0; // road → path after ~2 game-years of disuse
+const PATH_DEGRADE_DAYS: f32 = 365.0; // path → desire after ~1 game-year of disuse
 
 // Desire path fully removed if unused for this many days AND below threshold
 const DESIRE_REMOVE_DAYS: f32 = 90.0; // was 60
@@ -154,8 +153,6 @@ const DESIRE_THRESHOLD: f32 = 5.0;
 const PATH_TO_ROAD_AGE_DAYS: f32 = 90.0;
 
 /// Road and Path segments created within this many game-days are immune to degradation.
-/// This prevents freshly built building roads from downgrading before enough citizens
-/// have established regular travel patterns.
 const FRESHNESS_GRACE_DAYS: f32 = 120.0;
 
 impl RoadNetwork {
@@ -1144,14 +1141,14 @@ fn evolve_roads(
             SegmentType::Desire if seg.usage >= PATH_THRESHOLD => {
                 seg.seg_type = SegmentType::Path;
                 seg.type_changed_day = now;
-                seg.last_used_day = now; // reset so degrade timer starts fresh
+                seg.last_used_day = now;
                 crate::economy::log_road_event(&debug, &format!(
                     "desire→path (usage={:.0}, day={:.1})", seg.usage, now));
             }
             SegmentType::Path if seg.usage >= ROAD_THRESHOLD => {
                 seg.seg_type = SegmentType::Road;
                 seg.type_changed_day = now;
-                seg.last_used_day = now; // reset so degrade timer starts fresh
+                seg.last_used_day = now;
                 crate::economy::log_road_event(&debug, &format!(
                     "path→road via usage (usage={:.0}, day={:.1})", seg.usage, now));
             }
@@ -1160,7 +1157,7 @@ fn evolve_roads(
             SegmentType::Path if (now - seg.type_changed_day) >= PATH_TO_ROAD_AGE_DAYS => {
                 seg.seg_type = SegmentType::Road;
                 seg.type_changed_day = now;
-                seg.last_used_day = now; // reset so degrade timer starts fresh
+                seg.last_used_day = now;
                 crate::economy::log_road_event(&debug, &format!(
                     "path→road via age (age={:.0}d, usage={:.0}, day={:.1})",
                     now - seg.type_changed_day, seg.usage, now));
@@ -1168,7 +1165,7 @@ fn evolve_roads(
             SegmentType::PlayerSuggested if seg.usage >= 5.0 => {
                 seg.seg_type = SegmentType::Path;
                 seg.type_changed_day = now;
-                seg.last_used_day = now; // reset so degrade timer starts fresh
+                seg.last_used_day = now;
                 crate::economy::log_road_event(&debug, &format!(
                     "player-suggested→path (usage={:.0}, day={:.1})", seg.usage, now));
             }
@@ -1176,8 +1173,8 @@ fn evolve_roads(
         }
 
         // Degrade via disuse (ParkPath segments never degrade).
-        // Segments that are younger than FRESHNESS_GRACE_DAYS are immune so that
-        // newly built building roads don't downgrade before traffic is established.
+        // Segments younger than FRESHNESS_GRACE_DAYS are immune so freshly built
+        // building roads don't downgrade before citizens establish travel patterns.
         let is_fresh = (now - seg.created_day) < FRESHNESS_GRACE_DAYS;
         if !is_fresh {
             match seg.seg_type {
