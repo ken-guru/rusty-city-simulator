@@ -117,7 +117,7 @@ fn check_reproduction(
         // Mark this female as having given birth today.
         female.last_birth_day = current_day;
 
-        news.push(current_day, "👶", format!("{} was born in {}!", name, game_name.display()));
+        news.push(current_day, "+", format!("{} was born in {}!", name, game_name.display()));
         birth_events.write(BirthEvent { position: birth_pos, gender, name, home_building_id: Some(home_id), age: 0.0 });
     }
 }
@@ -234,10 +234,10 @@ fn check_ghost_city_recovery(
             rng.random_range(-15.0..15.0),
         );
 
-        news.push(current_day, "🏠", format!("{} arrived in the empty city.", name));
+        news.push(current_day, "c", format!("{} arrived in the empty city.", name));
         birth_events.write(BirthEvent { position: pos, gender: *gender, name, home_building_id: Some(home_id.clone()), age });
     }
-    news.push(current_day, "🏙️", "Newcomers moved into the abandoned city.".to_string());
+    news.push(current_day, "P", "Newcomers moved into the abandoned city.".to_string());
     info!("[RECOVERY] Spawned 2 immigrants to repopulate empty city at day {:.1}", current_day);
 }
 
@@ -288,7 +288,7 @@ fn spawn_immigrants(
         }
 
         if spawned > 0 {
-            news.push(current_day, "👥", format!("{} new resident(s) arrived!", spawned));
+            news.push(current_day, "P", format!("{} new resident(s) arrived!", spawned));
         }
         info!("[IMMIGRATION] Spawned {} immigrants from city event", spawned);
     }

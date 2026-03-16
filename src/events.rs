@@ -162,7 +162,7 @@ fn auto_resolve_event_modal(
         );
         news.push(
             game_time.current_day(),
-            "⏱",
+            "t",
             format!("\"{}\" auto-resolved: \"{}\"", event.title, first_option.label),
         );
     }
@@ -177,7 +177,7 @@ pub fn create_random_events() -> Vec<CityEvent> {
             description: "A family of 4 wants to move to your city. Will you welcome them?".to_string(),
             options: vec![
                 EventOption {
-                    label: "Welcome them (+4 citizens, −$8,000)".to_string(),
+                    label: "Welcome them (+4 citizens, -$8,000)".to_string(),
                     consequence: EventConsequence {
                         balance_delta: -8000.0,
                         citizen_delta: 4,
@@ -195,7 +195,7 @@ pub fn create_random_events() -> Vec<CityEvent> {
             description: "An entrepreneur wants to open a new shop in your city.".to_string(),
             options: vec![
                 EventOption {
-                    label: "Fund the shop (−$5,000)".to_string(),
+                    label: "Fund the shop (-$5,000)".to_string(),
                     consequence: EventConsequence {
                         balance_delta: -5000.0,
                         ..Default::default()
@@ -212,7 +212,7 @@ pub fn create_random_events() -> Vec<CityEvent> {
             description: "Citizens are requesting a community festival to improve morale.".to_string(),
             options: vec![
                 EventOption {
-                    label: "Host the festival (−$3,000, +20 happiness for 10 days)".to_string(),
+                    label: "Host the festival (-$3,000, +20 happiness for 10 days)".to_string(),
                     consequence: EventConsequence {
                         balance_delta: -3000.0,
                         happiness_delta: 0.2,
@@ -231,7 +231,7 @@ pub fn create_random_events() -> Vec<CityEvent> {
             description: "A fire has broken out in the market district. You must act quickly!".to_string(),
             options: vec![
                 EventOption {
-                    label: "Fund firefighting (−$4,000, save the shops)".to_string(),
+                    label: "Fund firefighting (-$4,000, save the shops)".to_string(),
                     consequence: EventConsequence {
                         balance_delta: -4000.0,
                         ..Default::default()
@@ -264,19 +264,19 @@ fn apply_event_consequences(
         if c.balance_delta != 0.0 {
             economy.balance += c.balance_delta;
             let sign = if c.balance_delta > 0.0 { "+" } else { "" };
-            news.push(game_time.current_day(), "💰", format!("City event: balance changed by {sign}${:.0}", c.balance_delta));
+            news.push(game_time.current_day(), "$", format!("City event: balance changed by {sign}${:.0}", c.balance_delta));
         }
 
         if c.happiness_delta != 0.0 && c.happiness_duration_days > 0.0 {
             city_happiness.apply_boost(c.happiness_delta, c.happiness_duration_days, game_time.current_day());
             let sign = if c.happiness_delta > 0.0 { "+" } else { "" };
-            news.push(game_time.current_day(), "😊", format!("City happiness {sign}{:.0}% for {:.0} days", c.happiness_delta * 100.0, c.happiness_duration_days));
+            news.push(game_time.current_day(), "s", format!("City happiness {sign}{:.0}% for {:.0} days", c.happiness_delta * 100.0, c.happiness_duration_days));
         }
 
         if c.citizen_delta > 0 {
             spawn_immigrants.write(crate::reproduction::SpawnImmigrantsMessage { count: c.citizen_delta as u32 });
         } else if c.citizen_delta < 0 {
-            news.push(game_time.current_day(), "👤", format!("{} citizens left the city.", -c.citizen_delta));
+            news.push(game_time.current_day(), "<", format!("{} citizens left the city.", -c.citizen_delta));
         }
     }
 }

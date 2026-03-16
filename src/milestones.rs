@@ -79,23 +79,23 @@ pub fn check_milestones(
                 $flag = true;
                 let t: String = $text;
                 toasts.push(t.clone());
-                news.push(day, "🏆", t);
+                news.push(day, "*", t);
             }
         };
     }
 
-    if pop >= 25 { milestone!(tracker.pop_25, format!("👥 {} has grown to 25 citizens!", city)); }
-    if pop >= 50 { milestone!(tracker.pop_50, format!("👥 {} has 50 citizens!", city)); }
-    if pop >= 100 { milestone!(tracker.pop_100, format!("🎉 {} reached 100 citizens!", city)); }
-    if pop >= 200 { milestone!(tracker.pop_200, format!("🎉 {} reached 200 citizens!", city)); }
-    if pop >= 500 { milestone!(tracker.pop_500, format!("🎉 {} has 500 citizens!", city)); }
-    if pop >= 1000 { milestone!(tracker.pop_1000, format!("🎉 {} is a metropolis! 1000 citizens!", city)); }
-    if !world.park_cells.is_empty() { milestone!(tracker.first_park, format!("🌳 The first park opened in {}!", city)); }
-    if balance >= 1_000_000.0 { milestone!(tracker.balance_1m, format!("💰 {}'s balance crossed $1,000,000!", city)); }
-    if balance >= 5_000_000.0 { milestone!(tracker.balance_5m, format!("💰 $5 million in the {} treasury!", city)); }
-    if balance >= 10_000_000.0 { milestone!(tracker.balance_10m, format!("💰 {} has $10,000,000! Incredible!", city)); }
+    if pop >= 25  { milestone!(tracker.pop_25,         format!("{} has grown to 25 citizens!", city)); }
+    if pop >= 50  { milestone!(tracker.pop_50,         format!("{} has 50 citizens!", city)); }
+    if pop >= 100 { milestone!(tracker.pop_100,        format!("{} reached 100 citizens!", city)); }
+    if pop >= 200 { milestone!(tracker.pop_200,        format!("{} reached 200 citizens!", city)); }
+    if pop >= 500 { milestone!(tracker.pop_500,        format!("{} has 500 citizens!", city)); }
+    if pop >= 1000 { milestone!(tracker.pop_1000,      format!("{} is a metropolis! 1000 citizens!", city)); }
+    if !world.park_cells.is_empty() { milestone!(tracker.first_park, format!("First park opened in {}!", city)); }
+    if balance >= 1_000_000.0  { milestone!(tracker.balance_1m,  format!("{}'s balance crossed $1,000,000!", city)); }
+    if balance >= 5_000_000.0  { milestone!(tracker.balance_5m,  format!("$5 million in the {} treasury!", city)); }
+    if balance >= 10_000_000.0 { milestone!(tracker.balance_10m, format!("{} has $10,000,000! Incredible!", city)); }
     let has_multifloor = world.buildings.iter().any(|b| b.floors > 1);
-    if has_multifloor { milestone!(tracker.first_multifloor, format!("🏗 {}'s first multi-storey building!", city)); }
+    if has_multifloor { milestone!(tracker.first_multifloor, format!("{}'s first multi-storey building!", city)); }
 }
 
 pub fn tick_toasts(

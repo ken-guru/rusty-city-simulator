@@ -352,11 +352,11 @@ fn satisfy_needs_at_destination(
             citizen.relationships[idx].kind = crate::entities::RelationshipKind::Friend;
             if !milestones.first_friendship {
                 milestones.first_friendship = true;
-                let msg = format!("👫 {} and {} became friends! 🤝", update.my_name, update.with_name);
+                let msg = format!("{} and {} became friends!", update.my_name, update.with_name);
                 toast_queue.push(msg.clone());
-                news.push(current_day, "🤝", msg);
+                news.push(current_day, "&", msg);
             } else {
-                news.push(current_day, "🤝", format!("{} and {} became friends! 🤝", update.my_name, update.with_name));
+                news.push(current_day, "&", format!("{} and {} became friends!", update.my_name, update.with_name));
             }
         }
 
@@ -370,11 +370,11 @@ fn satisfy_needs_at_destination(
             citizen.partner_id = Some(update.with_id.clone());
             if !milestones.first_couple {
                 milestones.first_couple = true;
-                let msg = format!("💑 {} and {} became partners ❤️", update.my_name, update.with_name);
+                let msg = format!("{} and {} became partners!", update.my_name, update.with_name);
                 toast_queue.push(msg.clone());
-                news.push(current_day, "❤️", msg);
+                news.push(current_day, "v", msg);
             } else {
-                news.push(current_day, "❤️", format!("{} and {} became partners ❤️", update.my_name, update.with_name));
+                news.push(current_day, "v", format!("{} and {} became partners!", update.my_name, update.with_name));
             }
         }
     }

@@ -74,7 +74,7 @@ fn check_citizen_death(
                 c.partner_id = None;
             }
         }
-        news.push(current_day, "🕯", format!("{} passed away at age {}", name, age as u32));
+        news.push(current_day, "-", format!("{} passed away at age {}", name, age as u32));
         crate::economy::log_citizen_death(&debug, &name, age, current_day);
         commands.entity(entity).despawn();
     }

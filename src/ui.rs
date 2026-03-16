@@ -310,16 +310,16 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
 
     // Spawn the 5 sidebar sections
     let sections: &[(&str, &str)] = &[
-        ("🔨", "Queue"),
-        ("📋", "History"),
-        ("📰", "News"),
-        ("📊", "Stats"),
-        ("🏛️", "Policies"),
+        ("[>]", "Queue"),
+        ("[=]", "History"),
+        ("[~]", "News"),
+        ("[#]", "Stats"),
+        ("[P]", "Policies"),
     ];
 
     for (i, (icon, title)) in sections.iter().enumerate() {
         // Header button
-        let header_label = format!("▶ {} {}", icon, title);
+        let header_label = format!("{} {}", icon, title);
         let header = commands.spawn((
             Node {
                 width: Val::Percent(100.0),
@@ -481,7 +481,7 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
         ..Default::default()
     }).with_children(|p| {
         p.spawn((
-            Text::new("📍 My City"),
+            Text::new("My City"),
             TextFont { font_size: 18.0, ..Default::default() },
             TextColor(Color::srgb(0.9, 0.85, 0.5)),
             CityNameLabel,
@@ -1688,7 +1688,7 @@ fn update_city_name_label(
 ) {
     if !name.is_changed() { return; }
     let Ok(mut text) = label.single_mut() else { return };
-    text.0 = format!("📍 {}", name.display());
+    text.0 = format!("{}", name.display());
 }
 
 fn update_toast_panel(
@@ -1709,6 +1709,28 @@ fn update_toast_panel(
     }
 }
 
+/// Maps a short ASCII news icon code to a display string and a category colour.
+/// All strings are pure ASCII so they render correctly in Bevy's embedded font.
+fn news_icon_display(icon: &str) -> (&'static str, Color) {
+    match icon {
+        "+"  => ("BORN",  Color::srgb(0.35, 0.90, 0.40)),  // green   – birth / arrival
+        "-"  => ("DIED",  Color::srgb(0.60, 0.60, 0.65)),  // gray    – death
+        "c"  => ("CITY",  Color::srgb(0.50, 0.80, 1.00)),  // sky     – city / home
+        "P"  => ("POP",   Color::srgb(0.50, 0.80, 1.00)),  // sky     – population
+        "&"  => ("FRND",  Color::srgb(0.85, 0.60, 0.90)),  // purple  – friendship
+        "v"  => ("LOVE",  Color::srgb(1.00, 0.45, 0.55)),  // pink    – partners
+        "*"  => ("WIN",   Color::srgb(1.00, 0.90, 0.20)),  // gold    – milestone
+        "!"  => ("NEWS",  Color::srgb(1.00, 0.70, 0.30)),  // orange  – general news
+        "s"  => ("HAP",   Color::srgb(0.95, 0.85, 0.30)),  // yellow  – happiness
+        "<"  => ("LEFT",  Color::srgb(0.90, 0.50, 0.30)),  // orange  – emigration
+        "g"  => ("PARK",  Color::srgb(0.30, 0.90, 0.35)),  // green   – parks
+        "b"  => ("BLDG",  Color::srgb(0.55, 0.75, 1.00)),  // blue    – construction
+        "t"  => ("AUTO",  Color::srgb(0.60, 0.60, 0.75)),  // muted   – auto-event
+        "$"  => ("$",     Color::srgb(0.90, 0.80, 0.25)),  // gold    – money
+        _    => ("INFO",  Color::srgb(0.60, 0.60, 0.60)),  // gray    – unknown
+    }
+}
+
 fn rebuild_news_panel(
     mut commands: Commands,
     news: Res<crate::news::CityNewsLog>,
@@ -1719,17 +1741,35 @@ fn rebuild_news_panel(
     commands.entity(panel).despawn_related::<Children>();
     commands.entity(panel).with_children(|parent| {
         parent.spawn((
-            Text::new("📰 City News"),
+            Text::new("City News"),
             TextFont { font_size: 14.0, ..Default::default() },
             TextColor(Color::srgb(0.9, 0.85, 0.5)),
         ));
         for entry in news.entries.iter().take(20) {
-            let label = format!("Day {}: {} {}", entry.day as u32, entry.icon, entry.text);
+            let (tag, tag_color) = news_icon_display(&entry.icon);
+            let day_text = format!("D{} ", entry.day as u32);
+            let body_text = entry.text.clone();
+            // Spawn a root text entity then add colored spans as children.
             parent.spawn((
-                Text::new(label),
+                Text::new(""),
                 TextFont { font_size: 11.0, ..Default::default() },
-                TextColor(Color::srgb(0.75, 0.75, 0.75)),
-            ));
+            )).with_children(|spans| {
+                spans.spawn((
+                    TextSpan::new(day_text),
+                    TextFont { font_size: 11.0, ..Default::default() },
+                    TextColor(Color::srgb(0.5, 0.5, 0.5)),
+                ));
+                spans.spawn((
+                    TextSpan::new(format!("[{tag}] ")),
+                    TextFont { font_size: 11.0, ..Default::default() },
+                    TextColor(tag_color),
+                ));
+                spans.spawn((
+                    TextSpan::new(body_text),
+                    TextFont { font_size: 11.0, ..Default::default() },
+                    TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                ));
+            });
         }
     });
 }
@@ -1802,7 +1842,7 @@ fn spawn_policy_row(
     } else {
         Color::srgb(0.25, 0.25, 0.25)
     };
-    let status = if is_active { "ON ✓" } else { "OFF" };
+    let status = if is_active { "ON" } else { "OFF" };
 
     parent.spawn((
         Node {
@@ -2008,15 +2048,15 @@ fn update_hud_strip(
     let day = game_time.current_day() as u32;
     let hour = game_time.current_hour();
     let speed_str = match game_time.time_scale as u32 {
-        0 => "⏸",
-        1 => "1×",
-        2 => "2×",
-        4 => "4×",
-        8 => "8×",
-        16 => "16×",
-        32 => "32×",
-        64 => "64×",
-        _ => if (game_time.time_scale - 0.5).abs() < 0.1 { "½×" } else { "?×" },
+        0 => "||",
+        1 => "1x",
+        2 => "2x",
+        4 => "4x",
+        8 => "8x",
+        16 => "16x",
+        32 => "32x",
+        64 => "64x",
+        _ => if (game_time.time_scale - 0.5).abs() < 0.1 { "0.5x" } else { "?x" },
     };
     let balance = economy.balance;
     let net = economy.last_income - economy.last_expenses;
@@ -2025,7 +2065,7 @@ fn update_hud_strip(
     let bal_sign = if net >= 0.0 { "+" } else { "" };
 
     text.0 = format!(
-        "Day {day} | {hour:04.1}h | {speed_str}  ◆  💰 ${balance:.0} ({bal_sign}{net:.0}/d)  ◆  👥 {pop}  ◆  😊 {happiness_pct}%"
+        "Day {day} | {hour:04.1}h | {speed_str}  |  $ {balance:.0} ({bal_sign}{net:.0}/d)  |  Pop: {pop}  |  Hap: {happiness_pct}%"
     );
 }
 
@@ -2044,7 +2084,7 @@ fn update_stats_section(
     commands.entity(panel).despawn_children();
     commands.entity(panel).with_children(|parent| {
         parent.spawn((
-            Text::new("📊 City History"),
+            Text::new("City History"),
             TextFont { font_size: 13.0, ..Default::default() },
             TextColor(Color::srgb(0.9, 0.85, 0.5)),
         ));
@@ -2059,7 +2099,7 @@ fn update_stats_section(
                 let net = snapshot.income - snapshot.expenses;
                 let net_sign = if net >= 0.0 { "+" } else { "" };
                 let label = format!(
-                    "Day {}: 👥 {} | 💰 {}{:.0} | 😊 {:.0}%",
+                    "Day {}: Pop {} | Net {}{:.0} | Hap {:.0}%",
                     snapshot.day as u32,
                     snapshot.population,
                     net_sign,
@@ -2091,18 +2131,18 @@ fn update_policies_section(
     commands.entity(panel).despawn_children();
     commands.entity(panel).with_children(|parent| {
         parent.spawn((
-            Text::new("🏛️ City Policies"),
+            Text::new("City Policies"),
             TextFont { font_size: 13.0, ..Default::default() },
             TextColor(Color::srgb(0.9, 0.85, 0.5)),
         ));
 
-        spawn_policy_row(parent, "🌳 Park Day",
-            "Citizens visit parks 2× more | Happiness +10%",
+        spawn_policy_row(parent, "Park Day",
+            "Citizens visit parks 2x more | Happiness +10%",
             policies.park_day, PolicyButton::ParkDay);
-        spawn_policy_row(parent, "⏰ Overtime",
+        spawn_policy_row(parent, "Overtime",
             "Income +20% | Happiness -15%",
             policies.overtime, PolicyButton::Overtime);
-        spawn_policy_row(parent, "🏙️ Open City",
+        spawn_policy_row(parent, "Open City",
             "Migration events +50% | Happiness +5%",
             policies.open_city, PolicyButton::OpenCity);
 
