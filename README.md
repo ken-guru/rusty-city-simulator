@@ -126,23 +126,31 @@ When the population grows, new buildings are placed on the grid and connected to
 
 | File | Purpose |
 |------|---------|
-| `src/main.rs` | App entry, `AppState`, camera controls, auto-zoom, building click, route viz, entity cleanup |
-| `src/entities.rs` | `Citizen`, `Building`, `BuildingType`, `Direction`, `generate_building_name` |
-| `src/world.rs` | `CityWorld` resource, park detection, initial layout |
-| `src/grid.rs` | Grid helpers: `cell_to_world`, `world_to_cell`, `is_building_cell` |
-| `src/ai.rs` | Needs system, decision-making, road-only pathfinding |
-| `src/movement.rs` | Physical citizen movement along road waypoints; freeze on hover |
-| `src/roads.rs` | Road network, BFS connectivity, road evolution, `ConstructionQueue`, `PlayerSuggested` rendering |
-| `src/housing.rs` | Building placement on even-cell grid, park spawning, building name assignment |
 | `src/aging.rs` | Aging and life-stage progression |
-| `src/reproduction.rs` | Reproduction mechanics |
+| `src/ai.rs` | Needs system, decision-making, road-only pathfinding |
+| `src/city_name.rs` | `GameName` resource; city display name with "My City" fallback |
+| `src/economy.rs` | `Economy` resource, debug logging, income/expense calculations |
+| `src/entities.rs` | `Citizen`, `Building`, `BuildingType`, `Direction`, `generate_building_name` |
+| `src/events.rs` | Random city events, modal dialog, auto-resolve, event consequences |
+| `src/grid.rs` | Grid helpers: `cell_to_world`, `world_to_cell`, `is_building_cell` |
+| `src/happiness.rs` | Per-citizen and city-wide happiness with temporary boost system |
+| `src/history.rs` | Daily snapshot tracker (rolling 30-day window) for stats panel |
+| `src/housing.rs` | Building placement on even-cell grid, park spawning, building name assignment |
+| `src/hovered.rs` | Hover detection resource |
+| `src/main.rs` | App entry, `AppState`, camera controls, auto-zoom, building click, route viz, entity cleanup |
+| `src/milestones.rs` | Population/economy milestone detection; toast notification queue |
+| `src/movement.rs` | Physical citizen movement along road waypoints; freeze on hover |
+| `src/news.rs` | `CityNewsLog` event feed (max 50 entries, newest first) |
+| `src/policies.rs` | `ActivePolicies` resource; park_day, overtime, open_city toggles |
+| `src/reproduction.rs` | Reproduction mechanics; `PopulationDeclineTracker`, `ImmigrationTrickle`; background immigration trickle that accelerates when fertile adult count is low |
+| `src/roads.rs` | Road network, BFS connectivity, road evolution, `ConstructionQueue`, `PlayerSuggested` rendering |
+| `src/save.rs` | Save/load with versioning and incompatibility tracking |
+| `src/sprites.rs` | Pixel art sprite loading; improved park corridor sprites with wide stone path |
+| `src/start_screen.rs` | Start screen UI: new game, save list, error panel |
 | `src/time.rs` | Game time and simulation speed |
 | `src/ui.rs` | Toolbar, hover info, citizen tooltip, building panel, route panel, quit dialog |
-| `src/save.rs` | Save/load with versioning and incompatibility tracking |
-| `src/start_screen.rs` | Start screen UI: new game, save list, error panel |
-| `src/sprites.rs` | Pixel art sprite loading; improved park corridor sprites with wide stone path |
-| `src/version.rs` | `GAME_VERSION` constant |
-| `src/hovered.rs` | Hover detection resource |
+| `src/version.rs` | `GAME_VERSION` constant (`"0.10.0"`) |
+| `src/world.rs` | `CityWorld` resource, park detection, initial layout |
 
 ### Grid Model
 
@@ -167,172 +175,7 @@ Adjacent building cells are always 240 px apart (2 × `CELL_SIZE`), ensuring a 1
 
 ### Technologies
 
-- **Bevy 0.15**: ECS game engine
-- **Serde / serde_json**: Serialisation
-- **Rand**: Random number generation
-
-## Development Checklist
-
-Before considering a work session finished, always verify:
-
-1. **Zero warnings**: `cargo build --release` must complete with no warnings
-2. **All tests pass**: `cargo test` must show `test result: ok`
-3. **README up to date**: reflects current controls, features, and module list
-4. **Version bumped**: update `version` in `Cargo.toml` on every commit (see Versioning below)
-5. **Commit changes**: every session's work should be committed with a descriptive message
-
-Quick validation:
-```sh
-cargo build --release && cargo test
-```
-
-Both must succeed before committing.
-
-## Versioning
-
-This project follows [Semantic Versioning](https://semver.org/). The version in `Cargo.toml` must be updated in **every commit**:
-
-| Change type | Version bump | Example |
-|---|---|---|
-| Bug fix, performance improvement, no new behaviour | **Patch** | `0.2.0` -> `0.2.1` |
-| New feature, UI addition, dependency upgrade | **Minor** | `0.2.0` -> `0.3.0` |
-| Breaking save-file format or major architecture change | **Major** | (post-1.0 only) |
-
-The project is pre-1.0; breaking changes increment the **minor** version.
-
-## Features
-
-- **Real-time Simulation**: Citizens autonomously perform daily activities (work, eat, sleep, socialise, reproduce)
-- **Citizen AI**: Needs-driven behaviour (hunger, energy, social, hygiene)
-- **Aging System**: Citizens age from infant → child → teen → adult → elder
-- **Reproduction**: Adults of opposite genders can reproduce, growing the population
-- **Dynamic City Growth**: New buildings (homes, offices, shops) spawn as the population grows
-- **Grid-based Road Network**: Roads form organically between buildings in corridor cells between them
-- **Organic Cross-Connections**: Periodic road cross-links and dual-building connections break long travel detours; connections are prioritised by travel savings
-- **Road Evolution**: Lightly used roads degrade; new roads extend to connect new buildings
-- **Parks**: Enclosed spaces surrounded by buildings automatically become parks citizens can visit; adjacent parks merge visually across corridor cells with walkable paths through them
-- **Park Corridors**: When two parks are adjacent, the corridor cell between them becomes a walkable park path citizens can traverse
-- **Pixel Art Sprites**: Distinct sprites for homes, offices, shops, and parks
-- **Start Screen**: New game or load a saved game from a list
-- **Multiple Saves**: Timestamped save files with version compatibility tracking; compact JSON format (~50% smaller than pretty-printed)
-- **Auto-zoom**: Camera continuously zooms and pans to keep all buildings visible; adapts to window resize with speed proportional to correction needed
-- **Simulation Speed Controls**: Pause, slow motion, normal, or fast-forward
-- **Hover Info**: Hover over citizens to see detailed stats and current activity
-- **Toolbar UI**: All keyboard shortcuts accessible as on-screen buttons
-
-## Controls
-
-| Control | Action |
-|---------|--------|
-| `WASD` / Arrow Keys | Pan camera |
-| Right-click + drag | Pan camera with pointer |
-| Scroll (wheel or trackpad) | Zoom in/out |
-| `Space` | Pause/Resume simulation |
-| `1` | Slow motion (0.5× speed) |
-| `2` | Normal speed (1×) |
-| `3` | Fast forward (2×) |
-| `4` | Very fast (4×) |
-| `F5` / `Ctrl+S` | Save game |
-| Mouse hover | View citizen stats (name, age, needs, activity) |
-
-### Quit Dialog Options
-- **Save & Quit** — save then close the application
-- **Quit Without Saving** — close without saving
-- **Return to Menu** — return to the start screen to load a different save
-- **Cancel** — dismiss the dialog
-
-## Building & Running
-
-### Prerequisites
-- Rust 1.70+ (install from [rustup.rs](https://rustup.rs))
-
-### Build
-```bash
-cargo build --release
-```
-
-### Run
-```bash
-cargo run --release
-```
-
-The game opens a start screen where you can begin a new city or load a previous save.
-
-### Starting City
-- 4 homes, 2 offices, 2 shops
-- ~10 citizens distributed across homes
-- A small road network connecting all buildings
-
-## Gameplay
-
-### Citizens
-Each citizen has needs that drive behaviour:
-- **Hunger**: Increases over time; satisfied by going to a shop
-- **Energy**: Depleted by activity; restored by sleeping at home
-- **Social**: Satisfied by meeting other citizens or visiting a park
-- **Hygiene**: Maintained through daily activities
-
-Citizens travel exclusively along established roads. If no road connects two locations the citizen waits rather than cutting across empty land.
-
-### Road Network
-- Roads exist in the *corridor* cells between buildings — they never pass through buildings
-- New buildings are automatically connected to the nearest road via BFS path-finding
-- **Cross-connections**: ~60% of new buildings gain a second road link; periodic cross-links also fire every 4 game-days, prioritising connections that save the most travel distance
-- Lightly-used road segments degrade from Road → Path → removed over time
-- Crossroad cells where multiple roads meet are protected from building placement
-
-### Parks
-### Parks
-When a building cell is enclosed by 4 occupied building-cell neighbours (buildings OR other parks), it becomes a park. Parks can never be built upon and offer citizens a place to rest and socialise.
-
-When two adjacent parks share a corridor cell between them, that corridor cell becomes a **park corridor**: visually part of the park (grass with a stone path), and walkable so citizens can cut through. If an existing road runs through that corridor, it has a 40% chance of being absorbed into the park path.
-
-### Population Growth
-When the population grows, new buildings are placed on the grid and connected to the road network. The mix of homes, offices, and shops expands proportionally.
-
-### Save Files
-- Saves are stored in `saves/city_YYYYMMDD_HHMMSS.json`
-- Each save records the game version; saves from older versions are flagged on the load screen
-- Saves confirmed incompatible with the current version are marked and warned about
-
-## Architecture
-
-### Module Overview
-
-| File | Purpose |
-|------|---------|
-| `src/main.rs` | App entry, `AppState`, camera controls, auto-zoom, entity cleanup |
-| `src/entities.rs` | `Citizen`, `Building`, `BuildingType`, `Direction` data types |
-| `src/world.rs` | `CityWorld` resource, park detection, initial layout |
-| `src/grid.rs` | Grid helpers: `cell_to_world`, `world_to_cell`, `is_building_cell` |
-| `src/ai.rs` | Needs system, decision-making, road-only pathfinding |
-| `src/movement.rs` | Physical citizen movement along road waypoints |
-| `src/roads.rs` | Road network, BFS connectivity, road evolution, rendering |
-| `src/housing.rs` | Building placement on even-cell grid, park spawning |
-| `src/aging.rs` | Aging and life-stage progression |
-| `src/reproduction.rs` | Reproduction mechanics |
-| `src/time.rs` | Game time and simulation speed |
-| `src/ui.rs` | Toolbar, hover info panel, speed indicators, quit dialog |
-| `src/save.rs` | Save/load with versioning and incompatibility tracking |
-| `src/start_screen.rs` | Start screen UI: new game, save list, error panel |
-| `src/sprites.rs` | Pixel art sprite loading and building variant selection |
-| `src/version.rs` | `GAME_VERSION` constant |
-| `src/hovered.rs` | Hover detection resource |
-
-### Grid Model
-
-The city uses a two-cell-type grid:
-
-| Cell type | Rule | Contents |
-|-----------|------|----------|
-| **Building cell** | `col % 2 == 0` AND `row % 2 == 0` | building, park, or empty |
-| **Corridor cell** | everything else | road, crossroads, park corridor, or empty |
-
-Adjacent building cells are always 240 px apart (2 × `CELL_SIZE`), ensuring a 120 px corridor always exists between them. Each building has exactly **one entrance direction** (N/S/E/W) which connects it to the road network.
-
-### Technologies
-
-- **Bevy 0.15**: ECS game engine
+- **Bevy 0.18**: ECS game engine
 - **Serde / serde_json**: Serialisation
 - **Rand**: Random number generation
 

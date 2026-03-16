@@ -6,16 +6,18 @@ use crate::grid::{cell_to_world, is_building_cell};
 use rand::RngExt;
 
 /// ECS component that marks a park entity (not a building).
+/// The `cell` field is stored for future use by planned park-management systems.
 #[derive(Component, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // cell is stored for future park-management use
 pub struct ParkMarker {
     pub cell: (i32, i32),
 }
 
 /// ECS component that marks a park corridor entity — a corridor cell visually
 /// merged into an adjacent park, with a walkable path through it.
+/// The fields are stored for future use by planned path-rendering systems.
 #[derive(Component, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // fields stored for future path-rendering use
 pub struct ParkCorridorMarker {
     pub cell: (i32, i32),
     /// True for horizontal corridor cells (c%2==1, r%2==0) where the path runs N-S.

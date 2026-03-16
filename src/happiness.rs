@@ -40,7 +40,6 @@ impl CityHappiness {
     }
 
     /// Returns the effective displayed happiness value including any active boost.
-    #[allow(dead_code)]
     pub fn current_value(&self, current_day: f32) -> f32 {
         (self.value + self.effective_boost(current_day)).clamp(0.0, 1.0)
     }

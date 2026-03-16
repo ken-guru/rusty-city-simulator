@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::grid::{cell_to_world, is_corridor_cell, world_to_cell, CELL_SIZE};
+use crate::grid::{cell_to_world, is_corridor_cell, world_to_cell};
 
 /// Cardinal direction for a building's road entrance.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
@@ -200,9 +200,6 @@ impl Building {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn total_floors(&self) -> u32 { self.floors }
-
     /// World position of this building's entrance corridor cell.
     pub fn entrance_pos(&self) -> Vec2 {
         let (col, row) = world_to_cell(self.position);
@@ -219,17 +216,10 @@ impl Building {
     }
 
     /// Grid cell coordinates of this building's entrance corridor.
-    #[allow(dead_code)]
     pub fn entrance_cell(&self) -> (i32, i32) {
         let (col, row) = world_to_cell(self.position);
         let (dc, dr) = self.entrance_direction.cell_offset();
         (col + dc, row + dr)
-    }
-
-    /// How far from the building center to the entrance corridor center.
-    #[allow(dead_code)]
-    pub fn entrance_distance() -> f32 {
-        CELL_SIZE
     }
 }
 

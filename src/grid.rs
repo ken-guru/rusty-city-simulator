@@ -33,6 +33,8 @@ pub fn is_corridor_cell(col: i32, row: i32) -> bool {
 /// Returns true when two *building* positions are exactly one building-cell-step apart
 /// (2 × CELL_SIZE on one cardinal axis, zero on the other). There is always exactly
 /// one corridor cell between them.
+///
+/// Not called from production code; retained as a tested grid-geometry utility.
 #[allow(dead_code)]
 pub fn are_buildings_adjacent(a: Vec2, b: Vec2) -> bool {
     let d = (b - a).abs();
@@ -44,6 +46,8 @@ pub fn are_buildings_adjacent(a: Vec2, b: Vec2) -> bool {
 
 /// Returns true when two world positions are exactly one cell apart on a cardinal axis.
 /// Kept for legacy callers; prefer `are_buildings_adjacent` in road-generation code.
+///
+/// Not called from production code; retained as a tested grid-geometry utility.
 #[allow(dead_code)]
 pub fn are_grid_adjacent(a: Vec2, b: Vec2) -> bool {
     let d = (b - a).abs();
@@ -53,6 +57,8 @@ pub fn are_grid_adjacent(a: Vec2, b: Vec2) -> bool {
 }
 
 /// Returns true when two world positions are exactly two cells apart on a cardinal axis.
+///
+/// Not called from production code; retained as a tested grid-geometry utility.
 #[allow(dead_code)]
 pub fn are_two_cells_apart(a: Vec2, b: Vec2) -> bool {
     let d = (b - a).abs();

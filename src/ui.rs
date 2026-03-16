@@ -78,16 +78,6 @@ struct QuitDialogRoot;
 #[derive(Component)]
 struct CitizenDetailPanel;
 
-/// Marks the stats/history panel.
-#[derive(Component)]
-#[allow(dead_code)]
-struct StatsPanel;
-
-/// Marks the policies panel (legacy, content now in sidebar).
-#[derive(Component)]
-#[allow(dead_code)]
-struct PoliciesPanel;
-
 /// Actions for toolbar buttons.
 #[derive(Component, Clone, Debug)]
 pub enum ToolbarAction {
@@ -131,18 +121,6 @@ pub struct RouteInfoPanel;
 
 #[derive(Component)]
 pub struct RouteInfoText;
-
-#[allow(dead_code)]
-#[derive(Component)]
-pub struct EconomyPanel;
-
-#[allow(dead_code)]
-#[derive(Component)]
-pub struct EconomyBalanceText;
-
-#[allow(dead_code)]
-#[derive(Component)]
-pub struct EconomyFlowText;
 
 #[derive(Component)]
 pub struct FloorLabel {
@@ -2047,7 +2025,7 @@ fn update_hud_strip(
     let balance = economy.balance;
     let net = economy.last_income - economy.last_expenses;
     let pop = world.citizens.len();
-    let happiness_pct = (happiness.value * 100.0) as u32;
+    let happiness_pct = (happiness.current_value(game_time.current_day()) * 100.0) as u32;
     let bal_sign = if net >= 0.0 { "+" } else { "" };
 
     text.0 = format!(
@@ -2091,7 +2069,7 @@ fn update_stats_section(
             format!("Day: {}", day),
             format!("Population: {}", population),
             format!("Budget: {:.0}", economy.balance),
-            format!("Happiness: {:.1}%", happiness.value * 100.0),
+            format!("Happiness: {:.1}%", happiness.current_value(game_time.current_day()) * 100.0),
             format!("Buildings: {}", buildings),
             format!("  Homes: {}  Offices: {}  Shops: {}", homes, offices, shops),
         ];

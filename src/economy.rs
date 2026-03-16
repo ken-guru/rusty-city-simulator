@@ -58,8 +58,9 @@ impl Economy {
         self.total_construction_cost += amount;
     }
 
-    /// Net per day (positive = surplus).
-    #[allow(dead_code)]
+    /// Net per day (positive = surplus). Based on current-day accumulated totals;
+    /// use `last_income - last_expenses` for last-completed-day display.
+    #[allow(dead_code)] // binary crate: only called from tests, but meaningful public API
     pub fn daily_net(&self) -> f32 {
         self.daily_income - self.daily_expenses
     }
@@ -152,7 +153,7 @@ fn update_economy(
             let secs_in_day = now_sys % 86400;
             let days_since_epoch = now_sys / 86400;
             // Simple calendar calculation (good enough for a filename).
-            let (year, month, day) = days_to_ymd_for_log(days_since_epoch);
+            let (year, month, day) = crate::save::days_to_ymd(days_since_epoch);
             let hh = secs_in_day / 3600;
             let mm = (secs_in_day % 3600) / 60;
             let ss = secs_in_day % 60;
@@ -203,29 +204,6 @@ fn update_economy(
     }
 }
 
-/// Estimate average home-to-work travel distance for employed citizens.
-/// NOTE: uses world.citizens positions (only synced on save) — kept for
-/// reference but prefer CityTravelStats for real-time tracking.
-#[allow(dead_code)]
-fn average_travel_distance(world: &CityWorld) -> f32 {
-    let mut total = 0.0f32;
-    let mut count = 0u32;
-    for citizen in &world.citizens {
-        if let Some(home_id) = &citizen.home_building_id {
-            if let Some(work_id) = &citizen.workplace_building_id {
-                if let (Some(home), Some(work)) = (
-                    world.buildings.iter().find(|b| &b.id == home_id),
-                    world.buildings.iter().find(|b| &b.id == work_id),
-                ) {
-                    total += (home.position - work.position).length();
-                    count += 1;
-                }
-            }
-        }
-    }
-    if count > 0 { total / count as f32 } else { 0.0 }
-}
-
 fn append_log(path: &str, msg: &str) -> std::io::Result<()> {
     // Ensure the parent directory exists (e.g. "saves/").
     if let Some(parent) = std::path::Path::new(path).parent() {
@@ -238,26 +216,6 @@ fn append_log(path: &str, msg: &str) -> std::io::Result<()> {
         .append(true)
         .open(path)?;
     file.write_all(msg.as_bytes())
-}
-
-/// Convert Unix days since epoch to (year, month, day). Used for log file naming.
-fn days_to_ymd_for_log(mut days: u64) -> (u32, u32, u32) {
-    let mut year = 1970u32;
-    loop {
-        let days_in_year = if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) { 366 } else { 365 };
-        if days < days_in_year { break; }
-        days -= days_in_year;
-        year += 1;
-    }
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let month_days = [31u64, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut month = 1u32;
-    for &md in &month_days {
-        if days < md { break; }
-        days -= md;
-        month += 1;
-    }
-    (year, month, days as u32 + 1)
 }
 
 /// Call this from housing.rs when charging construction, if debug mode is on.
@@ -285,14 +243,6 @@ pub fn log_pathfind_fail(debug: &DebugMode, citizen_name: &str, activity: &str) 
 pub fn log_park_event(debug: &DebugMode, description: &str) {
     if debug.economy_logging {
         let _ = append_log(&debug.log_file_path, &format!("[PARK] {description}\n"));
-    }
-}
-
-/// Log a general simulation event not covered by other categories.
-#[allow(dead_code)]
-pub fn log_sim_event(debug: &DebugMode, description: &str) {
-    if debug.economy_logging {
-        let _ = append_log(&debug.log_file_path, &format!("[SIM] {description}\n"));
     }
 }
 
@@ -384,40 +334,5 @@ mod tests {
         e.charge_construction(10_000.0);
         e.charge_construction(5_000.0);
         assert!((e.total_construction_cost - 15_000.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn days_to_ymd_for_log_epoch() {
-        assert_eq!(days_to_ymd_for_log(0), (1970, 1, 1));
-    }
-
-    #[test]
-    fn days_to_ymd_for_log_known_date() {
-        // 2024-03-12 corresponds to the same day count used in save.rs tests.
-        let (year, month, _day) = days_to_ymd_for_log(19793);
-        assert_eq!(year, 2024);
-        assert_eq!(month, 3);
-    }
-
-    #[test]
-    fn days_to_ymd_for_log_leap_year_2000() {
-        // 2000-02-29 exists (2000 is a leap year).
-        // Days since epoch to 2000-01-01: 10957
-        // Feb 29 is day 60 of that year → 10957 + 59 = 11016
-        let (year, month, day) = days_to_ymd_for_log(11016);
-        assert_eq!(year, 2000);
-        assert_eq!(month, 2);
-        assert_eq!(day, 29);
-    }
-
-    #[test]
-    fn days_to_ymd_for_log_feb29_in_leap_year() {
-        // 2024 is a regular leap year (divisible by 4, not a century).
-        // Days from epoch to 2024-02-29:
-        //   19723 (days to Jan 1 2024) + 59 (Jan=31 days + 28 days into Feb) = 19782.
-        let (year, month, day) = days_to_ymd_for_log(19782);
-        assert_eq!(year, 2024);
-        assert_eq!(month, 2);
-        assert_eq!(day, 29);
     }
 }

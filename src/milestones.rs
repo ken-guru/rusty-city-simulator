@@ -17,9 +17,6 @@ impl Plugin for MilestonesPlugin {
 
 #[derive(Resource, Default)]
 pub struct MilestoneTracker {
-    /// Set by the reproduction system when the first baby is born.
-    #[allow(dead_code)]
-    pub first_baby: bool,
     pub pop_25: bool,
     pub pop_50: bool,
     pub pop_100: bool,

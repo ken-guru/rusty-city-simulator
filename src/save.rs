@@ -222,7 +222,7 @@ fn timestamp_str() -> String {
     format!("{:04}{:02}{:02}_{:02}{:02}{:02}", year, month, day, hour, min, sec)
 }
 
-fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
+pub(crate) fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
     let mut year = 1970u32;
     loop {
         let leap = is_leap(year);

@@ -293,7 +293,7 @@ impl RoadNetwork {
 
         // BFS from the entrance cell through corridor cells to the nearest
         // existing road node. Lay road segments along every cell in the path.
-        let entrance_cell = world_to_cell(entrance);
+        let entrance_cell = building.entrance_cell();
         let mut primary_target: Option<Vec2> = None;
         let bfs_succeeded = if let Some(path) = bfs_to_road_node(&existing_nodes, entrance_cell) {
             let mut prev_pos = entrance;
