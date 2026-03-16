@@ -248,6 +248,7 @@ impl Plugin for UIPlugin {
                     sync_quit_dialog_visibility,
                     sync_toolbar_button_states,
                     sync_toolbar_visibility,
+                    sync_sidebar_visibility,
                     sync_building_info_panel,
                     sync_route_info_panel,
                     building_panel_interaction,
@@ -788,6 +789,20 @@ fn sync_toolbar_visibility(
 ) {
     if !state.is_changed() { return; }
     let Ok(mut node) = toolbar_query.single_mut() else { return };
+    node.display = if *state.get() == AppState::InGame {
+        Display::Flex
+    } else {
+        Display::None
+    };
+}
+
+/// Show the sidebar only when in the InGame state; hide it on the start screen.
+fn sync_sidebar_visibility(
+    state: Res<State<AppState>>,
+    mut sidebar_query: Query<&mut Node, With<LeftSidebar>>,
+) {
+    if !state.is_changed() { return; }
+    let Ok(mut node) = sidebar_query.single_mut() else { return };
     node.display = if *state.get() == AppState::InGame {
         Display::Flex
     } else {
@@ -2045,11 +2060,14 @@ fn update_hud_strip(
 fn update_stats_section(
     mut commands: Commands,
     content_query: Query<Entity, With<StatsSectionContent>>,
-    history: Res<crate::history::HistoryTracker>,
+    world: Res<crate::world::CityWorld>,
+    economy: Res<crate::economy::Economy>,
+    happiness: Res<crate::happiness::CityHappiness>,
+    game_time: Res<crate::time::GameTime>,
     expanded: Res<SidebarExpanded>,
 ) {
-    // Redraw whenever expanded state changes OR history data changes
-    if !history.is_changed() && !expanded.is_changed() { return; }
+    // Redraw when expanded or when any relevant resource changes
+    if !world.is_changed() && !economy.is_changed() && !happiness.is_changed() && !expanded.is_changed() { return; }
     // Only render contents if the panel is expanded
     if !expanded.0[3] { return; }
     let Ok(panel) = content_query.single() else { return; };
@@ -2057,34 +2075,33 @@ fn update_stats_section(
     commands.entity(panel).despawn_children();
     commands.entity(panel).with_children(|parent| {
         parent.spawn((
-            Text::new("City History"),
+            Text::new("Current Stats"),
             TextFont { font_size: 13.0, ..Default::default() },
             TextColor(Color::srgb(0.9, 0.85, 0.5)),
         ));
-        if history.snapshots.is_empty() {
+        
+        let population = world.citizens.len();
+        let buildings = world.buildings.len();
+        let homes = world.buildings.iter().filter(|b| b.building_type == BuildingType::Home).count();
+        let offices = world.buildings.iter().filter(|b| b.building_type == BuildingType::Office).count();
+        let shops = world.buildings.iter().filter(|b| b.building_type == BuildingType::Shop).count();
+        let day = game_time.current_day() as u32;
+        
+        let lines = vec![
+            format!("Day: {}", day),
+            format!("Population: {}", population),
+            format!("Budget: {:.0}", economy.balance),
+            format!("Happiness: {:.1}%", happiness.value * 100.0),
+            format!("Buildings: {}", buildings),
+            format!("  Homes: {}  Offices: {}  Shops: {}", homes, offices, shops),
+        ];
+        
+        for line in lines {
             parent.spawn((
-                Text::new("No history data yet"),
+                Text::new(line),
                 TextFont { font_size: 11.0, ..Default::default() },
-                TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                TextColor(Color::srgb(0.75, 0.75, 0.75)),
             ));
-        } else {
-            for snapshot in history.snapshots.iter().rev().take(10) {
-                let net = snapshot.income - snapshot.expenses;
-                let net_sign = if net >= 0.0 { "+" } else { "" };
-                let label = format!(
-                    "Day {}: Pop {} | Net {}{:.0} | Hap {:.0}%",
-                    snapshot.day as u32,
-                    snapshot.population,
-                    net_sign,
-                    net,
-                    snapshot.happiness * 100.0
-                );
-                parent.spawn((
-                    Text::new(label),
-                    TextFont { font_size: 11.0, ..Default::default() },
-                    TextColor(Color::srgb(0.75, 0.75, 0.75)),
-                ));
-            }
         }
     });
 }
