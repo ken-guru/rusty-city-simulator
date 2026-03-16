@@ -1,3 +1,7 @@
+//! JSON save/load: serialize/deserialize `CityWorld` + `Economy` +
+//! `ActivePolicies` to disk; `sync_citizens_to_world` for ECS↔world sync;
+//! save file management.
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;

@@ -1,3 +1,6 @@
+//! `CityWorld` serializable snapshot of the city; park and corridor marker
+//! components; world-initialization and citizen-spawning helpers.
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};

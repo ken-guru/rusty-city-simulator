@@ -1,3 +1,6 @@
+//! Application entry point: Bevy `App` setup, plugin registration, state
+//! machine (`AppState`), and the camera/sprite spawning systems.
+
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::WindowResized;

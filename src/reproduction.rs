@@ -1,3 +1,7 @@
+//! Citizen birth system, `PopulationDeclineTracker` (monitors fertile
+//! population health), and `ImmigrationTrickle` (passive background
+//! immigration that accelerates during demographic crises).
+
 use crate::entities::*;
 use crate::world::CityWorld;
 use bevy::prelude::*;

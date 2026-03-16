@@ -1,3 +1,6 @@
+//! Citizen movement systems: follow waypoint paths, update `CityTravelStats`,
+//! handle path completion, idle animation.
+
 use crate::entities::*;
 use crate::roads::RoadNetwork;
 use crate::time::{simulation_running, GameTime};

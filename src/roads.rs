@@ -1,3 +1,7 @@
+//! `RoadNetwork` resource and construction systems: desire lines → paths →
+//! roads lifecycle; BFS pathfinding; road evolution; `ConstructionProject`
+//! queue.
+
 use bevy::prelude::*;
 use rand::RngExt;
 use serde::{Deserialize, Serialize};

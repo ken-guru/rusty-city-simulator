@@ -1,3 +1,7 @@
+//! Core data types: `Citizen`, `Building`, `Direction`, `BuildingType`,
+//! `AgeGroup`; pure helper functions for building name generation and age
+//! grouping.
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

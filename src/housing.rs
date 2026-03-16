@@ -1,3 +1,6 @@
+//! Building placement systems: spawn/despawn buildings and park tiles, assign
+//! citizens to homes and workplaces, charge construction costs.
+
 use crate::economy::{Economy, DebugMode, log_construction, log_building_placed};
 use crate::entities::*;
 use crate::grid::{cell_to_world, is_building_cell, world_to_cell, CELL_SIZE};

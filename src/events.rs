@@ -1,3 +1,7 @@
+//! Random city events system: event catalogue, `RandomEventQueue`,
+//! `EventModalState`, and the system that triggers and resolves modal dialogs
+//! mid-game.
+
 use bevy::prelude::*;
 use std::collections::VecDeque;
 use rand::RngExt;

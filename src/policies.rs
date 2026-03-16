@@ -1,3 +1,6 @@
+//! `ActivePolicies` resource (park day, overtime, open city); multiplier and
+//! impact methods consumed by economy, happiness, and AI systems.
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 

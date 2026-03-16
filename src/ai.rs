@@ -1,3 +1,7 @@
+//! Citizen AI: state-machine systems that drive citizens between Home, Work,
+//! Shop, and Park activities; pathfinding dispatch; happiness and need updates
+//! per activity.
+
 use crate::economy::DebugMode;
 use crate::entities::*;
 use crate::grid::CELL_SIZE;

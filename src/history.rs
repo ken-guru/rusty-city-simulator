@@ -1,3 +1,6 @@
+//! `HistoryTracker` resource: rolling window of periodic population, happiness,
+//! and balance snapshots used by the history graph in the sidebar.
+
 use std::collections::VecDeque;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};

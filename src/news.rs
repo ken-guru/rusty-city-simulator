@@ -1,3 +1,6 @@
+//! `CityNewsLog` resource: a capped, most-recent-first log of city news
+//! strings pushed by various game systems.
+
 use std::collections::VecDeque;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};

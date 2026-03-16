@@ -1,3 +1,6 @@
+//! `Economy` resource (balance, income/expense tracking); daily ledger system;
+//! debug-mode economy logger with per-session log files.
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;

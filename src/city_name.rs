@@ -1,3 +1,5 @@
+//! `GameName` resource holding the player-chosen city name; `Display` impl.
+
 use bevy::prelude::*;
 
 #[derive(Resource, Default, Clone)]

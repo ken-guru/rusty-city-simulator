@@ -1,3 +1,7 @@
+//! All in-game UI: HUD strip, sidebar panels (stats, economy, news, policies,
+//! history), building info panel, route info, citizen tooltip, construction
+//! queue, quit dialog, event modal, speed toolbar.
+
 use crate::economy::{Economy, DebugMode};
 use crate::entities::*;
 use crate::events::{EventModalState, EventOptionChosen};

@@ -1,3 +1,7 @@
+//! `CityHappiness` resource and `CitizenHappiness` component; happiness
+//! boost/decay system; `calculate_citizen_happiness` that blends citizen needs
+//! into city-wide happiness.
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 

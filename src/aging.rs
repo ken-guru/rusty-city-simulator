@@ -1,3 +1,6 @@
+//! Bevy system that advances citizen ages by 1 year per game-day and
+//! removes citizens who exceed the maximum lifespan.
+
 use crate::economy::DebugMode;
 use crate::news::CityNewsLog;
 use crate::time::{simulation_running, GameTime};

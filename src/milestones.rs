@@ -1,3 +1,6 @@
+//! `MilestoneTracker` resource and `ToastQueue`: check population, balance,
+//! and event milestones each frame and surface toast notifications.
+
 use std::collections::VecDeque;
 use bevy::prelude::*;
 use crate::AppState;

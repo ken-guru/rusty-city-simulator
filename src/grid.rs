@@ -1,3 +1,6 @@
+//! Grid coordinate system helpers: `cell_to_world`, `world_to_cell`,
+//! corridor/building cell tests, and adjacency utilities.
+
 use bevy::math::Vec2;
 
 /// World-space distance between adjacent grid cell centres.

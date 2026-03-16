@@ -1,3 +1,6 @@
+//! Start-screen UI: new-game form (city name, debug toggle), save-file list
+//! with load/delete, error feedback panel.
+
 use bevy::prelude::*;
 use crate::AppState;
 use crate::economy::DebugMode;

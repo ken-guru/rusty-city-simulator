@@ -1,3 +1,6 @@
+//! `GameTime` resource: virtual clock driven by `Time<Virtual>`;
+//! `current_day()` and `current_hour()` accessors; time-scale management.
+
 use bevy::prelude::*;
 
 /// Run condition: returns `true` when the simulation should be ticking.
