@@ -53,10 +53,21 @@ pub struct CityEvent {
     pub options: Vec<EventOption>,
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct RandomEventQueue {
     pub pending: VecDeque<CityEvent>,
     pub cooldown_days: f32,
+}
+
+impl Default for RandomEventQueue {
+    fn default() -> Self {
+        Self {
+            pending: VecDeque::new(),
+            // Start the first event after 20 game-days so the city has time to
+            // grow before being interrupted by modal dialogs.
+            cooldown_days: 20.0,
+        }
+    }
 }
 
 #[derive(Resource, Default)]

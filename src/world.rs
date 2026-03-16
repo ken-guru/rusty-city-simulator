@@ -79,13 +79,18 @@ impl CityWorld {
             occupied_cells.insert((col, row));
         }
 
-        // Create initial citizens (~10, mixed genders)
+        // Create initial citizens — enough to fill all home slots so construction
+        // triggers on the first game-day (occupancy will be 100% > 80% threshold).
+        let total_home_slots: usize = buildings.iter()
+            .filter(|b| b.building_type == BuildingType::Home)
+            .map(|b| b.capacity_residents)
+            .sum();
         let first_names_male   = ["John", "James", "Robert", "Michael", "David"];
         let first_names_female = ["Mary", "Patricia", "Jennifer", "Linda", "Barbara"];
         let last_names         = ["Smith", "Johnson", "Williams", "Brown", "Jones"];
 
         let mut citizens = Vec::new();
-        for _ in 0..10 {
+        for _ in 0..total_home_slots {
             let gender = if rng.random_bool(0.5) { Gender::Male } else { Gender::Female };
             let first = match gender {
                 Gender::Male   => first_names_male[rng.random_range(0..first_names_male.len())],
@@ -95,11 +100,11 @@ impl CityWorld {
             citizens.push(Citizen::new(format!("{} {}", first, last), gender, Vec2::ZERO));
         }
 
-        // Assign citizens to homes, positioning them near their home building.
+        // Assign citizens to homes up to each building's capacity.
         let mut citizen_idx = 0;
         for building in &mut buildings {
             if building.building_type == BuildingType::Home {
-                let slots = std::cmp::min(3, citizens.len().saturating_sub(citizen_idx));
+                let slots = std::cmp::min(building.capacity_residents, citizens.len().saturating_sub(citizen_idx));
                 for _ in 0..slots {
                     if citizen_idx < citizens.len() {
                         let id = citizens[citizen_idx].id.clone();
