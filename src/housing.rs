@@ -16,6 +16,25 @@ pub struct NewBuildingEvent {
     pub building: Building,
 }
 
+/// Sent by events system to request that a building of a given type be placed
+/// at the next available city cell (uses the same placement logic as auto-growth).
+#[derive(Message)]
+pub struct SpawnBuildingRequest {
+    pub kind: BuildingType,
+}
+
+/// Sent by events system to demolish a random building of the given type.
+#[derive(Message)]
+pub struct DemolishRandomBuildingRequest {
+    pub kind: BuildingType,
+}
+
+/// Sent by the UI when the player confirms a targeted building demolition.
+#[derive(Message)]
+pub struct DemolishSpecificBuildingRequest {
+    pub building_id: String,
+}
+
 pub struct HousingPlugin;
 
 /// Prevents construction from firing more than once per game-day per building category.
@@ -29,8 +48,17 @@ pub struct HousingCooldown {
 impl Plugin for HousingPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<NewBuildingEvent>()
+            .add_message::<SpawnBuildingRequest>()
+            .add_message::<DemolishRandomBuildingRequest>()
+            .add_message::<DemolishSpecificBuildingRequest>()
             .init_resource::<HousingCooldown>()
-            .add_systems(Update, (check_housing_pressure, spawn_building).chain().run_if(in_state(crate::AppState::InGame)));
+            .add_systems(Update, (
+                check_housing_pressure,
+                handle_spawn_building_request,
+                handle_demolish_building_request,
+                handle_demolish_specific_building_request,
+                spawn_building,
+            ).chain().run_if(in_state(crate::AppState::InGame)));
     }
 }
 
@@ -217,7 +245,7 @@ fn check_housing_pressure(
 
 /// Find a free building-cell adjacent to the existing city, place a building there.
 /// All buildings live on even (col, row) cells so there is always a corridor between them.
-fn place_new_building(world: &CityWorld, kind: BuildingType) -> Option<(Building, (i32, i32))> {
+pub(crate) fn place_new_building(world: &CityWorld, kind: BuildingType) -> Option<(Building, (i32, i32))> {
     let mut rng = rand::rng();
 
     // ~15% of the time try two building-cell steps away, leaving one empty building cell
@@ -449,6 +477,148 @@ fn spawn_building(
             world_to_cell(b.position),
             b.position.x, b.position.y
         );
+    }
+}
+
+/// Places a building of the requested type when a city event fires a `SpawnBuildingRequest`.
+fn handle_spawn_building_request(
+    mut msgs: MessageReader<SpawnBuildingRequest>,
+    mut world: ResMut<CityWorld>,
+    mut building_events: MessageWriter<NewBuildingEvent>,
+    mut economy: ResMut<Economy>,
+    mut debug: ResMut<DebugMode>,
+    game_time: Res<GameTime>,
+    mut news: ResMut<crate::news::CityNewsLog>,
+) {
+    for msg in msgs.read() {
+        if let Some((mut building, cell)) = place_new_building(&world, msg.kind) {
+            world.occupied_cells.insert(cell);
+            building.name = crate::entities::generate_building_name(building.building_type, world.buildings.len());
+            building.founded_day = game_time.current_day();
+            world.buildings.push(building.clone());
+            let cost = 5_000.0_f32;
+            economy.charge_construction(cost);
+            log_construction(&mut debug, &format!("event-spawned {:?}", msg.kind), cost);
+            let kind_str = match msg.kind {
+                BuildingType::Home   => "residence",
+                BuildingType::Office => "office",
+                BuildingType::Shop   => "shop",
+                BuildingType::Public => "public building",
+            };
+            news.push(game_time.current_day(), "+", format!("A new {} was constructed.", kind_str));
+            building_events.write(NewBuildingEvent { building });
+        }
+    }
+}
+
+/// Demolishes a random building of the requested type when a city event fires
+/// a `DemolishRandomBuildingRequest`.
+fn handle_demolish_building_request(
+    mut commands: Commands,
+    mut msgs: MessageReader<DemolishRandomBuildingRequest>,
+    all_buildings: Query<(Entity, &Building)>,
+    floor_labels: Query<(Entity, &crate::ui::FloorLabel)>,
+    mut world: ResMut<CityWorld>,
+    game_time: Res<GameTime>,
+    mut news: ResMut<crate::news::CityNewsLog>,
+) {
+    for msg in msgs.read() {
+        let candidates: Vec<(Entity, String, Vec2)> = all_buildings.iter()
+            .filter(|(_, b)| b.building_type == msg.kind)
+            .map(|(e, b)| (e, b.id.clone(), b.position))
+            .collect();
+
+        if candidates.is_empty() { continue; }
+
+        let mut rng = rand::rng();
+        let (entity, building_id, pos) = candidates[rng.random_range(0..candidates.len())].clone();
+
+        let building_name = world.buildings.iter()
+            .find(|b| b.id == building_id)
+            .map(|b| b.name.clone())
+            .unwrap_or_else(|| "a building".to_string());
+
+        // Evict occupants
+        for b in world.buildings.iter_mut() {
+            b.resident_ids.retain(|id| id != &building_id);
+            b.worker_ids.retain(|id| id != &building_id);
+        }
+
+        // Free the occupied grid cell
+        let cell = crate::grid::world_to_cell(pos);
+        world.occupied_cells.remove(&cell);
+        world.buildings.retain(|b| b.id != building_id);
+
+        // Despawn the building entity and its child tile sprites
+        commands.entity(entity).despawn();
+
+        // Also despawn the floating floor label (spawned separately, not a child)
+        for (label_entity, label) in floor_labels.iter() {
+            if label.building_id == building_id {
+                commands.entity(label_entity).despawn();
+                break;
+            }
+        }
+
+        news.push(game_time.current_day(), "-", format!("{} was damaged and demolished.", building_name));
+        info!("Building '{}' demolished by city event", building_id);
+    }
+}
+
+/// Demolishes the specific building requested by the player after the UI countdown.
+fn handle_demolish_specific_building_request(
+    mut commands: Commands,
+    mut msgs: MessageReader<DemolishSpecificBuildingRequest>,
+    all_buildings: Query<(Entity, &Building)>,
+    floor_labels: Query<(Entity, &crate::ui::FloorLabel)>,
+    mut world: ResMut<CityWorld>,
+    game_time: Res<GameTime>,
+    mut news: ResMut<crate::news::CityNewsLog>,
+    mut happiness: ResMut<crate::happiness::CityHappiness>,
+) {
+    for msg in msgs.read() {
+        let building_pos = world.buildings.iter()
+            .find(|b| b.id == msg.building_id)
+            .map(|b| b.position);
+        let building_name = world.buildings.iter()
+            .find(|b| b.id == msg.building_id)
+            .map(|b| b.name.clone())
+            .unwrap_or_else(|| "a building".to_string());
+
+        // Evict occupants from all buildings' rosters.
+        for b in world.buildings.iter_mut() {
+            b.resident_ids.retain(|id| id != &msg.building_id);
+            b.worker_ids.retain(|id| id != &msg.building_id);
+        }
+
+        // Free the occupied grid cell.
+        if let Some(pos) = building_pos {
+            let cell = crate::grid::world_to_cell(pos);
+            world.occupied_cells.remove(&cell);
+        }
+        world.buildings.retain(|b| b.id != msg.building_id);
+
+        // Despawn the building entity (children despawned automatically).
+        for (entity, b) in all_buildings.iter() {
+            if b.id == msg.building_id {
+                commands.entity(entity).despawn();
+                break;
+            }
+        }
+
+        // Despawn the floating floor label (spawned separately).
+        for (label_entity, label) in floor_labels.iter() {
+            if label.building_id == msg.building_id {
+                commands.entity(label_entity).despawn();
+                break;
+            }
+        }
+
+        // Small temporary happiness penalty for disrupting the neighbourhood.
+        happiness.apply_boost(-0.05, 3.0, game_time.current_day());
+
+        news.push(game_time.current_day(), "-", format!("{} was demolished.", building_name));
+        info!("Building '{}' demolished by player", msg.building_id);
     }
 }
 

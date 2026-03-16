@@ -29,6 +29,12 @@ pub struct SpawnImmigrantsMessage {
     pub count: u32,
 }
 
+/// Sent by the event system when a city event causes citizens to leave (disease, emigration, etc.).
+#[derive(Message)]
+pub struct RemoveCitizensMessage {
+    pub count: u32,
+}
+
 /// Bevy plugin registering all reproduction-related resources, messages, and systems.
 pub struct ReproductionPlugin;
 
@@ -36,6 +42,7 @@ impl Plugin for ReproductionPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<BirthEvent>()
            .add_message::<SpawnImmigrantsMessage>()
+           .add_message::<RemoveCitizensMessage>()
            .init_resource::<GhostCityTracker>()
            .init_resource::<PopulationDeclineTracker>()
            .init_resource::<ImmigrationTrickle>()
@@ -44,6 +51,7 @@ impl Plugin for ReproductionPlugin {
                check_reproduction,
                check_ghost_city_recovery,
                spawn_immigrants,
+               remove_citizens,
                tick_immigration_trickle,
                spawn_newborn,
            ).chain().run_if(in_state(crate::AppState::InGame)).run_if(simulation_running));
@@ -478,6 +486,59 @@ fn spawn_immigrants(
             news.push(current_day, "P", format!("{} new resident(s) arrived!", spawned));
         }
         info!("[IMMIGRATION] Spawned {} immigrants from city event", spawned);
+    }
+}
+
+/// Handles `RemoveCitizensMessage` from city events (disease, emigration wave, etc.).
+/// Removes up to `count` citizens, preferring those without a home assignment.
+fn remove_citizens(
+    mut commands: Commands,
+    mut msgs: MessageReader<RemoveCitizensMessage>,
+    citizens: Query<(Entity, &Citizen)>,
+    mut world: ResMut<CityWorld>,
+    mut news: ResMut<CityNewsLog>,
+    game_time: Res<crate::time::GameTime>,
+) {
+    for msg in msgs.read() {
+        let current_day = game_time.current_day();
+        let mut rng = rand::rng();
+
+        // Build a candidate list: unhoused first, then any adult
+        let mut candidates: Vec<(Entity, String, String)> = citizens.iter()
+            .filter(|(_, c)| c.home_building_id.is_none())
+            .map(|(e, c)| (e, c.id.clone(), c.name.clone()))
+            .collect();
+        if candidates.len() < msg.count as usize {
+            let mut extras: Vec<(Entity, String, String)> = citizens.iter()
+                .filter(|(_, c)| c.home_building_id.is_some())
+                .map(|(e, c)| (e, c.id.clone(), c.name.clone()))
+                .collect();
+            candidates.append(&mut extras);
+        }
+
+        // Shuffle and take up to count
+        for i in (1..candidates.len()).rev() {
+            let j = rng.random_range(0..=i);
+            candidates.swap(i, j);
+        }
+        let to_remove: Vec<_> = candidates.into_iter().take(msg.count as usize).collect();
+
+        for (entity, id, name) in to_remove {
+            // Remove from building rosters
+            for b in world.buildings.iter_mut() {
+                b.resident_ids.retain(|rid| rid != &id);
+                b.worker_ids.retain(|wid| wid != &id);
+            }
+            // Clear partner references
+            for c in world.citizens.iter_mut() {
+                if c.partner_id.as_deref() == Some(&id) {
+                    c.partner_id = None;
+                }
+            }
+            world.citizens.retain(|c| c.id != id);
+            commands.entity(entity).despawn();
+            news.push(current_day, "<", format!("{} left the city.", name));
+        }
     }
 }
 

@@ -683,6 +683,30 @@ impl RoadNetwork {
         }
     }
 
+    /// Remove the segment with the given ID. The `sync_road_entities` system will
+    /// automatically despawn its mesh entity on the next frame.
+    pub fn remove_segment_by_id(&mut self, id: &str) {
+        self.segments.retain(|s| s.id != id);
+    }
+
+    /// Find the nearest Road or Path segment whose perpendicular distance from `pos`
+    /// is within `max_dist`. Returns the segment ID if found.
+    pub fn segment_near_point(&self, pos: Vec2, max_dist: f32) -> Option<String> {
+        let mut best_dist = max_dist;
+        let mut best_id: Option<String> = None;
+        for seg in &self.segments {
+            if matches!(seg.seg_type, SegmentType::Desire | SegmentType::ParkPath) {
+                continue;
+            }
+            let dist = point_to_segment_dist(pos, seg.start, seg.end);
+            if dist < best_dist {
+                best_dist = dist;
+                best_id = Some(seg.id.clone());
+            }
+        }
+        best_id
+    }
+
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -707,6 +731,17 @@ fn is_building_pos(pos: Vec2) -> bool {
 
 pub fn nodes_close(a: Vec2, b: Vec2) -> bool {
     (a - b).length() < NODE_MERGE_RADIUS
+}
+
+/// Perpendicular distance from point `p` to the line segment `(a, b)`.
+fn point_to_segment_dist(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+    let ab = b - a;
+    let len_sq = ab.length_squared();
+    if len_sq < 1e-6 {
+        return (p - a).length();
+    }
+    let t = ((p - a).dot(ab) / len_sq).clamp(0.0, 1.0);
+    (p - (a + ab * t)).length()
 }
 
 fn nearest_node(segments: &[&RoadSegment], pos: Vec2, max_dist: f32) -> Option<Vec2> {

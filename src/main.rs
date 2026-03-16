@@ -121,6 +121,15 @@ impl ActiveRoute {
 pub struct BuildMode {
     pub active: bool,
     pub selected_type: Option<BuildingType>,
+    pub remove_roads: bool,
+}
+
+/// Tracks a pending player-initiated building demolition with an 8-second countdown.
+/// The countdown uses real time so it's predictable regardless of game speed.
+#[derive(Resource, Default)]
+pub struct PendingDemolish {
+    pub building_id: Option<String>,
+    pub timer: f32,
 }
 
 /// Tracks which citizen (if any) is selected for detail viewing.
@@ -160,6 +169,7 @@ fn main() {
         .add_plugins(NewsPlugin)
         .insert_resource(GameName::default())
         .insert_resource(BuildMode::default())
+        .insert_resource(PendingDemolish::default())
         .insert_resource(CitizenSelection::default())
         .insert_resource(policies::ActivePolicies::default())
         .insert_resource(happiness::CityHappiness::default())
@@ -173,8 +183,18 @@ fn main() {
         .add_systems(OnExit(AppState::InGame), cleanup_ingame)
         .add_systems(
             Update,
-            (camera_controls, auto_zoom_camera, update_hovered_entity, handle_building_click, spawn_route_viz, despawn_route_viz)
-                .run_if(in_state(AppState::InGame)),
+            (
+                camera_controls,
+                auto_zoom_camera,
+                update_hovered_entity,
+                handle_building_click,
+                handle_build_place_click,
+                handle_road_remove_click,
+                tick_demolish_countdown,
+                cancel_modes_on_escape,
+                spawn_route_viz,
+                despawn_route_viz,
+            ).run_if(in_state(AppState::InGame)),
         )
         .run();
 }
@@ -239,6 +259,7 @@ fn cleanup_ingame(
     commands.insert_resource(housing::HousingCooldown::default());
     commands.insert_resource(movement::CityTravelStats::default());
     commands.insert_resource(BuildMode::default());
+    commands.insert_resource(PendingDemolish::default());
     commands.insert_resource(CitizenSelection::default());
     commands.insert_resource(policies::ActivePolicies::default());
     commands.insert_resource(happiness::CityHappiness::default());
@@ -434,8 +455,13 @@ fn handle_building_click(
     road_network: Res<roads::RoadNetwork>,
     world: Res<CityWorld>,
     ui_buttons: Query<&Interaction, With<Button>>,
+    build_mode: Res<BuildMode>,
 ) {
     if !mouse_input.just_pressed(MouseButton::Left) {
+        return;
+    }
+    // Defer to the build/road-remove systems when those modes are active.
+    if build_mode.active || build_mode.remove_roads {
         return;
     }
 
@@ -611,6 +637,77 @@ fn update_hovered_entity(
             hovered.0 = Some(entity);
             return;
         }
+    }
+}
+
+/// Place a building when the player clicks in build mode.
+fn handle_build_place_click(
+    mouse_input: Res<ButtonInput<MouseButton>>,
+    build_mode: Res<BuildMode>,
+    ui_buttons: Query<&Interaction, With<Button>>,
+    mut spawn_requests: MessageWriter<housing::SpawnBuildingRequest>,
+) {
+    if !mouse_input.just_pressed(MouseButton::Left) { return; }
+    if !build_mode.active { return; }
+    let Some(kind) = build_mode.selected_type else { return };
+    if ui_buttons.iter().any(|i| *i == Interaction::Pressed) { return; }
+    spawn_requests.write(housing::SpawnBuildingRequest { kind });
+}
+
+/// Remove the nearest road segment when the player clicks in road-removal mode.
+fn handle_road_remove_click(
+    mouse_input: Res<ButtonInput<MouseButton>>,
+    build_mode: Res<BuildMode>,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    ui_buttons: Query<&Interaction, With<Button>>,
+    mut road_network: ResMut<roads::RoadNetwork>,
+    mut economy: ResMut<economy::Economy>,
+    mut news: ResMut<news::CityNewsLog>,
+    game_time: Res<time::GameTime>,
+) {
+    if !mouse_input.just_pressed(MouseButton::Left) { return; }
+    if !build_mode.remove_roads { return; }
+    if ui_buttons.iter().any(|i| *i == Interaction::Pressed) { return; }
+
+    let Some(window) = windows.iter().next() else { return };
+    let Some(cursor_pos) = window.cursor_position() else { return };
+    let Ok((camera, camera_transform)) = camera_query.single() else { return };
+    let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) else { return };
+
+    if let Some(seg_id) = road_network.segment_near_point(world_pos, 30.0) {
+        road_network.remove_segment_by_id(&seg_id);
+        economy.charge_construction(500.0);
+        news.push(game_time.current_day(), "-", "A road segment was removed.".to_string());
+    }
+}
+
+/// Counts down the demolish timer and fires a `DemolishSpecificBuildingRequest` at zero.
+fn tick_demolish_countdown(
+    mut pending: ResMut<PendingDemolish>,
+    mut requests: MessageWriter<housing::DemolishSpecificBuildingRequest>,
+    time: Res<Time>,
+) {
+    if pending.building_id.is_none() { return; }
+    pending.timer -= time.delta_secs(); // real time so the player always gets 8 real seconds
+    if pending.timer <= 0.0 {
+        if let Some(id) = pending.building_id.take() {
+            requests.write(housing::DemolishSpecificBuildingRequest { building_id: id });
+        }
+    }
+}
+
+/// Pressing Escape exits any active build/remove mode and cancels any pending demolish.
+fn cancel_modes_on_escape(
+    key_input: Res<ButtonInput<KeyCode>>,
+    mut build_mode: ResMut<BuildMode>,
+    mut pending_demolish: ResMut<PendingDemolish>,
+) {
+    if key_input.just_pressed(KeyCode::Escape) {
+        build_mode.active = false;
+        build_mode.selected_type = None;
+        build_mode.remove_roads = false;
+        pending_demolish.building_id = None;
     }
 }
 

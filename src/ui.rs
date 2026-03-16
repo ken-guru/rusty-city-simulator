@@ -89,6 +89,8 @@ pub enum ToolbarAction {
     SetSpeed(f32),
     Save,
     Quit,
+    PlaceBuilding(BuildingType),
+    RemoveRoad,
 }
 
 /// Actions for buttons inside the quit dialog.
@@ -203,6 +205,7 @@ struct CountdownText;
 pub enum BuildingPanelAction {
     Close,
     GetDirections,
+    Demolish,
 }
 
 #[derive(Component, Clone, Debug)]
@@ -527,6 +530,10 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
                 toolbar_button(parent, "32x", ToolbarAction::SetSpeed(32.0));
                 toolbar_button(parent, "64x", ToolbarAction::SetSpeed(64.0));
             }
+            toolbar_button(parent, "Build Home",   ToolbarAction::PlaceBuilding(BuildingType::Home));
+            toolbar_button(parent, "Build Office", ToolbarAction::PlaceBuilding(BuildingType::Office));
+            toolbar_button(parent, "Build Shop",   ToolbarAction::PlaceBuilding(BuildingType::Shop));
+            toolbar_button(parent, "Rm Road",      ToolbarAction::RemoveRoad);
             toolbar_button(parent, "Save",    ToolbarAction::Save);
             toolbar_button(parent, "Quit",    ToolbarAction::Quit);
         });
@@ -630,6 +637,7 @@ fn setup_ui(mut commands: Commands, debug: Res<DebugMode>) {
             }).with_children(|row| {
                 building_panel_button(row, "Close",          BuildingPanelAction::Close);
                 building_panel_button(row, "Get Directions", BuildingPanelAction::GetDirections);
+                building_panel_button(row, "Demolish",       BuildingPanelAction::Demolish);
             });
         });
 
@@ -801,6 +809,7 @@ fn toolbar_interaction(
     mut save_events: MessageWriter<SaveRequestEvent>,
     mut quit_visible: ResMut<QuitDialogVisible>,
     mut quit_countdown_query: Query<&mut DialogCountdown, With<QuitDialogRoot>>,
+    mut build_mode: ResMut<crate::BuildMode>,
 ) {
     for (interaction, action, mut bg) in &mut interaction_query {
         match interaction {
@@ -825,6 +834,24 @@ fn toolbar_interaction(
                         // Reset countdown when dialog opens
                         for mut cd in quit_countdown_query.iter_mut() {
                             cd.remaining = cd.total;
+                        }
+                    }
+                    ToolbarAction::PlaceBuilding(kind) => {
+                        // Toggle: re-clicking the active button deactivates it.
+                        if build_mode.active && build_mode.selected_type == Some(*kind) {
+                            build_mode.active = false;
+                            build_mode.selected_type = None;
+                        } else {
+                            build_mode.active = true;
+                            build_mode.selected_type = Some(*kind);
+                            build_mode.remove_roads = false;
+                        }
+                    }
+                    ToolbarAction::RemoveRoad => {
+                        build_mode.remove_roads = !build_mode.remove_roads;
+                        if build_mode.remove_roads {
+                            build_mode.active = false;
+                            build_mode.selected_type = None;
                         }
                     }
                 }
@@ -920,6 +947,7 @@ fn handle_pending_quit(
 /// Highlight the active speed / pause button each frame.
 fn sync_toolbar_button_states(
     game_time: Res<GameTime>,
+    build_mode: Res<crate::BuildMode>,
     mut button_query: Query<(&ToolbarAction, &mut BackgroundColor, &Interaction), With<Button>>,
 ) {
     const DEFAULT: Color = Color::srgba(0.18, 0.22, 0.28, 0.9);
@@ -933,6 +961,10 @@ fn sync_toolbar_button_states(
                 game_time.time_scale != 0.0
                     && (game_time.time_scale - s).abs() < 0.001
             }
+            ToolbarAction::PlaceBuilding(kind) => {
+                build_mode.active && build_mode.selected_type == Some(*kind)
+            }
+            ToolbarAction::RemoveRoad => build_mode.remove_roads,
             ToolbarAction::Save | ToolbarAction::Quit => false,
         };
 
@@ -1006,6 +1038,7 @@ fn sync_building_info_panel(
     selection: Res<BuildingSelection>,
     active_route: Res<ActiveRoute>,
     world: Res<CityWorld>,
+    pending_demolish: Res<crate::PendingDemolish>,
     mut panel_query: Query<&mut Node, With<BuildingInfoPanel>>,
     mut text_query: Query<&mut Text, With<BuildingInfoText>>,
 ) {
@@ -1038,9 +1071,14 @@ fn sync_building_info_panel(
             } else {
                 String::new()
             };
+            let demolish_notice = if pending_demolish.building_id.as_deref() == Some(id.as_str()) {
+                format!("\n[Demolish in {:.0}s — click Demolish to cancel]", pending_demolish.timer.max(0.0))
+            } else {
+                String::new()
+            };
             text.0 = format!(
-                "{}\nType: {}\nFounded: Day {:.0}\n{}{}{}",
-                b.name, type_label, b.founded_day, residents, workers, status,
+                "{}\nType: {}\nFounded: Day {:.0}\n{}{}{}{}",
+                b.name, type_label, b.founded_day, residents, workers, status, demolish_notice,
             );
         }
     } else {
@@ -1119,6 +1157,7 @@ fn building_panel_interaction(
     mut active_route: ResMut<ActiveRoute>,
     mut construction_queue: ResMut<ConstructionQueue>,
     world: Res<CityWorld>,
+    mut pending_demolish: ResMut<crate::PendingDemolish>,
 ) {
     for (interaction, action, mut bg) in &mut building_button_query {
         match interaction {
@@ -1130,9 +1169,22 @@ fn building_panel_interaction(
                         selection.awaiting_direction_pick = false;
                         selection.route_from_id = None;
                         active_route.clear_route();
+                        pending_demolish.building_id = None;
                     }
                     BuildingPanelAction::GetDirections => {
                         selection.awaiting_direction_pick = true;
+                    }
+                    BuildingPanelAction::Demolish => {
+                        if let Some(ref id) = selection.selected_id {
+                            if pending_demolish.building_id.as_deref() == Some(id.as_str()) {
+                                // Already pending — cancel.
+                                pending_demolish.building_id = None;
+                            } else {
+                                // Start 8-second countdown.
+                                pending_demolish.building_id = Some(id.clone());
+                                pending_demolish.timer = 8.0;
+                            }
+                        }
                     }
                 }
             }
