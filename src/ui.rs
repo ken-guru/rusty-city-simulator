@@ -2048,8 +2048,10 @@ fn update_stats_section(
     history: Res<crate::history::HistoryTracker>,
     expanded: Res<SidebarExpanded>,
 ) {
-    if !expanded.0[3] { return; }
+    // Redraw whenever expanded state changes OR history data changes
     if !history.is_changed() && !expanded.is_changed() { return; }
+    // Only render contents if the panel is expanded
+    if !expanded.0[3] { return; }
     let Ok(panel) = content_query.single() else { return; };
 
     commands.entity(panel).despawn_children();
