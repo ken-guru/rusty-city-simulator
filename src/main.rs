@@ -82,6 +82,9 @@ pub struct GameState {
     /// True while right-mouse-button (or middle) is held for drag-panning.
     pub is_dragging: bool,
     pub min_zoom: f32,
+    /// Seconds since the player last interacted (cursor move, click, key, scroll).
+    /// Auto-zoom/pan is suppressed until this reaches 60 s.
+    pub player_idle_timer: f32,
 }
 
 impl Default for GameState {
@@ -90,6 +93,7 @@ impl Default for GameState {
             camera_zoom: 1.0,
             is_dragging: false,
             min_zoom: 0.05,
+            player_idle_timer: 60.0, // start idle so first-launch auto-zoom works
         }
     }
 }
@@ -579,29 +583,42 @@ fn camera_controls(
     mut game_state: ResMut<GameState>,
     mut mouse_wheel_events: MessageReader<MouseWheel>,
     mut mouse_motion_events: MessageReader<MouseMotion>,
+    time: Res<Time>,
 ) {
     let Ok(mut camera) = camera_query.single_mut() else { return };
+
+    // Tick idle timer; any interaction below will reset it.
+    game_state.player_idle_timer += time.delta_secs();
+    let mut interacted = false;
+
     let pan_speed = 8.0 / game_state.camera_zoom;
     let mut pan = Vec3::ZERO;
 
     // Keyboard pan: WASD + arrow keys.
-    if key_input.pressed(KeyCode::ArrowUp)    || key_input.pressed(KeyCode::KeyW) { pan.y += pan_speed; }
-    if key_input.pressed(KeyCode::ArrowDown)  || key_input.pressed(KeyCode::KeyS) { pan.y -= pan_speed; }
-    if key_input.pressed(KeyCode::ArrowLeft)  || key_input.pressed(KeyCode::KeyA) { pan.x -= pan_speed; }
-    if key_input.pressed(KeyCode::ArrowRight) || key_input.pressed(KeyCode::KeyD) { pan.x += pan_speed; }
+    if key_input.pressed(KeyCode::ArrowUp)    || key_input.pressed(KeyCode::KeyW) { pan.y += pan_speed; interacted = true; }
+    if key_input.pressed(KeyCode::ArrowDown)  || key_input.pressed(KeyCode::KeyS) { pan.y -= pan_speed; interacted = true; }
+    if key_input.pressed(KeyCode::ArrowLeft)  || key_input.pressed(KeyCode::KeyA) { pan.x -= pan_speed; interacted = true; }
+    if key_input.pressed(KeyCode::ArrowRight) || key_input.pressed(KeyCode::KeyD) { pan.x += pan_speed; interacted = true; }
+    // Any other key press also counts as activity.
+    if key_input.get_just_pressed().next().is_some() { interacted = true; }
     camera.translation += pan;
+
+    // Any mouse button press counts as activity.
+    if mouse_input.get_pressed().next().is_some() { interacted = true; }
 
     // Drag-to-pan: hold right mouse button (or middle button) and move pointer.
     game_state.is_dragging = mouse_input.pressed(MouseButton::Right)
         || mouse_input.pressed(MouseButton::Middle);
 
+    // Collect motion events; movement anywhere in the window resets idle.
+    let motion_events: Vec<_> = mouse_motion_events.read().collect();
+    if !motion_events.is_empty() { interacted = true; }
+
     if game_state.is_dragging {
-        for ev in mouse_motion_events.read() {
+        for ev in &motion_events {
             camera.translation.x -= ev.delta.x / game_state.camera_zoom;
             camera.translation.y += ev.delta.y / game_state.camera_zoom;
         }
-    } else {
-        mouse_motion_events.clear();
     }
 
     // Zoom: scroll wheel (Line units) and trackpad (Pixel units).
@@ -613,10 +630,15 @@ fn camera_controls(
         if zoom_delta != 0.0 {
             game_state.camera_zoom *= 1.0 + zoom_delta;
             game_state.camera_zoom = game_state.camera_zoom.clamp(game_state.min_zoom, 8.0);
+            interacted = true;
         }
     }
 
     camera.scale = Vec3::splat(1.0 / game_state.camera_zoom);
+
+    if interacted {
+        game_state.player_idle_timer = 0.0;
+    }
 }
 
 fn update_hovered_entity(
@@ -758,6 +780,13 @@ fn auto_zoom_camera(
     let target_center = Vec2::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5);
     let target_zoom = (usable_w / city_w).min(usable_h / city_h).clamp(0.05, 2.0);
     game_state.min_zoom = (target_zoom * 0.6).max(0.02);
+
+    // Suppress auto-pan/zoom while the player has been active in the last 60 s.
+    // A window resize always overrides this so the city stays on screen.
+    const IDLE_THRESHOLD_SECS: f32 = 60.0;
+    if game_state.player_idle_timer < IDLE_THRESHOLD_SECS && !resized {
+        return;
+    }
 
     // Check if any building is outside the current viewport (with a small margin).
     let Ok(camera) = camera_query.single() else { return };

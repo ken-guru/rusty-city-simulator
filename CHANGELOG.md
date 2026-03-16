@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.12.4] — 2026-03-16
+
+### Fixed
+
+#### Auto-zoom/pan defers to the player for 60 seconds after any interaction
+
+- Added `player_idle_timer` to `GameState`; the timer increments every frame and
+  resets to zero on any cursor movement, mouse button press, key press, or scroll
+  wheel event while the window is in focus.
+- `auto_zoom_camera` now skips its pan/zoom correction entirely while
+  `player_idle_timer < 60.0`. A window resize still overrides this guard so the
+  city always stays on screen after the window is resized.
+- `min_zoom` continues to be recalculated every frame so zoom limits stay correct
+  even while the auto-pan is suppressed.
+
+---
+
 ## [0.12.3] — 2026-03-16
 
 ### Fixed
