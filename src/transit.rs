@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::entities::{ActivityType, Citizen};
+use crate::roads::RoadNetwork;
 use crate::time::{simulation_running, GameTime};
 use crate::world::CityWorld;
 
@@ -53,8 +54,9 @@ pub struct BusRoute {
     pub stops: Vec<BusStop>,
     /// Current world-space bus position.
     pub bus_position: Vec2,
-    /// Intermediate waypoints between current stop and the next (currently unused;
-    /// buses travel in straight lines for simplicity).
+    /// Road-following waypoints from the current stop to the next.
+    /// Transient: not saved; re-planned on load or after each stop arrival.
+    #[serde(skip, default)]
     pub bus_waypoints: Vec<Vec2>,
     /// Index into `stops` of the stop the bus is currently heading toward (or at).
     pub stop_index: usize,
@@ -274,78 +276,101 @@ fn evaluate_routes(
     }
 }
 
-/// Move each bus along its route, handle dwell at stops, and manage boarding/alighting.
+/// Move each bus along road waypoints, dwell at stops, and handle boarding/alighting.
+/// Bus speed and dwell time both scale with `game_time.time_scale` so the simulation
+/// runs consistently at all speed settings.
 fn update_buses(
     mut network: ResMut<TransitNetwork>,
     mut citizens: Query<&mut Citizen>,
     time: Res<Time>,
     game_time: Res<GameTime>,
+    road_network: Res<RoadNetwork>,
 ) {
-    let real_delta = time.delta_secs();
-    let game_delta_days = real_delta * game_time.time_scale / game_time.day_length_secs;
+    // Scale movement and dwell by the game time scale so buses respect 1×/2×/4× speed.
+    let scaled_delta = time.delta_secs() * game_time.time_scale;
+    let move_dist = BUS_SPEED * scaled_delta;
 
     for route in network.routes.iter_mut() {
         if route.stops.len() < 2 { continue; }
 
+        // ── Dwell phase ───────────────────────────────────────────────────────
         if route.dwell_timer > 0.0 {
-            // Dwelling at a stop.
-            route.dwell_timer -= real_delta;
+            route.dwell_timer -= scaled_delta;
             if route.dwell_timer <= 0.0 {
                 route.dwell_timer = 0.0;
-                // Advance to the next stop.
                 advance_stop_index(route);
+                // Pre-compute road waypoints to the newly targeted stop.
+                let dest = route.stops[route.stop_index].position;
+                if let Some(mut path) = road_network.find_road_path(route.bus_position, dest) {
+                    path.reverse(); // so pop() returns the first step first
+                    route.bus_waypoints = path;
+                } else {
+                    route.bus_waypoints.clear(); // no road yet; retry next frame
+                }
             }
-        } else {
-            // Moving toward the current stop_index.
-            let target_stop_pos = route.stops[route.stop_index].position;
-            let diff = target_stop_pos - route.bus_position;
-            let dist = diff.length();
-            let move_dist = BUS_SPEED * real_delta;
+            continue; // don't move during dwell
+        }
 
-            if dist <= move_dist {
-                // Arrived at stop.
-                route.bus_position = target_stop_pos;
+        // ── Ensure a planned path exists ─────────────────────────────────────
+        if route.bus_waypoints.is_empty() {
+            let dest = route.stops[route.stop_index].position;
+            if let Some(mut path) = road_network.find_road_path(route.bus_position, dest) {
+                path.reverse();
+                route.bus_waypoints = path;
+            }
+            // If still empty (road not yet built) the bus skips this frame.
+            if route.bus_waypoints.is_empty() { continue; }
+        }
+
+        // ── Move along waypoints ──────────────────────────────────────────────
+        // The last element of bus_waypoints is the next immediate step (stack).
+        let target = *route.bus_waypoints.last().unwrap(); // safe: checked above
+        let diff = target - route.bus_position;
+        let dist = diff.length();
+
+        if dist <= move_dist {
+            // Reached this waypoint; advance to the next.
+            route.bus_position = target;
+            route.bus_waypoints.pop();
+
+            if route.bus_waypoints.is_empty() {
+                // All waypoints consumed — snapped to stop position.
+                route.bus_position = route.stops[route.stop_index].position;
                 route.dwell_timer = DWELL_SECS;
-                let stop_id = route.stops[route.stop_index].id.clone();
-                let stop_pos = route.stops[route.stop_index].position;
-                let next_stop_index = next_stop_index_value(route);
 
-                // Alight citizens whose destination is this stop.
+                let stop_id      = route.stops[route.stop_index].id.clone();
+                let next_idx     = next_stop_index_value(route);
+                let next_stop_id = route.stops.get(next_idx)
+                    .map(|s| s.id.clone())
+                    .unwrap_or_default();
+                let route_id = route.id.clone();
+                let stop_name = route.stops[route.stop_index].building_id.clone();
+                info!("[TRANSIT] Bus on route {} arrived at stop (building {})", route_id, stop_name);
+
+                // Alight riders whose destination is this stop.
                 for mut citizen in citizens.iter_mut() {
-                    if citizen.riding_bus_route_id.as_deref() != Some(&route.id) { continue; }
-                    if let Some(ref ws) = citizen.waiting_at_bus_stop_id {
-                        if ws == &stop_id {
-                            // Arrived at destination stop.
-                            citizen.riding_bus_route_id = None;
-                            citizen.waiting_at_bus_stop_id = None;
-                            citizen.current_activity = ActivityType::Idle;
-                            route.daily_riders += 1.0;
-                        }
+                    if citizen.riding_bus_route_id.as_deref() != Some(&route_id) { continue; }
+                    if citizen.waiting_at_bus_stop_id.as_deref() == Some(&stop_id) {
+                        citizen.riding_bus_route_id = None;
+                        citizen.waiting_at_bus_stop_id = None;
+                        citizen.current_activity = ActivityType::Idle;
+                        route.daily_riders += 1.0;
                     }
                 }
 
-                // Board citizens waiting at this stop heading to the next stop direction.
-                let next_stop_id = route.stops.get(next_stop_index)
-                    .map(|s| s.id.clone())
-                    .unwrap_or_default();
+                // Board citizens waiting at this stop.
                 for mut citizen in citizens.iter_mut() {
                     if citizen.current_activity != ActivityType::WaitingForBus { continue; }
                     if citizen.waiting_at_bus_stop_id.as_deref() != Some(&stop_id) { continue; }
-                    // Board: citizen rides to the stop they were waiting for (stored in riding_bus_route_id being set to route id).
-                    citizen.riding_bus_route_id = Some(route.id.clone());
-                    // The destination stop is already encoded in waiting_at_bus_stop_id for alight logic.
-                    // Re-use waiting_at_bus_stop_id as the alight-stop marker by setting it to the next stop id.
+                    citizen.riding_bus_route_id = Some(route_id.clone());
                     citizen.waiting_at_bus_stop_id = Some(next_stop_id.clone());
                     citizen.current_activity = ActivityType::RidingBus;
                     citizen.waypoints.clear();
                     citizen.target_position = None;
-                    let _ = stop_pos; // used above
-                    let _ = game_delta_days;
                 }
-            } else {
-                // Still en route.
-                route.bus_position += diff.normalize() * move_dist;
             }
+        } else {
+            route.bus_position += diff.normalize() * move_dist;
         }
     }
 }
@@ -422,9 +447,9 @@ fn spawn_route(
         stops: vec![stop_a, stop_b],
     };
 
-    let msg = format!("Bus route established: {} ↔ {}", ba.name, bb.name);
+    let msg = format!("Bus route established: {} <-> {}", ba.name, bb.name);
     info!("[TRANSIT] New bus route spawned between {} and {}", ba.name, bb.name);
-    news.push(current_day, "🚌", msg);
+    news.push(current_day, "B", msg);
     network.routes.push(route);
 }
 

@@ -85,6 +85,7 @@ fn check_for_sports_sessions(
     mut citizens: Query<&mut Citizen>,
     world: Res<CityWorld>,
     game_time: Res<GameTime>,
+    mut news: ResMut<crate::news::CityNewsLog>,
 ) {
     let current_day = game_time.current_day();
     if current_day < schedule.next_check_day { return; }
@@ -155,11 +156,9 @@ fn check_for_sports_sessions(
             max_participants: SPORTS_MAX_PARTICIPANTS,
         };
 
-        info!(
-            "[SPORTS] Sports session started at park {:?} with {} participants",
-            park_cell,
-            session.participants.len()
-        );
+        let n = session.participants.len();
+        info!("[SPORTS] Sports session started at park {:?} with {} participants", park_cell, n);
+        news.push(current_day, "S", format!("Citizens are playing sports at the park! ({n} players)"));
 
         schedule.park_cooldowns.insert(park_cell, current_day + SPORTS_PARK_COOLDOWN);
         schedule.active_sessions.push(session);

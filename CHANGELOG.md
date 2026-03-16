@@ -5,6 +5,29 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.12.3] — 2026-03-16
+
+### Fixed
+
+#### Buses now follow the road network and respect game speed
+
+- `update_buses` now calls `road_network.find_road_path()` to compute a waypoint path
+  when a bus departs each stop, storing the result in `bus_waypoints`. Buses advance
+  through the waypoint stack one step at a time instead of flying in a straight line.
+  `#[serde(skip, default)]` added to `bus_waypoints` so in-flight paths are discarded
+  on save/load and re-planned fresh.
+- Bus movement and dwell both now use `time.delta_secs() * game_time.time_scale` instead
+  of raw `real_delta`, so buses run at the correct speed at all game-speed settings.
+- Bus arrival at stop now logs at `info!` level with route ID and building name.
+
+#### News log entries for in-game activities
+
+- Bus route establishment now posts `"B"` entry to the in-game news log.
+- Park sports sessions now post `"S"` entry to the news log on session start
+  (previously only logged to terminal via `info!`).
+
+---
+
 ## [0.12.2] — 2026-03-16
 
 ### Fixed
