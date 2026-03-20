@@ -62,6 +62,7 @@ enum StartScreenAction {
     LoadSave(usize),
     Back,
     Quit,
+    #[cfg(feature = "debug_ui")]
     ToggleEconomyDebug,
     FocusCityNameInput,
 }
@@ -133,7 +134,7 @@ fn rebuild_panel(
 
     let panel = state.panel.clone();
     let saves = state.saves.clone();
-    let economy_logging = debug.economy_logging;
+    let _economy_logging = debug.economy_logging;
     let city_name = state.city_name.clone();
     let city_name_focused = state.city_name_focused;
 
@@ -181,12 +182,11 @@ fn rebuild_panel(
                 spawn_menu_button(parent, "Load Game", StartScreenAction::LoadGame);
                 spawn_menu_button(parent, "Quit",      StartScreenAction::Quit);
                 // Debug toggle — shown in a smaller, muted style below the main buttons
-                let debug_label = if economy_logging {
-                    "Economy Debug: ON"
-                } else {
-                    "Economy Debug: OFF"
-                };
-                spawn_debug_toggle_button(parent, debug_label);
+                #[cfg(feature = "debug_ui")]
+                spawn_debug_toggle_button(
+                    parent,
+                    if _economy_logging { "Economy Debug: ON" } else { "Economy Debug: OFF" },
+                );
             }
 
             StartScreenPanel::SaveList => {
@@ -252,7 +252,7 @@ fn handle_buttons(
     mut state: ResMut<StartScreenState>,
     mut next_state: ResMut<NextState<AppState>>,
     mut pending_load: ResMut<PendingLoad>,
-    mut debug: ResMut<DebugMode>,
+    mut _debug: ResMut<DebugMode>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut game_name: ResMut<GameName>,
 ) {
@@ -309,11 +309,12 @@ fn handle_buttons(
             StartScreenAction::Quit => {
                 std::process::exit(0);
             }
+            #[cfg(feature = "debug_ui")]
             StartScreenAction::ToggleEconomyDebug => {
-                debug.economy_logging = !debug.economy_logging;
-                if !debug.economy_logging {
+                _debug.economy_logging = !_debug.economy_logging;
+                if !_debug.economy_logging {
                     // Reset header flag so a fresh header is written if re-enabled
-                    debug.log_header_written = false;
+                    _debug.log_header_written = false;
                 }
                 state.dirty = true;
             }
@@ -413,6 +414,7 @@ fn spawn_save_button(
         });
 }
 
+#[cfg(feature = "debug_ui")]
 fn spawn_debug_toggle_button(parent: &mut ChildSpawnerCommands, label: &str) {
     const DBG_BTN: Color = Color::srgb(0.18, 0.22, 0.18);
     const DBG_TEXT: Color = Color::srgb(0.5, 0.75, 0.5);

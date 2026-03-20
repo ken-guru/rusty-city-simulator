@@ -5,6 +5,28 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.12.5] — 2026-03-20
+
+### Added
+
+- **GitHub Actions release pipeline** (`.github/workflows/release.yml`): on every
+  push to `main`, builds a universal macOS binary (arm64 + x86_64 via `lipo`) and
+  a Windows `.exe`, then publishes both as assets on a GitHub Release tagged with
+  the Cargo version.
+- **`debug_ui` cargo feature**: the Economy Debug toggle button is now compiled in
+  only when the `debug_ui` feature is active (included in `default`). CI builds
+  with `--no-default-features` produce a clean release binary with no debug UI.
+- **`dynamic_linking` cargo feature**: Bevy dynamic linking is now opt-in via a
+  named feature (`default` includes it) so CI can pass `--no-default-features` to
+  produce a fully statically-linked, distributable binary.
+- **`[profile.release] strip = "symbols"`**: strips debug symbols from release
+  builds, reducing binary size and preventing runner filesystem paths from
+  appearing in the binary.
+- **`RUSTFLAGS --remap-path-prefix`** in CI: normalises runner workspace paths in
+  panic messages to `/source/...` for both macOS and Windows builds.
+
+---
+
 ## [0.12.4] — 2026-03-16
 
 ### Fixed
