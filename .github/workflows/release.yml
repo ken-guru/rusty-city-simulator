@@ -9,6 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libudev-dev \
+            libasound2-dev \
+            pkg-config
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
