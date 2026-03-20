@@ -6,4 +6,4 @@ economy_debug.log
 *.swp
 *.swo
 .DS_Store
-
+.claude/settings.local.json
