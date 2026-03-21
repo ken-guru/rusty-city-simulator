@@ -61,14 +61,14 @@ Branch protection is enabled on `main`. All changes must go through a PR:
 1. **Create a feature branch** for every change; commit work there until the feature is complete.
 2. **Open a PR** targeting `main`. The `CI / check` status check must pass before the PR can be merged — it runs `cargo build --no-default-features` with `-D warnings` and `cargo test`.
 3. **Include the version bump and CHANGELOG entry in the PR** — do not make a separate commit after merge.
-4. **On merge to `main`** the Release workflow fires automatically: it builds macOS (universal) and Windows binaries in parallel, then publishes a GitHub Release tagged with the version from `Cargo.toml`.
 
 ### CI/CD layout
 | Workflow | Trigger | Jobs |
 |----------|---------|------|
 | `CI` | PR targeting `main` | `check` (build + test on Linux) |
-| `Release` | Push to `main` (i.e. merged PR) | `build-macos`, `build-windows`, `release` |
 | `CodeQL Advanced` | Push to `main`, PR targeting `main`, weekly schedule | `analyze` — scans `rust` and `actions` with `security-extended,security-and-quality` |
+
+Releases and binary distribution are handled outside of GitHub Actions.
 
 ## Code Quality Rules
 - Zero warnings expected (`cargo build --release` must be clean)
