@@ -55,6 +55,21 @@ Compact JSON in `saves/city_YYYYMMDD_HHMMSS.json`. Contains world state, road ne
 3. **Commit** with a structured message: imperative subject line (≤72 chars), blank line, then bullet-point body.
 4. Do this proactively at the end of every implementation session — do not wait for the user to ask.
 
+## Development Workflow
+Branch protection is enabled on `main`. All changes must go through a PR:
+
+1. **Create a feature branch** for every change; commit work there until the feature is complete.
+2. **Open a PR** targeting `main`. The `CI / check` status check must pass before the PR can be merged — it runs `cargo build --no-default-features` with `-D warnings` and `cargo test`.
+3. **Include the version bump and CHANGELOG entry in the PR** — do not make a separate commit after merge.
+
+### CI/CD layout
+| Workflow | Trigger | Jobs |
+|----------|---------|------|
+| `CI` | PR targeting `main` | `check` (build + test on Linux) |
+| `CodeQL Advanced` | Push to `main`, PR targeting `main`, weekly schedule | `analyze` — scans `rust` and `actions` with `security-extended,security-and-quality` |
+
+Releases and binary distribution are handled outside of GitHub Actions.
+
 ## Code Quality Rules
 - Zero warnings expected (`cargo build --release` must be clean)
 - All tests must pass (`cargo test`)
