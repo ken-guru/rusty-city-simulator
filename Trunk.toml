@@ -4,3 +4,10 @@ dist = "dist"
 # Build without default features (disables dynamic_linking which is native-only)
 cargo_features = []
 no_default_features = true
+
+[tools.wasm-opt]
+version = "version_123"
+extra_options = [
+  "--enable-nontrapping-float-to-int",
+  "--enable-bulk-memory-opt",
+]
