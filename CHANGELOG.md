@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.13.2] — 2026-03-30
+
+### Fixed
+
+- **Deploy workflow**: added `[tools.wasm-opt]` section to `Trunk.toml` with
+  `--enable-nontrapping-float-to-int` and `--enable-bulk-memory-opt` flags so
+  that `wasm-opt` (v123) accepts the compiled WASM binary during `trunk build
+  --release`.
+
+---
+
 ## [0.13.1] — 2026-03-30
 
 ### Fixed
