@@ -20,6 +20,8 @@ pathfinding = "4.15"
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Window", "Storage"] }
 js-sys = "0.3"
+# getrandom needs an explicit JS backend on wasm32-unknown-unknown
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [profile.dev]
 opt-level = 1
