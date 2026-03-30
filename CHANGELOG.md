@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.13.1] — 2026-03-30
+
+### Fixed
+
+- **Deploy workflow**: replaced invalid pinned SHA for `jetli/trunk-action` with
+  the correct commit hash for v0.5.1 (`1346cc09…`), which was preventing the
+  GitHub Actions deploy job from resolving the action.
+
+---
+
 ## [0.13.0] — 2026-03-30
 
 ### Added
