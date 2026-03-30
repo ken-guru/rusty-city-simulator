@@ -1873,14 +1873,17 @@ dependencies = [
 
 [[package]]
 name = "city_sim"
-version = "0.12.5"
+version = "0.13.0"
 dependencies = [
  "bevy",
+ "js-sys",
  "pathfinding",
  "rand 0.10.0",
  "serde",
  "serde_json",
  "uuid",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

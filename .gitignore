@@ -1,5 +1,6 @@
 /target
 /target/
+/dist
 saves/
 save.json
 economy_debug.log
@@ -7,3 +8,4 @@ economy_debug.log
 *.swo
 .DS_Store
 .claude/settings.local.json
+.vercel

@@ -216,6 +216,8 @@ fn update_economy(
     }
 }
 
+/// Append a line to the debug log file (native) or browser console (WASM).
+#[cfg(not(target_arch = "wasm32"))]
 fn append_log(path: &str, msg: &str) -> std::io::Result<()> {
     // Ensure the parent directory exists (e.g. "saves/").
     if let Some(parent) = std::path::Path::new(path).parent() {
@@ -228,6 +230,13 @@ fn append_log(path: &str, msg: &str) -> std::io::Result<()> {
         .append(true)
         .open(path)?;
     file.write_all(msg.as_bytes())
+}
+
+/// On WASM, debug log messages go to the browser console.
+#[cfg(target_arch = "wasm32")]
+fn append_log(_path: &str, msg: &str) -> std::io::Result<()> {
+    web_sys::console::log_1(&msg.into());
+    Ok(())
 }
 
 /// Call this from housing.rs when charging construction, if debug mode is on.

@@ -37,3 +37,24 @@ jobs:
           RUSTFLAGS: "-D warnings"
       - name: Test
         run: cargo test
+
+  check-wasm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wasm-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Check WASM build
+        run: cargo build --target wasm32-unknown-unknown --no-default-features
+        env:
+          RUSTFLAGS: "-D warnings"

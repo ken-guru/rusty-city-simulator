@@ -1,0 +1,6 @@
+[build]
+target = "index.html"
+dist = "dist"
+# Build without default features (disables dynamic_linking which is native-only)
+cargo_features = []
+no_default_features = true
