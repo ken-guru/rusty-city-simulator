@@ -1,11 +1,13 @@
 //! JSON save/load: serialize/deserialize `CityWorld` + `Economy` +
-//! `ActivePolicies` to disk; `sync_citizens_to_world` for ECS↔world sync;
-//! save file management.
+//! `ActivePolicies` to disk (native) or browser localStorage (WASM);
+//! `sync_citizens_to_world` for ECS↔world sync; save file management.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::entities::Citizen;
@@ -21,8 +23,17 @@ use crate::AppState;
 
 // ─── Save directory ──────────────────────────────────────────────────────────
 
+#[cfg(not(target_arch = "wasm32"))]
 const SAVES_DIR: &str = "saves";
+#[cfg(not(target_arch = "wasm32"))]
 const INCOMPAT_FILE: &str = "saves/.incompatible.json";
+
+/// Prefix for localStorage keys on WASM.
+#[cfg(target_arch = "wasm32")]
+const STORAGE_PREFIX: &str = "citysim_save_";
+/// localStorage key for the incompatible-list on WASM.
+#[cfg(target_arch = "wasm32")]
+const INCOMPAT_KEY: &str = "citysim_incompatible";
 
 // ─── Events ──────────────────────────────────────────────────────────────────
 
@@ -98,7 +109,8 @@ pub struct SaveMeta {
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-/// Write a new timestamped save file into the `saves/` directory.
+/// Write a new timestamped save file into the `saves/` directory (native)
+/// or browser localStorage (WASM).
 pub fn save_game(
     world: &CityWorld,
     game_time: &GameTime,
@@ -112,10 +124,7 @@ pub fn save_game(
     policies: &crate::policies::ActivePolicies,
     transit_network: &TransitNetwork,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    fs::create_dir_all(SAVES_DIR)?;
-
     let filename = format!("city_{}.json", timestamp_str());
-    let path = PathBuf::from(SAVES_DIR).join(&filename);
 
     let save = GameSave {
         game_version: GAME_VERSION.to_string(),
@@ -136,9 +145,24 @@ pub fn save_game(
     };
 
     let json = serde_json::to_string(&save)?;
-    fs::write(&path, json)?;
-    println!("Game saved to {}", path.display());
-    Ok(path)
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        fs::create_dir_all(SAVES_DIR)?;
+        let path = PathBuf::from(SAVES_DIR).join(&filename);
+        fs::write(&path, json)?;
+        println!("Game saved to {}", path.display());
+        Ok(path)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let key = format!("{STORAGE_PREFIX}{filename}");
+        let storage = web_local_storage()?;
+        storage.set_item(&key, &json)
+            .map_err(|_| "localStorage write failed")?;
+        Ok(PathBuf::from(filename))
+    }
 }
 
 /// Reconcile `world.citizens` with the live ECS citizen components.
@@ -172,52 +196,118 @@ pub fn sync_citizens_to_world(world: &mut CityWorld, ecs_citizens: &[Citizen]) {
 /// rejected before parsing to prevent memory exhaustion from crafted inputs.
 const MAX_SAVE_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
 
-/// Deserialise a save file from `path`.
+/// Deserialise a save file from `path` (native: filesystem, WASM: localStorage).
 pub fn load_save(path: &Path) -> Result<GameSave, Box<dyn std::error::Error>> {
-    let size = fs::metadata(path)?.len();
-    if size > MAX_SAVE_BYTES {
-        return Err(format!(
-            "save file is too large ({size} bytes; limit is {MAX_SAVE_BYTES})"
-        ).into());
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let size = fs::metadata(path)?.len();
+        if size > MAX_SAVE_BYTES {
+            return Err(format!(
+                "save file is too large ({size} bytes; limit is {MAX_SAVE_BYTES})"
+            ).into());
+        }
+        let json = fs::read_to_string(path)?;
+        let save: GameSave = serde_json::from_str(&json)?;
+        Ok(save)
     }
-    let json = fs::read_to_string(path)?;
-    let save: GameSave = serde_json::from_str(&json)?;
-    Ok(save)
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let filename = path.to_string_lossy();
+        let key = if filename.starts_with(STORAGE_PREFIX) {
+            filename.to_string()
+        } else {
+            format!("{STORAGE_PREFIX}{filename}")
+        };
+        let storage = web_local_storage()?;
+        let json = storage.get_item(&key)
+            .map_err(|_| "localStorage read failed")?
+            .ok_or("save not found in localStorage")?;
+        if json.len() as u64 > MAX_SAVE_BYTES {
+            return Err(format!(
+                "save is too large ({} bytes; limit is {MAX_SAVE_BYTES})", json.len()
+            ).into());
+        }
+        let save: GameSave = serde_json::from_str(&json)?;
+        Ok(save)
+    }
 }
 
-/// Return all save files in `saves/`, newest first.
+/// Return all save files, newest first.
+/// Native: reads from `saves/` directory. WASM: reads from localStorage.
 pub fn list_saves() -> Vec<SaveMeta> {
     let incompatible = load_incompatible_list();
 
-    let Ok(entries) = fs::read_dir(SAVES_DIR) else {
-        return Vec::new();
-    };
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Ok(entries) = fs::read_dir(SAVES_DIR) else {
+            return Vec::new();
+        };
 
-    let mut metas: Vec<SaveMeta> = entries
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            let filename = path.file_name()?.to_string_lossy().to_string();
-            if !filename.ends_with(".json") || filename.starts_with('.') {
-                return None;
-            }
-            let game_version = read_version_field(&path);
-            let display_time = format_filename_as_time(&filename);
-            let is_current_version = game_version == GAME_VERSION;
-            let is_known_incompatible = incompatible.contains(&filename);
-            Some(SaveMeta {
-                path,
-                filename,
-                display_time,
-                game_version,
-                is_current_version,
-                is_known_incompatible,
+        let mut metas: Vec<SaveMeta> = entries
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let filename = path.file_name()?.to_string_lossy().to_string();
+                if !filename.ends_with(".json") || filename.starts_with('.') {
+                    return None;
+                }
+                let game_version = read_version_field(&path);
+                let display_time = format_filename_as_time(&filename);
+                let is_current_version = game_version == GAME_VERSION;
+                let is_known_incompatible = incompatible.contains(&filename);
+                Some(SaveMeta {
+                    path,
+                    filename,
+                    display_time,
+                    game_version,
+                    is_current_version,
+                    is_known_incompatible,
+                })
             })
-        })
-        .collect();
+            .collect();
 
-    metas.sort_by(|a, b| b.filename.cmp(&a.filename));
-    metas
+        metas.sort_by(|a, b| b.filename.cmp(&a.filename));
+        metas
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let Ok(storage) = web_local_storage() else {
+            return Vec::new();
+        };
+        let Ok(len) = storage.length() else {
+            return Vec::new();
+        };
+
+        let mut metas: Vec<SaveMeta> = (0..len)
+            .filter_map(|i| {
+                let key = storage.key(i).ok()??;
+                if !key.starts_with(STORAGE_PREFIX) {
+                    return None;
+                }
+                let filename = key.strip_prefix(STORAGE_PREFIX)?.to_string();
+                if !filename.ends_with(".json") || filename.starts_with('.') {
+                    return None;
+                }
+                let game_version = read_version_from_storage(&storage, &key);
+                let display_time = format_filename_as_time(&filename);
+                let is_current_version = game_version == GAME_VERSION;
+                let is_known_incompatible = incompatible.contains(&filename);
+                Some(SaveMeta {
+                    path: PathBuf::from(&filename),
+                    filename,
+                    display_time,
+                    game_version,
+                    is_current_version,
+                    is_known_incompatible,
+                })
+            })
+            .collect();
+
+        metas.sort_by(|a, b| b.filename.cmp(&a.filename));
+        metas
+    }
 }
 
 /// Record `filename` as known-incompatible.
@@ -231,12 +321,26 @@ pub fn mark_incompatible(filename: &str) {
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
+/// Generate a timestamp string for save filenames.
 fn timestamp_str() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let s = secs;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        format_timestamp(secs)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let millis = js_sys::Date::now() as u64;
+        let secs = millis / 1000;
+        format_timestamp(secs)
+    }
+}
+
+fn format_timestamp(s: u64) -> String {
     let sec = s % 60;
     let min = (s / 60) % 60;
     let hour = (s / 3600) % 24;
@@ -287,6 +391,7 @@ fn format_filename_as_time(filename: &str) -> String {
     filename.to_string()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn read_version_field(path: &Path) -> String {
     #[derive(Deserialize)]
     struct VersionOnly {
@@ -300,24 +405,75 @@ fn read_version_field(path: &Path) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+#[cfg(target_arch = "wasm32")]
+fn read_version_from_storage(storage: &web_sys::Storage, key: &str) -> String {
+    #[derive(Deserialize)]
+    struct VersionOnly {
+        #[serde(default = "default_version")]
+        game_version: String,
+    }
+    storage.get_item(key)
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str::<VersionOnly>(&s).ok())
+        .map(|v| v.game_version)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 #[derive(Serialize, Deserialize, Default)]
 struct IncompatibleList {
     incompatible: Vec<String>,
 }
 
 fn load_incompatible_list() -> Vec<String> {
-    fs::read_to_string(INCOMPAT_FILE)
-        .ok()
-        .and_then(|s| serde_json::from_str::<IncompatibleList>(&s).ok())
-        .map(|l| l.incompatible)
-        .unwrap_or_default()
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        fs::read_to_string(INCOMPAT_FILE)
+            .ok()
+            .and_then(|s| serde_json::from_str::<IncompatibleList>(&s).ok())
+            .map(|l| l.incompatible)
+            .unwrap_or_default()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_local_storage()
+            .ok()
+            .and_then(|s| s.get_item(INCOMPAT_KEY).ok().flatten())
+            .and_then(|s| serde_json::from_str::<IncompatibleList>(&s).ok())
+            .map(|l| l.incompatible)
+            .unwrap_or_default()
+    }
 }
 
 fn save_incompatible_list(list: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let data = IncompatibleList { incompatible: list.to_vec() };
-    let _ = fs::create_dir_all(SAVES_DIR);
-    fs::write(INCOMPAT_FILE, serde_json::to_string_pretty(&data)?)?;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = fs::create_dir_all(SAVES_DIR);
+        fs::write(INCOMPAT_FILE, serde_json::to_string_pretty(&data)?)?;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let storage = web_local_storage()?;
+        let json = serde_json::to_string_pretty(&data)?;
+        storage.set_item(INCOMPAT_KEY, &json)
+            .map_err(|_| "localStorage write failed")?;
+    }
+
     Ok(())
+}
+
+// ─── WASM localStorage helper ────────────────────────────────────────────────
+
+#[cfg(target_arch = "wasm32")]
+fn web_local_storage() -> Result<web_sys::Storage, Box<dyn std::error::Error>> {
+    let window = web_sys::window().ok_or("no global window")?;
+    window.local_storage()
+        .map_err(|_| "localStorage access denied")?
+        .ok_or_else(|| "localStorage not available".into())
 }
 
 // ─── Bevy Plugin ─────────────────────────────────────────────────────────────

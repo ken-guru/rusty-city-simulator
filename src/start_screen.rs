@@ -307,7 +307,9 @@ fn handle_buttons(
                 state.dirty = true;
             }
             StartScreenAction::Quit => {
+                #[cfg(not(target_arch = "wasm32"))]
                 std::process::exit(0);
+                // On WASM the browser tab cannot be closed; do nothing.
             }
             #[cfg(feature = "debug_ui")]
             StartScreenAction::ToggleEconomyDebug => {

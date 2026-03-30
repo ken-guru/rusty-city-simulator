@@ -902,8 +902,8 @@ fn quit_dialog_interaction(
 
 /// Performs the actual quit at the end of the frame.
 /// Saves synchronously (if requested) then either transitions to StartScreen
-/// or calls process::exit — the latter is reliable on macOS where Bevy's
-/// AppExit event can deadlock the Metal renderer.
+/// or exits the application. On native this calls process::exit; on WASM the
+/// browser tab cannot be closed, so we transition back to the start screen.
 fn handle_pending_quit(
     mut pending: ResMut<PendingQuit>,
     mut world: ResMut<CityWorld>,
@@ -941,7 +941,17 @@ fn handle_pending_quit(
         quit_visible.0 = false;
         next_state.set(AppState::StartScreen);
     } else {
+        #[cfg(not(target_arch = "wasm32"))]
         std::process::exit(0);
+        // On WASM we cannot exit — fall back to the start screen.
+        #[cfg(target_arch = "wasm32")]
+        {
+            pending.active = false;
+            pending.save_first = false;
+            pending.return_to_menu = false;
+            quit_visible.0 = false;
+            next_state.set(AppState::StartScreen);
+        }
     }
 }
 

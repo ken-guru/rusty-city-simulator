@@ -5,6 +5,39 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.13.0] — 2026-03-30
+
+### Added
+
+#### Web (WASM) support
+- The game now compiles to WebAssembly and runs in the browser via Bevy's native
+  WASM target (`wasm32-unknown-unknown`).
+- **Trunk** build tooling: added `index.html` and `Trunk.toml` for building and
+  bundling the WASM binary into a static site.
+- **Save/load on web**: save files are persisted to browser `localStorage` instead
+  of the filesystem. All existing save/load UI (F5 save, start-screen load list,
+  incompatible-save tracking) works identically on both native and web.
+- **Debug logging on web**: economy debug log messages are routed to the browser
+  console via `web_sys::console::log_1` instead of writing to disk.
+- **Quit behaviour on web**: `std::process::exit` is replaced with a return to the
+  start screen on WASM, since browser tabs cannot be programmatically closed.
+- WASM-specific dependencies: `wasm-bindgen`, `web-sys`, `js-sys` (only compiled
+  for `wasm32` targets).
+- **`[profile.wasm-release]`**: dedicated release profile for WASM builds with
+  `opt-level = "z"`, LTO, and single codegen unit for minimal binary size.
+
+#### Deployment
+- **Vercel static site configuration** (`vercel.json`): correct MIME type for
+  `.wasm` files, and `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy`
+  headers required by `SharedArrayBuffer` (used by Bevy's multi-threaded runtime).
+- **GitHub Actions deploy workflow** (`.github/workflows/deploy.yml`): on every
+  push to `main`, builds the WASM binary with Trunk, then deploys the `dist/`
+  output to Vercel using the Vercel CLI.
+- **CI WASM check** (`.github/workflows/ci.yml`): new `check-wasm` job validates
+  that the codebase compiles cleanly for `wasm32-unknown-unknown` on every PR.
+
+---
+
 ## [0.12.5] — 2026-03-20
 
 ### Added

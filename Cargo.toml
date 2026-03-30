@@ -1,6 +1,6 @@
 [package]
 name = "city_sim"
-version = "0.12.5"
+version = "0.13.0"
 edition = "2021"
 
 [features]
@@ -16,8 +16,21 @@ rand = "0.10"
 uuid = { version = "1.22", features = ["v4", "serde"] }
 pathfinding = "4.15"
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Window", "Storage"] }
+js-sys = "0.3"
+# getrandom needs an explicit JS backend on wasm32-unknown-unknown
+getrandom = { version = "0.4", features = ["wasm_js"] }
+
 [profile.dev]
 opt-level = 1
 
 [profile.release]
 strip = "symbols"
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
