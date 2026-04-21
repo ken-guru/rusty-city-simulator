@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.13.3] — 2026-04-21
+
+### Removed
+
+- **Vercel deployment infrastructure**: deleted `vercel.json` and GitHub Action deploy workflow.
+
+---
+
 ## [0.13.2] — 2026-03-30
 
 ### Fixed
