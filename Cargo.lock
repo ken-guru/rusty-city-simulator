@@ -1873,7 +1873,7 @@ dependencies = [
 
 [[package]]
 name = "city_sim"
-version = "0.13.2"
+version = "0.13.4"
 dependencies = [
  "bevy",
  "getrandom 0.4.2",
