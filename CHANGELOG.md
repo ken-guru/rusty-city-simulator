@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.13.4] — 2026-04-22
+
+### Added
+
+- **`THIRD_PARTY_LICENSES.md`**: comprehensive attribution document listing all 545
+  transitive Rust crate dependencies with their SPDX license identifiers, repository
+  links, and full canonical license texts (MIT, Apache-2.0, BSD-2/3-Clause, ISC, Zlib,
+  Unlicense, CC0-1.0, Unicode-3.0, 0BSD, Apache-2.0 WITH LLVM-exception, MIT-0).
+  All dependencies use OSI-approved permissive licenses; no copyleft restrictions apply.
+
+---
+
 ## [0.13.3] — 2026-04-21
 
 ### Removed
