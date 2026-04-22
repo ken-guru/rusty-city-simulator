@@ -10,8 +10,8 @@ All dependencies are fetched from [crates.io](https://crates.io) and are verifie
 
 ## License Compatibility Summary
 
-All 545 third-party packages transitively included in this project use **OSI-approved permissive licenses**.
-No dependency imposes copyleft restrictions on this project.
+All 545 third-party packages transitively included in this project are available under at least one **OSI-approved permissive license**.
+Where a dependency offers multiple license options, this project relies on the permissive option where applicable; accordingly, no elected dependency license imposes copyleft restrictions on this project.
 
 | License | Package count | Notes |
 |---------|:-------------:|-------|
@@ -174,7 +174,7 @@ The full list of 545 packages (direct and transitive) included in the build, sor
 | `bitflags` | 1.3.2 | Apache-2.0 OR MIT | [link](https://github.com/bitflags/bitflags) |
 | `bitflags` | 2.11.0 | Apache-2.0 OR MIT | [link](https://github.com/bitflags/bitflags) |
 | `blake3` | 1.8.3 | Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR CC0-1.0 | [link](https://github.com/BLAKE3-team/BLAKE3) |
-| `block` | 0.1.6 | MIT | [link](http://github.com/SSheldon/rust-block) |
+| `block` | 0.1.6 | MIT | [link](https://github.com/SSheldon/rust-block) |
 | `block2` | 0.5.1 | MIT | [link](https://github.com/madsmtm/objc2) |
 | `block2` | 0.6.2 | MIT | [link](https://github.com/madsmtm/objc2) |
 | `blocking` | 1.6.2 | Apache-2.0 OR MIT | [link](https://github.com/smol-rs/blocking) |
@@ -229,7 +229,7 @@ The full list of 545 packages (direct and transitive) included in the build, sor
 | `deprecate-until` | 1.0.0 | Apache-2.0 OR MIT | [link](https://github.com/samueltardieu/deprecate-until) |
 | `derive_more` | 2.1.1 | MIT | [link](https://github.com/JelteF/derive_more) |
 | `derive_more-impl` | 2.1.1 | MIT | [link](https://github.com/JelteF/derive_more) |
-| `dispatch` | 0.2.0 | MIT | [link](http://github.com/SSheldon/rust-dispatch) |
+| `dispatch` | 0.2.0 | MIT | [link](https://github.com/SSheldon/rust-dispatch) |
 | `dispatch2` | 0.3.1 | Apache-2.0 OR MIT OR Zlib | [link](https://github.com/madsmtm/objc2) |
 | `disqualified` | 1.0.0 | Apache-2.0 OR MIT | [link](https://github.com/bevyengine/disqualified) |
 | `dlib` | 0.5.3 | MIT | [link](https://github.com/elinorbgr/dlib) |
@@ -356,7 +356,7 @@ The full list of 545 packages (direct and transitive) included in the build, sor
 | `num-traits` | 0.2.19 | Apache-2.0 OR MIT | [link](https://github.com/rust-num/num-traits) |
 | `num_enum` | 0.7.5 | Apache-2.0 OR BSD-3-Clause OR MIT | [link](https://github.com/illicitonion/num_enum) |
 | `num_enum_derive` | 0.7.5 | Apache-2.0 OR BSD-3-Clause OR MIT | [link](https://github.com/illicitonion/num_enum) |
-| `objc` | 0.2.7 | MIT | [link](http://github.com/SSheldon/rust-objc) |
+| `objc` | 0.2.7 | MIT | [link](https://github.com/SSheldon/rust-objc) |
 | `objc-sys` | 0.3.5 | MIT | [link](https://github.com/madsmtm/objc2) |
 | `objc2` | 0.5.2 | MIT | [link](https://github.com/madsmtm/objc2) |
 | `objc2` | 0.6.4 | MIT | [link](https://github.com/madsmtm/objc2) |
@@ -624,7 +624,7 @@ The full list of 545 packages (direct and transitive) included in the build, sor
 ## License Texts
 
 Below are the canonical texts for each license family used by these dependencies.
-For packages dual- or multi-licensed, the full text of each applicable option is included.
+For packages that offer multiple license options, only the texts for the elected (permissive) licenses are included.
 
 ### MIT License
 

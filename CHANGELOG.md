@@ -11,9 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 - **`THIRD_PARTY_LICENSES.md`**: comprehensive attribution document listing all 545
   transitive Rust crate dependencies with their SPDX license identifiers, repository
-  links, and full canonical license texts (MIT, Apache-2.0, BSD-2/3-Clause, ISC, Zlib,
-  Unlicense, CC0-1.0, Unicode-3.0, 0BSD, Apache-2.0 WITH LLVM-exception, MIT-0).
-  All dependencies use OSI-approved permissive licenses; no copyleft restrictions apply.
+  links, and canonical license texts for each elected license family (MIT, Apache-2.0,
+  BSD-2/3-Clause, ISC, Zlib, Unlicense, CC0-1.0, Unicode-3.0, 0BSD,
+  Apache-2.0 WITH LLVM-exception, MIT-0). All dependencies are available under at least
+  one OSI-approved permissive license; no elected license imposes copyleft restrictions.
+
+### Fixed
+
+- **`src/version.rs`**: updated doc comment to reflect that `GAME_VERSION` should be
+  bumped on every release, not only on save-file format changes.
+- **`THIRD_PARTY_LICENSES.md`**: corrected three repository links from `http://` to
+  `https://`; clarified that only elected (permissive) license texts are included for
+  multi-licensed packages; improved wording around license availability.
 
 ---
 
