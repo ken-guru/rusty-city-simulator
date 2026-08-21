@@ -76,6 +76,20 @@ Releases and binary distribution are handled outside of GitHub Actions.
 - No panicking `unwrap()` — use `unwrap_or`, `if let`, or `?` propagation
 - Module-level `//!` doc comments expected in all source files
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Uses the default canonical triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository. See `docs/agents/domain.md`.
+
 ## Known Areas for Future Work
 - Park management features (placeholder components exist in `entities.rs`)
 - Events that spawn/destroy buildings (reserved fields in `events.rs`)

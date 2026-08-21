@@ -1,8 +1,8 @@
 name: CI
 
+# Temporarily disabled while the project is low consequence. Run manually when needed.
 on:
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
