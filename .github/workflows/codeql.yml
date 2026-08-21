@@ -11,13 +11,9 @@
 #
 name: "CodeQL Advanced"
 
+# Temporarily disabled while the project is low consequence. Run manually when needed.
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  schedule:
-    - cron: '37 23 * * 3'
+  workflow_dispatch:
 
 jobs:
   analyze:
