@@ -8,3 +8,4 @@ economy_debug.log
 *.swo
 .DS_Store
 .claude/settings.local.json
+.devcontainer/.env
