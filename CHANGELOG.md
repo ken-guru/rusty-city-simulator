@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.13.5] — 2026-08-25
+
+### Added
+
+- **Rust support in the devcontainer**: added the `ghcr.io/devcontainers/features/rust:1`
+  feature and the Bevy Linux build dependencies (`libwayland-dev`, `libxkbcommon-dev`,
+  `libudev-dev`, `libasound2-dev`, `pkg-config`) to `.devcontainer/post-create.sh`,
+  mirroring `.github/workflows/ci.yml`. Previously the devcontainer had no Rust
+  toolchain at all, so `cargo build`/`cargo test` failed inside it. Verified against a
+  live container: `RUSTFLAGS="-D warnings" cargo build --no-default-features` and
+  `cargo test --no-default-features` both pass cleanly, matching CI's `check` job.
+- **`.devcontainer/`**: committed to the repository for the first time (previously
+  local-only, untracked setup).
+
+---
+
 ## [0.13.4] — 2026-04-22
 
 ### Added
